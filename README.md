@@ -13,7 +13,7 @@ A minimal networking product for turning ideas into collaborative projects. Peop
 - Profile, project portfolio and matching controls
 - Responsive desktop and mobile layouts
 
-This version uses realistic local prototype data. The next production step is durable identity, project and messaging data backed by a database.
+The production foundation is implemented for Vercel with PostgreSQL, Auth.js, Drizzle and encrypted Google/Microsoft integration tokens. Until the Vercel environment variables are configured, the public product preview remains available while authenticated writes return a safe configuration error.
 
 ## Run locally
 
@@ -31,6 +31,16 @@ npm run build
 npm run lint
 npm test
 ```
+
+## Production configuration
+
+1. Link a Neon PostgreSQL resource to the Vercel project and expose its connection string as `POSTGRES_URL`.
+2. Add `AUTH_SECRET` and `INTEGRATION_ENCRYPTION_KEY` using separate randomly generated 32-byte secrets.
+3. Create Google OAuth credentials and add the Google environment variables from `.env.example`.
+4. Create a Microsoft Entra ID application and add the Microsoft environment variables from `.env.example`.
+5. Run `npm run db:migrate` against production, then redeploy.
+
+The integrations request the calendar, profile and offline-access scopes needed to create Google Meet, Outlook and Teams events. Provider access and refresh tokens are encrypted before storage.
 
 ## Product direction
 

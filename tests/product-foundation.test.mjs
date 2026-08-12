@@ -1,0 +1,31 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+
+test("defines durable product records and safety controls", async () => {
+  const schema = await read("db/schema.ts");
+  for (const table of ["users", "projects", "projectRoles", "applications", "invitations", "milestones", "projectUpdates", "integrationAccounts", "meetings", "reports", "blocks", "privacySettings", "matchFeedback", "auditLog"]) {
+    assert.match(schema, new RegExp(`export const ${table} = pgTable`));
+  }
+});
+
+test("ships secured feature routes", async () => {
+  const [projects, calendar, reports, feedback] = await Promise.all([
+    read("app/api/projects/route.ts"),
+    read("app/api/calendar/events/route.ts"),
+    read("app/api/moderation/reports/route.ts"),
+    read("app/api/matches/feedback/route.ts"),
+  ]);
+  for (const route of [projects, calendar, reports, feedback]) assert.match(route, /requireMember\(\)/);
+  assert.match(calendar, /graph\.microsoft\.com/);
+  assert.match(calendar, /googleapis\.com/);
+});
+
+test("includes a deployable PostgreSQL migration", async () => {
+  const migration = await read("drizzle/0000_late_major_mapleleaf.sql");
+  assert.match(migration, /CREATE TABLE "users"/);
+  assert.match(migration, /CREATE TABLE "match_feedback"/);
+  assert.match(migration, /CREATE TABLE "reports"/);
+});

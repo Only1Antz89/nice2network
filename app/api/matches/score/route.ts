@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server";import { z } from "zod";import { apiError,requireMember } from "@/lib/api";import { scoreMatch } from "@/lib/matching";
+const schema=z.object({memberSkills:z.array(z.string()),memberInterests:z.array(z.string()),memberIndustry:z.string().nullable().optional(),projectSkills:z.array(z.string()),projectIndustry:z.string(),projectTags:z.array(z.string()),distanceKm:z.number().min(0).optional(),feedbackAffinity:z.number().min(-1).max(1).optional()});
+export async function POST(request:Request){try{await requireMember();return NextResponse.json(scoreMatch(schema.parse(await request.json())))}catch(error){return apiError(error)}}

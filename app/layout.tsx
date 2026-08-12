@@ -6,7 +6,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://nice-2-network.momentum-7084.chatgpt.site"),
+  metadataBase: new URL("https://nice2network.vercel.app"),
   title: "nice 2 network — ideas need good people",
   description: "A place for useful connections, shared projects and the people who help ideas grow.",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },

@@ -10,6 +10,7 @@ import {
   Check,
   ChevronDown,
   CircleHelp,
+  Circle,
   Clock3,
   Ellipsis,
   Eye,
@@ -20,14 +21,18 @@ import {
   Menu,
   MessageCircle,
   Plus,
+  Flag,
   Search,
   Send,
   Settings,
+  ShieldCheck,
   Sparkles,
   SlidersHorizontal,
   UserRound,
   UserPlus,
   UsersRound,
+  ThumbsDown,
+  ThumbsUp,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -235,9 +240,17 @@ function ProjectsView({ onCreate, hasNewProject }: { onCreate: () => void; hasNe
       <div className="stats-row"><div><strong>{hasNewProject ? "03" : "02"}</strong><span>Created</span></div><div><strong>04</strong><span>Involved</span></div><div><strong>128</strong><span>Eyes placed</span></div></div>
       <div className="section-title"><h3>In motion</h3><button>View all <ArrowUpRight size={15} /></button></div>
       {hasNewProject && <article className="created-project-card"><div className="created-orbit"><span>1</span><span>0</span><span>0</span></div><div><span className="eyebrow">JUST PUBLISHED · COMMUNITY</span><h3>Repair, remake, pass it on</h3><p>A Saturday workshop where young people customise old clothes with local designers.</p><div className="role-chips"><span>Fashion designer</span><span>Youth facilitator</span><span>Venue partner</span></div></div><button className="icon-button border"><ArrowUpRight size={18}/></button></article>}
+      <ProjectWorkbench />
       <ProjectCard />
     </div>
   );
+}
+
+function ProjectWorkbench(){
+  const [tab,setTab]=useState<"roles"|"milestones"|"history">("roles");
+  const [applied,setApplied]=useState(false);
+  const [done,setDone]=useState([true,false,false]);
+  return <section className="workbench"><div className="workbench-head"><div><span className="eyebrow">PROJECT WORKSPACE</span><h3>Neighbourhood energy</h3></div><span className="active-pill">ACTIVE</span></div><div className="workbench-tabs"><button className={tab==="roles"?"active":""} onClick={()=>setTab("roles")}>Roles <b>1</b></button><button className={tab==="milestones"?"active":""} onClick={()=>setTab("milestones")}>Milestones</button><button className={tab==="history"?"active":""} onClick={()=>setTab("history")}>History</button></div>{tab==="roles"&&<div className="open-role-card"><div className="open-role-icon"><UserPlus size={18}/></div><div><span className="eyebrow">GROWTH · 1 SPOT</span><strong>Community growth lead</strong><p>Own the pilot launch, partnerships and first 50 households.</p><div className="skill-chips small"><span>Community launch</span><span>Partnerships</span></div></div><button className={applied?"applied-button":"secondary-button"} onClick={()=>setApplied(!applied)}>{applied?<><Check size={14}/> Applied</>:"View role"}</button></div>}{tab==="milestones"&&<div className="milestone-list">{[["Neighbour interviews","12 Aug"],["Pilot partner confirmed","22 Aug"],["Launch one-street pilot","30 Sep"]].map(([title,date],i)=><button key={title} onClick={()=>setDone(done.map((v,n)=>n===i?!v:v))}><span className={done[i]?"milestone-check done":"milestone-check"}>{done[i]?<Check size={14}/>:<Circle size={14}/>}</span><span><strong>{title}</strong><small>{done[i]?"Completed":`Due ${date}`}</small></span></button>)}</div>}{tab==="history"&&<div className="history-list"><div><span/><p><strong>Marcus</strong> added a project update<small>Today, 10:18</small></p></div><div><span/><p><strong>Maya</strong> completed Neighbour interviews<small>Yesterday, 16:42</small></p></div><div><span/><p><strong>Dev</strong> joined the Technology department<small>8 Aug, 09:06</small></p></div></div>}</section>
 }
 
 function MessagesView() {
@@ -276,6 +289,7 @@ function MeetView() {
   return (
     <div className="subpage">
       <div className="subpage-head"><div><span className="eyebrow">AUGUST 2026</span><h1>Meet</h1><p>Small rooms, useful conversations.</p></div><button className="primary-button"><Plus size={18} /> Add a meet</button></div>
+      <div className="calendar-connections"><div><span className="calendar-brand google">G</span><p><strong>Google Calendar & Meet</strong><small>Schedule and add Meet links</small></p><a href="/api/integrations/google/connect">Connect</a></div><div><span className="calendar-brand microsoft">M</span><p><strong>Microsoft Teams & Outlook</strong><small>Create Teams meetings</small></p><a href="/api/integrations/microsoft/connect">Connect</a></div></div>
       <div className="calendar-strip">{[["TUE","12"],["WED","13"],["THU","14"],["FRI","15"],["SAT","16"]].map(([d,n],i)=><button onClick={()=>setDay(i)} className={i===day?"active":""} key={n}><span>{d}</span><strong>{n}</strong>{i===2&&<i/>}</button>)}</div>
       <div className="section-title"><h3>Today</h3><span>2 meets</span></div>
       <div className="meet-card"><div className="meet-time"><strong>12:30</strong><span>45 min</span></div><div><span className="tag">TEAMS</span><h3>Clean energy pilot: first working session</h3><p>Marcus, Dev, Ali and you</p><div className="mini-stack"><Avatar person={people.marcus} size="sm"/><Avatar person={people.dev} size="sm"/><Avatar person={people.ali} size="sm"/></div></div><button className={`join-button ${joined?"joined":""}`} onClick={()=>setJoined(!joined)}>{joined?<><Check size={14}/> Added</>:"Join"}</button></div>
@@ -294,7 +308,9 @@ function ProfileView() {
 }
 
 function MatchPanel({ onClose, onMessage }: { onClose: () => void; onMessage: () => void }) {
-  return <div className="modal-backdrop" role="presentation" onMouseDown={e=>e.currentTarget===e.target&&onClose()}><section className="match-panel" role="dialog" aria-modal="true"><div className="modal-head"><button className="icon-button" onClick={onClose}><X size={20}/></button><span>Why this match</span><span className="match-score">94%</span></div><div className="match-body"><span className="eyebrow">A USEFUL CONNECTION</span><div className="match-person"><Avatar person={people.lena} size="xl" ring/><div><h2>Lena Vogt</h2><p>Brand strategist · Climate and public good</p><span><MapPin size={13}/> London · 2 mutual connections</span></div></div><div className="reason-grid"><div><Sparkles size={16}/><strong>Project fit</strong><p>Lena has launched two neighbourhood climate programmes.</p></div><div><UsersRound size={16}/><strong>Working style</strong><p>You both prefer small pilots before scaling.</p></div><div><Bookmark size={16}/><strong>Shared interest</strong><p>Community ownership and accessible services.</p></div></div><div className="warm-intro"><Avatar person={people.marcus} size="sm"/><p><strong>Marcus can introduce you.</strong><br/>A warm introduction makes this connection 3× more likely to lead somewhere useful.</p></div><div className="match-actions"><button className="secondary-button" onClick={onClose}>Maybe later</button><button className="primary-button" onClick={onMessage}><MessageCircle size={16}/> Ask for intro</button></div></div></section></div>;
+  const [feedback,setFeedback]=useState<"helpful"|"not_relevant"|null>(null);
+  function rate(signal:"helpful"|"not_relevant"){setFeedback(signal);fetch("/api/matches/feedback",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({matchKey:"lena-energy-growth",signal,scoreSnapshot:94,features:{skills:.9,interests:.8,industry:.7}})}).catch(()=>undefined)}
+  return <div className="modal-backdrop" role="presentation" onMouseDown={e=>e.currentTarget===e.target&&onClose()}><section className="match-panel" role="dialog" aria-modal="true"><div className="modal-head"><button className="icon-button" onClick={onClose}><X size={20}/></button><span>Why this match</span><span className="match-score">94%</span></div><div className="match-body"><span className="eyebrow">A USEFUL CONNECTION</span><div className="match-person"><Avatar person={people.lena} size="xl" ring/><div><h2>Lena Vogt</h2><p>Brand strategist · Climate and public good</p><span><MapPin size={13}/> London · 2 mutual connections</span></div></div><div className="reason-grid"><div><Sparkles size={16}/><strong>Project fit</strong><p>Lena has launched two neighbourhood climate programmes.</p></div><div><UsersRound size={16}/><strong>Working style</strong><p>You both prefer small pilots before scaling.</p></div><div><Bookmark size={16}/><strong>Shared interest</strong><p>Community ownership and accessible services.</p></div></div><div className="warm-intro"><Avatar person={people.marcus} size="sm"/><p><strong>Marcus can introduce you.</strong><br/>A warm introduction makes this connection 3× more likely to lead somewhere useful.</p></div><div className="match-feedback"><span>{feedback?"Thanks — your matches will adapt.":"Is this match useful?"}</span><button className={feedback==="helpful"?"active":""} onClick={()=>rate("helpful")}><ThumbsUp size={14}/></button><button className={feedback==="not_relevant"?"active":""} onClick={()=>rate("not_relevant")}><ThumbsDown size={14}/></button></div><div className="match-actions"><button className="secondary-button" onClick={onClose}>Maybe later</button><button className="primary-button" onClick={onMessage}><MessageCircle size={16}/> Ask for intro</button></div></div></section></div>;
 }
 
 function SearchOverlay({ onClose, onNavigate }: { onClose: () => void; onNavigate: (view: View) => void }) {
@@ -305,7 +321,8 @@ function SearchOverlay({ onClose, onNavigate }: { onClose: () => void; onNavigat
 function SettingsView() {
   const [recommendations, setRecommendations] = useState(true);
   const [availability, setAvailability] = useState(true);
-  return <div className="subpage settings-page"><div className="subpage-head compact"><div><span className="eyebrow">YOUR SPACE</span><h1>Settings</h1><p>Control how the network works for you.</p></div></div><div className="settings-group"><div className="settings-label">MATCHING</div><div className="settings-row"><span><i><Sparkles size={14}/></i><span><strong>Smart project recommendations</strong><small>Use skills, interests and activity to find relevant projects.</small></span></span><button aria-label="Toggle smart recommendations" aria-pressed={recommendations} className={`toggle ${recommendations?"on":""}`} onClick={()=>setRecommendations(!recommendations)}><i/></button></div><div className="settings-row"><span><i><UserPlus size={14}/></i><span><strong>Show that I’m available</strong><small>Let project owners know you’re open to relevant asks.</small></span></span><button aria-label="Toggle availability" aria-pressed={availability} className={`toggle ${availability?"on":""}`} onClick={()=>setAvailability(!availability)}><i/></button></div></div><div className="settings-group"><div className="settings-label">ACCOUNT</div>{["Profile and expertise","Messages and notifications","Calendar connections","Privacy and visibility"].map((s,i)=><button key={s}><span><i>{i+1}</i><strong>{s}</strong></span><ArrowUpRight size={17}/></button>)}</div></div>;
+  const [visibility,setVisibility]=useState("Network only");
+  return <div className="subpage settings-page"><div className="subpage-head compact"><div><span className="eyebrow">YOUR SPACE</span><h1>Settings</h1><p>Control how the network works for you.</p></div></div><div className="settings-group"><div className="settings-label">MATCHING</div><div className="settings-row"><span><i><Sparkles size={14}/></i><span><strong>Smart project recommendations</strong><small>Use skills, interests and activity to find relevant projects.</small></span></span><button aria-label="Toggle smart recommendations" aria-pressed={recommendations} className={`toggle ${recommendations?"on":""}`} onClick={()=>setRecommendations(!recommendations)}><i/></button></div><div className="settings-row"><span><i><UserPlus size={14}/></i><span><strong>Show that I’m available</strong><small>Let project owners know you’re open to relevant asks.</small></span></span><button aria-label="Toggle availability" aria-pressed={availability} className={`toggle ${availability?"on":""}`} onClick={()=>setAvailability(!availability)}><i/></button></div></div><div className="privacy-card"><div><span className="privacy-icon"><ShieldCheck size={18}/></span><span><strong>Privacy at a glance</strong><small>Your profile is visible to signed-in network members.</small></span></div><label>Profile visibility<select value={visibility} onChange={e=>setVisibility(e.target.value)}><option>Network only</option><option>Connections only</option><option>Private</option></select></label><div className="safety-actions"><button><Flag size={15}/> Reports & safety</button><button><ShieldCheck size={15}/> Blocked people</button></div></div><div className="settings-group"><div className="settings-label">ACCOUNT & CONNECTIONS</div>{["Profile and expertise","Messages and notifications","Google & Microsoft calendars","Privacy and visibility"].map((s,i)=><button key={s}><span><i>{i+1}</i><strong>{s}</strong></span><ArrowUpRight size={17}/></button>)}</div></div>;
 }
 
 export default function HomePage() {
