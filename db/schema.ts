@@ -3,11 +3,16 @@ import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, u
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
+  title: text("title"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  age: integer("age"),
   name: text("name"),
   email: text("email").notNull(),
   emailVerified: timestamp("email_verified", { mode: "date" }),
   image: text("image"),
   passwordHash: text("password_hash"),
+  profession: text("profession"),
   headline: text("headline"),
   bio: text("bio"),
   industry: text("industry"),
@@ -17,6 +22,7 @@ export const users = pgTable("users", {
   availability: text("availability").notNull().default("open"),
   role: text("role").notNull().default("member"),
   status: text("status").notNull().default("active"),
+  onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("users_email_unique").on(table.email)]);

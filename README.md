@@ -36,8 +36,9 @@ npm test
 
 1. Link a Neon PostgreSQL resource to the Vercel project and expose its connection string as `POSTGRES_URL`.
 2. Add `AUTH_SECRET` and `INTEGRATION_ENCRYPTION_KEY` using separate randomly generated 32-byte secrets.
-3. Create Google OAuth credentials and add the Google environment variables from `.env.example`.
-4. Create a Microsoft Entra ID application and add the Microsoft environment variables from `.env.example`.
+3. Add a Resend API key and verified sender using `RESEND_API_KEY` and `EMAIL_FROM` so registration verification emails can be delivered.
+4. Create Google OAuth credentials and add the Google environment variables from `.env.example`.
+5. Create a Microsoft Entra ID application and add the Microsoft environment variables from `.env.example`.
 5. Run `npm run db:migrate` against production, then redeploy.
 
 The integrations request the calendar, profile and offline-access scopes needed to create Google Meet, Outlook and Teams events. Provider access and refresh tokens are encrypted before storage.

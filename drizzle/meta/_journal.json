@@ -8,6 +8,13 @@
       "when": 1786538441798,
       "tag": "0000_late_major_mapleleaf",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786541041404,
+      "tag": "0001_old_green_goblin",
+      "breakpoints": true
     }
   ]
 }

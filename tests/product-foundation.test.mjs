@@ -29,3 +29,18 @@ test("includes a deployable PostgreSQL migration", async () => {
   assert.match(migration, /CREATE TABLE "match_feedback"/);
   assert.match(migration, /CREATE TABLE "reports"/);
 });
+
+test("requires verified email before professional onboarding", async () => {
+  const [register, verify, onboarding, credentials] = await Promise.all([
+    read("app/api/auth/register/route.ts"),
+    read("app/api/auth/verify/route.ts"),
+    read("app/api/auth/onboarding/route.ts"),
+    read("auth.ts"),
+  ]);
+  assert.match(register, /pending_verification/);
+  assert.match(register, /sendVerificationEmail/);
+  assert.match(verify, /emailVerified/);
+  assert.match(verify, /n2_onboarding/);
+  assert.match(onboarding, /onboardingCompletedAt/);
+  assert.match(credentials, /member\.status !== "active"/);
+});

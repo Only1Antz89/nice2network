@@ -17,6 +17,7 @@ import {
   Home,
   Lightbulb,
   Link2,
+  LogOut,
   MapPin,
   Menu,
   MessageCircle,
@@ -34,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { signOut } from "next-auth/react";
 
 type View = "feed" | "projects" | "messages" | "meet" | "profile" | "settings";
 
@@ -364,7 +366,7 @@ export default function HomePage() {
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <div><Logo onClick={()=>go("feed")} /><nav>{nav.map((item) => { const Icon=item.icon; return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={20}/><span>{item.label}</span>{item.count&&<b>{item.count}</b>}</button>})}</nav></div>
-        <div className="sidebar-bottom"><button onClick={()=>go("settings")} className={view==="settings"?"active":""}><Settings size={20}/><span>Settings</span></button><button onClick={()=>setToast("Help centre is coming next.")}><CircleHelp size={20}/><span>Help</span></button><button className="profile-chip" onClick={()=>go("profile")}><Avatar person={people.maya} size="sm"/><span><strong>Maya Chen</strong><small>View profile</small></span><ChevronDown size={16}/></button></div>
+        <div className="sidebar-bottom"><button onClick={()=>go("settings")} className={view==="settings"?"active":""}><Settings size={20}/><span>Settings</span></button><button onClick={()=>setToast("Help centre is coming next.")}><CircleHelp size={20}/><span>Help</span></button><button onClick={()=>signOut({redirectTo:"/signin"})}><LogOut size={20}/><span>Log out</span></button><button className="profile-chip" onClick={()=>go("profile")}><Avatar person={people.maya} size="sm"/><span><strong>Maya Chen</strong><small>View profile</small></span><ChevronDown size={16}/></button></div>
       </aside>
       <main className="main-content">
         <button className="mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Open navigation">{menuOpen?<ArrowLeft/>:<Menu/>}</button>
