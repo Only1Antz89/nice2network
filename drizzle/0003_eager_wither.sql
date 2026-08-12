@@ -1,0 +1,1 @@
+ALTER TABLE "reports" ADD COLUMN "response_due_at" timestamp with time zone;

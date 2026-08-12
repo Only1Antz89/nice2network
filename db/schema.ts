@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -7,6 +7,8 @@ export const users = pgTable("users", {
   firstName: text("first_name"),
   lastName: text("last_name"),
   age: integer("age"),
+  dateOfBirth: date("date_of_birth", { mode: "date" }),
+  ageBand: text("age_band").notNull().default("adult"),
   name: text("name"),
   email: text("email").notNull(),
   emailVerified: timestamp("email_verified", { mode: "date" }),
@@ -22,6 +24,8 @@ export const users = pgTable("users", {
   availability: text("availability").notNull().default("open"),
   role: text("role").notNull().default("member"),
   status: text("status").notNull().default("active"),
+  forcePasswordChange: boolean("force_password_change").notNull().default(false),
+  mfaEnrolledAt: timestamp("mfa_enrolled_at", { withTimezone: true }),
   onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -86,7 +90,7 @@ export const meetings = pgTable("meetings", {
 });
 
 export const reports = pgTable("reports", {
-  id: uuid("id").defaultRandom().primaryKey(), reporterId: uuid("reporter_id").notNull().references(() => users.id), targetType: text("target_type").notNull(), targetId: uuid("target_id").notNull(), reason: text("reason").notNull(), details: text("details"), status: text("status").notNull().default("open"), priority: text("priority").notNull().default("normal"), assignedTo: uuid("assigned_to").references(() => users.id), resolution: text("resolution"), resolvedAt: timestamp("resolved_at", { withTimezone: true }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  id: uuid("id").defaultRandom().primaryKey(), reporterId: uuid("reporter_id").notNull().references(() => users.id), targetType: text("target_type").notNull(), targetId: uuid("target_id").notNull(), reason: text("reason").notNull(), details: text("details"), status: text("status").notNull().default("open"), priority: text("priority").notNull().default("normal"), responseDueAt: timestamp("response_due_at", { withTimezone: true }), assignedTo: uuid("assigned_to").references(() => users.id), resolution: text("resolution"), resolvedAt: timestamp("resolved_at", { withTimezone: true }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("reports_status_idx").on(table.status)]);
 
 export const blocks = pgTable("blocks", {
@@ -102,8 +106,157 @@ export const matchFeedback = pgTable("match_feedback", {
 }, (table) => [index("feedback_match_idx").on(table.matchKey), index("feedback_user_idx").on(table.userId)]);
 
 export const auditLog = pgTable("audit_log", {
-  id: uuid("id").defaultRandom().primaryKey(), actorId: uuid("actor_id").references(() => users.id), action: text("action").notNull(), targetType: text("target_type").notNull(), targetId: text("target_id"), metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}), ipHash: text("ip_hash"), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  id: uuid("id").defaultRandom().primaryKey(), actorId: uuid("actor_id").references(() => users.id), action: text("action").notNull(), targetType: text("target_type").notNull(), targetId: text("target_id"), permission: text("permission"), reason: text("reason"), requestId: text("request_id"), severity: text("severity").notNull().default("info"), before: jsonb("before_state").$type<Record<string, unknown>>(), after: jsonb("after_state").$type<Record<string, unknown>>(), metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}), ipHash: text("ip_hash"), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("audit_target_idx").on(table.targetType, table.targetId)]);
+
+export const adminAssignments = pgTable("admin_assignments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  status: text("status").notNull().default("active"),
+  grantedBy: uuid("granted_by").references(() => users.id),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("admin_user_unique").on(table.userId), index("admin_status_idx").on(table.status)]);
+
+export const adminMfa = pgTable("admin_mfa", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  secretEncrypted: text("secret_encrypted").notNull(),
+  enabledAt: timestamp("enabled_at", { withTimezone: true }),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const sanctions = pgTable("sanctions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: text("type").notNull(),
+  policyCode: text("policy_code").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").notNull().default("active"),
+  issuedBy: uuid("issued_by").notNull().references(() => users.id),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  revokedBy: uuid("revoked_by").references(() => users.id),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("sanction_user_idx").on(table.userId), index("sanction_status_idx").on(table.status)]);
+
+export const moderationEvents = pgTable("moderation_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  reportId: uuid("report_id").notNull().references(() => reports.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").notNull().references(() => users.id),
+  type: text("type").notNull(),
+  note: text("note"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("moderation_report_idx").on(table.reportId)]);
+
+export const appeals = pgTable("appeals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  reportId: uuid("report_id").references(() => reports.id, { onDelete: "set null" }),
+  sanctionId: uuid("sanction_id").references(() => sanctions.id, { onDelete: "set null" }),
+  appellantId: uuid("appellant_id").notNull().references(() => users.id),
+  statement: text("statement").notNull(),
+  status: text("status").notNull().default("open"),
+  reviewedBy: uuid("reviewed_by").references(() => users.id),
+  resolution: text("resolution"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("appeals_status_idx").on(table.status)]);
+
+export const contentSnapshots = pgTable("content_snapshots", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  reportId: uuid("report_id").references(() => reports.id, { onDelete: "set null" }),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id").notNull(),
+  content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  contentHash: text("content_hash").notNull(),
+  legalHold: boolean("legal_hold").notNull().default(false),
+  capturedBy: uuid("captured_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("snapshot_target_idx").on(table.targetType, table.targetId)]);
+
+export const productEvents = pgTable("product_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  actorHash: text("actor_hash"),
+  event: text("event").notNull(),
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  ageBand: text("age_band"),
+  properties: jsonb("properties").$type<Record<string, string | number | boolean | null>>().default({}),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("events_name_time_idx").on(table.event, table.occurredAt), index("events_entity_idx").on(table.entityType, table.entityId)]);
+
+export const dailyMetrics = pgTable("daily_metrics", {
+  day: date("day").notNull(),
+  metric: text("metric").notNull(),
+  dimension: text("dimension").notNull().default("all"),
+  value: integer("value").notNull().default(0),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.day, table.metric, table.dimension] })]);
+
+export const safetyRisks = pgTable("safety_risks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  subjectUserId: uuid("subject_user_id").references(() => users.id, { onDelete: "set null" }),
+  type: text("type").notNull(),
+  severity: text("severity").notNull(),
+  status: text("status").notNull().default("open"),
+  details: jsonb("details").$type<Record<string, unknown>>().default({}),
+  assignedTo: uuid("assigned_to").references(() => users.id),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("safety_status_idx").on(table.status, table.severity)]);
+
+export const officialNotices = pgTable("official_notices", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  authorId: uuid("author_id").notNull().references(() => users.id),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("published"),
+  audience: text("audience").notNull().default("all"),
+  publishedAt: timestamp("published_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("notices_status_idx").on(table.status, table.publishedAt)]);
+
+export const conversations = pgTable("conversations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  initiatedBy: uuid("initiated_by").notNull().references(() => users.id),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const conversationMembers = pgTable("conversation_members", {
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.conversationId, table.userId] }), index("conversation_member_user_idx").on(table.userId)]);
+
+export const messages = pgTable("messages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  senderId: uuid("sender_id").notNull().references(() => users.id),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("visible"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("messages_conversation_idx").on(table.conversationId, table.createdAt)]);
+
+export const complianceAssessments = pgTable("compliance_assessments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  type: text("type").notNull(),
+  version: text("version").notNull(),
+  status: text("status").notNull().default("draft"),
+  summary: text("summary").notNull(),
+  approvedBy: uuid("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  reviewDueAt: timestamp("review_due_at", { withTimezone: true }),
+  record: jsonb("record").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("assessment_type_version_unique").on(table.type, table.version)]);
 
 export const usersRelations = relations(users, ({ many, one }) => ({ ownedProjects: many(projects), memberships: many(projectMembers), privacy: one(privacySettings) }));
 export const projectsRelations = relations(projects, ({ one, many }) => ({ owner: one(users, { fields: [projects.ownerId], references: [users.id] }), roles: many(projectRoles), members: many(projectMembers), milestones: many(milestones), updates: many(projectUpdates) }));

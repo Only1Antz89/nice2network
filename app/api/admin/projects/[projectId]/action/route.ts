@@ -1,0 +1,11 @@
+import { eq } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getDb } from "@/db";
+import { projectRoles, projects } from "@/db/schema";
+import { requirePermission } from "@/lib/admin";
+import { ApiError, apiError } from "@/lib/api";
+import { audit } from "@/lib/audit";
+
+const schema = z.object({ action: z.enum(["quarantine", "restore", "pause_applications", "close_roles", "transfer_ownership"]), reason: z.string().trim().min(10).max(1000), newOwnerId: z.uuid().optional() });
+export async function POST(request: Request, { params }: { params: Promise<{ projectId: string }> }) { try { const admin = await requirePermission("projects.manage"); const { projectId } = await params; const input = schema.parse(await request.json()); const db = getDb(); const [project] = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1); if (!project) throw new ApiError(404, "Project not found"); if (input.action === "quarantine") await db.update(projects).set({ status: "quarantined", visibility: "private", updatedAt: new Date() }).where(eq(projects.id, projectId)); if (input.action === "restore") await db.update(projects).set({ status: "active", visibility: "network", updatedAt: new Date() }).where(eq(projects.id, projectId)); if (input.action === "pause_applications") await db.update(projectRoles).set({ status: "paused" }).where(eq(projectRoles.projectId, projectId)); if (input.action === "close_roles") await db.update(projectRoles).set({ status: "closed" }).where(eq(projectRoles.projectId, projectId)); if (input.action === "transfer_ownership") { if (!input.newOwnerId) throw new ApiError(400, "A new owner is required"); await db.update(projects).set({ ownerId: input.newOwnerId, updatedAt: new Date() }).where(eq(projects.id, projectId)); } await audit(admin.user.id, `admin.project_${input.action}`, "project", projectId, {}, { permission: "projects.manage", reason: input.reason, severity: input.action === "transfer_ownership" ? "high" : "warning", before: { status: project.status, visibility: project.visibility, ownerId: project.ownerId }, after: { action: input.action, ownerId: input.newOwnerId } }); return NextResponse.json({ success: true }); } catch (error) { return apiError(error); } }

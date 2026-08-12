@@ -58,3 +58,38 @@ test("supports authenticated password changes and private reset links", async ()
   assert.match(reset, /verificationTokens\.expires/);
   assert.match(reset, /delete\(sessions\)/);
 });
+
+test("protects administrator access and the public n2 identity", async () => {
+  const [permissions, auth, adminPage, migration, profile] = await Promise.all([
+    read("lib/admin.ts"), read("auth.ts"), read("app/admin/page.tsx"),
+    read("drizzle/0002_pink_earthquake.sql"), read("app/page.tsx"),
+  ]);
+  assert.match(permissions, /requirePermission/);
+  assert.match(permissions, /recentlyVerified/);
+  assert.match(auth, /isN2Admin/);
+  assert.match(adminPage, /recentlyVerified/);
+  assert.match(migration, /audit_log_immutable/);
+  assert.match(profile, /N2AdminBadge/);
+  assert.match(profile, /nice-2-network-mark\.svg/);
+});
+
+test("enforces protected teen contact and privacy-aware matching", async () => {
+  const [registration, conversation, invitations, meetings, matching] = await Promise.all([
+    read("app/api/auth/register/route.ts"), read("app/api/conversations/route.ts"),
+    read("app/api/projects/[projectId]/invitations/route.ts"), read("app/api/calendar/events/route.ts"),
+    read("app/api/matches/score/route.ts"),
+  ]);
+  assert.match(registration, /teen_16_17/);
+  assert.match(conversation, /adult_teen_contact_blocked/);
+  assert.match(invitations, /adult_teen_invitation_blocked/);
+  assert.match(meetings, /group.*at least three/i);
+  assert.match(matching, /feedbackAffinity:undefined/);
+});
+
+test("limits raw analytics retention and excludes direct identifiers", async () => {
+  const [analytics, cron] = await Promise.all([read("lib/analytics.ts"), read("app/api/cron/analytics/route.ts")]);
+  assert.doesNotMatch(analytics, /messageBody|dateOfBirth|verificationToken|resetToken/);
+  assert.match(analytics, /actorHash/);
+  assert.match(cron, /- 90/);
+  assert.match(cron, /delete\(productEvents\)/);
+});

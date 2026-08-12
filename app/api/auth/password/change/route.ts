@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     if (!record?.passwordHash) throw new ApiError(400, "Password sign-in is not enabled for this account.");
     if (!(await compare(input.currentPassword, record.passwordHash))) throw new ApiError(400, "Your current password is incorrect.");
     if (await compare(input.newPassword, record.passwordHash)) throw new ApiError(400, "Choose a password you have not just used.");
-    await getDb().update(users).set({ passwordHash: await hash(input.newPassword, 12), updatedAt: new Date() }).where(eq(users.id, member.id));
+    await getDb().update(users).set({ passwordHash: await hash(input.newPassword, 12), forcePasswordChange: false, updatedAt: new Date() }).where(eq(users.id, member.id));
     return NextResponse.json({ success: true });
   } catch (error) { return apiError(error); }
 }

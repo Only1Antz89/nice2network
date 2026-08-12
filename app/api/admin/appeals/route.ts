@@ -1,0 +1,11 @@
+import { desc, eq } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getDb } from "@/db";
+import { appeals, sanctions, users } from "@/db/schema";
+import { requirePermission } from "@/lib/admin";
+import { apiError } from "@/lib/api";
+import { audit } from "@/lib/audit";
+export async function GET(){try{const admin=await requirePermission("appeals.manage");const rows=await getDb().select({id:appeals.id,status:appeals.status,statement:appeals.statement,resolution:appeals.resolution,appellantName:users.name,createdAt:appeals.createdAt}).from(appeals).innerJoin(users,eq(users.id,appeals.appellantId)).orderBy(desc(appeals.createdAt)).limit(100);await audit(admin.user.id,"admin.appeals_viewed","appeals",undefined,{count:rows.length},{permission:"appeals.manage"});return NextResponse.json({appeals:rows})}catch(error){return apiError(error)}}
+const decisionSchema=z.object({appealId:z.uuid(),decision:z.enum(["upheld","overturned"]),reason:z.string().trim().min(10).max(2000)});
+export async function POST(request:Request){try{const admin=await requirePermission("appeals.manage");const input=decisionSchema.parse(await request.json()),db=getDb();const [appeal]=await db.select().from(appeals).where(eq(appeals.id,input.appealId)).limit(1);if(!appeal)return NextResponse.json({error:"Appeal not found"},{status:404});if(appeal.sanctionId){const [sanction]=await db.select().from(sanctions).where(eq(sanctions.id,appeal.sanctionId)).limit(1);if(sanction?.issuedBy===admin.user.id)return NextResponse.json({error:"Appeals require an independent administrator"},{status:409});if(input.decision==="overturned"&&sanction){await db.update(sanctions).set({status:"revoked",revokedBy:admin.user.id,revokedAt:new Date()}).where(eq(sanctions.id,sanction.id));await db.update(users).set({status:"active",updatedAt:new Date()}).where(eq(users.id,sanction.userId))}}await db.update(appeals).set({status:input.decision,reviewedBy:admin.user.id,resolution:input.reason,resolvedAt:new Date()}).where(eq(appeals.id,input.appealId));await audit(admin.user.id,`admin.appeal_${input.decision}`,"appeal",input.appealId,{}, {permission:"appeals.manage",reason:input.reason,severity:"high",before:{status:appeal.status},after:{status:input.decision}});return NextResponse.json({success:true})}catch(error){return apiError(error)}}

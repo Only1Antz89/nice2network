@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { users, verificationTokens } from "@/db/schema";
+import { trackProductEvent } from "@/lib/analytics";
 
 const schema = z.object({ profession: z.string().trim().min(2).max(100), skills: z.array(z.string().trim().min(1).max(50)).min(1).max(20), interests: z.array(z.string().trim().min(1).max(50)).min(1).max(20), location: z.string().trim().min(2).max(100) });
 
@@ -18,14 +19,17 @@ export async function POST(request: Request) {
     const [record] = await db.select().from(verificationTokens).where(and(eq(verificationTokens.token, tokenHash), gt(verificationTokens.expires, new Date()))).limit(1);
     if (!record?.identifier.startsWith("onboarding:")) return NextResponse.json({ error: "Your onboarding link has expired." }, { status: 401 });
     const email = record.identifier.slice("onboarding:".length);
-    const [member] = await db.update(users).set({ profession: input.profession, headline: input.profession, skills: input.skills, interests: input.interests, location: input.location, status: "active", onboardingCompletedAt: new Date(), updatedAt: new Date() }).where(eq(users.email, email)).returning({ id: users.id });
+    const [existing] = await db.select({ ageBand: users.ageBand }).from(users).where(eq(users.email, email)).limit(1);
+    const teen = existing?.ageBand === "teen_16_17";
+    const [member] = await db.update(users).set({ profession: input.profession, headline: input.profession, skills: input.skills, interests: input.interests, location: teen ? null : input.location, status: "active", onboardingCompletedAt: new Date(), updatedAt: new Date() }).where(eq(users.email, email)).returning({ id: users.id, ageBand: users.ageBand });
     if (!member) return NextResponse.json({ error: "Member not found." }, { status: 404 });
 
-    const candidates = await db.select({ id: users.id, name: users.name, image: users.image, profession: users.profession, skills: users.skills, interests: users.interests, location: users.location }).from(users).where(and(ne(users.email, email), eq(users.status, "active"))).limit(30);
+    await trackProductEvent({ actorId: member.id, ageBand: member.ageBand, event: "onboarding_completed", entityType: "user", entityId: member.id });
+    const candidates = await db.select({ id: users.id, name: users.name, image: users.image, profession: users.profession, skills: users.skills, interests: users.interests, location: users.location, ageBand: users.ageBand }).from(users).where(and(ne(users.email, email), eq(users.status, "active"))).limit(30);
     const norm = (value: string) => value.trim().toLowerCase();
     const skills = new Set(input.skills.map(norm));
     const interests = new Set(input.interests.map(norm));
-    const network = candidates.map((candidate) => {
+    const network = candidates.filter((candidate) => !teen || candidate.ageBand === "teen_16_17").map((candidate) => {
       const sharedSkills = candidate.skills.filter((value) => skills.has(norm(value)));
       const sharedInterests = candidate.interests.filter((value) => interests.has(norm(value)));
       const professionFit = candidate.profession && norm(candidate.profession).includes(norm(input.profession).split(" ")[0]) ? 2 : 0;

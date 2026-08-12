@@ -15,6 +15,20 @@
       "when": 1786541041404,
       "tag": "0001_old_green_goblin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786545525559,
+      "tag": "0002_pink_earthquake",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786546026638,
+      "tag": "0003_eager_wither",
+      "breakpoints": true
     }
   ]
 }

@@ -38,6 +38,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { signOut } from "next-auth/react";
 
 type View = "feed" | "projects" | "messages" | "meet" | "profile" | "settings";
+type MemberPerson = { name: string; role: string; img?: string | null; isN2Admin?: boolean };
 
 const people = {
   maya: { name: "Maya Chen", role: "Product Designer", img: "https://i.pravatar.cc/160?img=47" },
@@ -56,11 +57,12 @@ const nav = [
   { id: "meet" as View, label: "Meet", icon: CalendarDays },
 ];
 
-function Avatar({ person, size = "md", ring = false }: { person: (typeof people)[keyof typeof people]; size?: "sm" | "md" | "lg" | "xl"; ring?: boolean }) {
-  // Remote prototype avatars are intentionally direct; production should use member-uploaded optimized assets.
+function Avatar({ person, size = "md", ring = false }: { person: MemberPerson; size?: "sm" | "md" | "lg" | "xl"; ring?: boolean }) {
   // eslint-disable-next-line @next/next/no-img-element
-  return <img className={`avatar avatar-${size} ${ring ? "avatar-ring" : ""}`} src={person.img} alt={person.name} />;
+  return <img className={`avatar avatar-${size} ${ring ? "avatar-ring" : ""}`} src={person.img || "/brand/nice-2-network-mark.svg"} alt={person.img ? person.name : `${person.name} — default n2 avatar`} />;
 }
+
+function N2AdminBadge() { return <span className="n2-admin-badge" aria-label="Official n2 administrator"><b>n2</b> ADMIN</span>; }
 
 function Logo({ onClick }: { onClick?: () => void }) {
   return (
@@ -202,21 +204,23 @@ function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish:
   );
 }
 
-function Feed({ onCreate, onMatch, onMessage }: { onCreate: () => void; onMatch: () => void; onMessage: () => void }) {
+function Feed({ onCreate, onMatch, onMessage, currentMember }: { onCreate: () => void; onMatch: () => void; onMessage: () => void; currentMember: MemberPerson }) {
   const [filter, setFilter] = useState("For you");
+  const [notices,setNotices]=useState<Array<{id:string;title:string;body:string;authorName:string|null}>>([]);
+  useEffect(()=>{fetch("/api/notices").then(r=>r.ok?r.json():{notices:[]}).then(data=>setNotices(data.notices??[])).catch(()=>undefined)},[]);
   return (
     <>
       <div className="mobile-topbar"><Logo /><button className="icon-button"><Bell size={20} /></button></div>
       <header className="feed-intro">
         <div>
           <span className="eyebrow">TUESDAY, 12 AUGUST</span>
-          <h1>Good morning, Maya.</h1>
+          <h1>Good morning, {currentMember.name.split(" ")[0]}.</h1>
           <p>Three projects could use someone like you today.</p>
         </div>
         <button className="primary-button" onClick={onCreate}><Plus size={18} /> Start a project</button>
       </header>
       <section className="composer">
-        <Avatar person={people.maya} size="md" />
+        <Avatar person={currentMember} size="md" />
         <button onClick={onCreate}>Share an idea that needs good people…</button>
         <span><Lightbulb size={18} /></span>
       </section>
@@ -224,6 +228,7 @@ function Feed({ onCreate, onMatch, onMessage }: { onCreate: () => void; onMatch:
         {["For you","Following","Newest"].map(item => <button key={item} className={filter===item?"active":""} onClick={()=>setFilter(item)}>{item}</button>)}
         <button className="filter-control"><SlidersHorizontal size={14}/> Filters</button>
       </div>
+      {notices.map(notice=><article className="official-notice" key={notice.id}><span className="official-badge"><b>n2</b> OFFICIAL NOTICE</span><h2>{notice.title}</h2><p>{notice.body}</p><small>{notice.authorName??"n2 team"} <N2AdminBadge/></small></article>)}
       {filter === "Following" && <div className="feed-context"><UsersRound size={16}/><span>Projects from people you know, with open roles that fit your network.</span></div>}
       {filter === "Newest" && <div className="feed-context"><Clock3 size={16}/><span>Fresh ideas from the last 24 hours.</span></div>}
       <ProjectCard onMatch={onMatch} onMessage={onMessage} />
@@ -306,11 +311,11 @@ function MeetView() {
   );
 }
 
-function ProfileView() {
+function ProfileView({member}:{member:MemberPerson}) {
   return (
     <div className="subpage profile-page">
       <div className="profile-cover"><span>n2</span></div>
-      <div className="profile-main"><Avatar person={people.maya} size="xl" ring/><button className="secondary-button">Edit profile</button><h1>Maya Chen</h1><p className="profile-role">Product designer · Civic technology</p><p className="profile-bio">I turn complex public services into things people can actually use. Interested in climate, local communities and unexpected collaborations.</p><div className="skill-chips"><span>Product design</span><span>Research</span><span>Prototyping</span><span>Public good</span></div><div className="profile-numbers"><div><strong>04</strong><span>Projects</span></div><div><strong>38</strong><span>Connections</span></div><div><strong>12</strong><span>Meets</span></div></div></div>
+      <div className="profile-main"><Avatar person={member} size="xl" ring/><button className="secondary-button">Edit profile</button><h1>{member.name} {member.isN2Admin&&<N2AdminBadge/>}</h1><p className="profile-role">{member.role}</p><p className="profile-bio">I turn complex problems into useful collaborations. Interested in people with complementary skills and ideas worth moving forward.</p><div className="skill-chips"><span>Collaboration</span><span>Strategy</span><span>Projects</span><span>Public good</span></div><div className="profile-numbers"><div><strong>04</strong><span>Projects</span></div><div><strong>38</strong><span>Connections</span></div><div><strong>12</strong><span>Meets</span></div></div></div>
     </div>
   );
 }
@@ -362,6 +367,8 @@ export default function HomePage() {
   const [hasNewProject, setHasNewProject] = useState(false);
   const [toast, setToast] = useState("");
   const [connections, setConnections] = useState<string[]>([]);
+  const [currentMember,setCurrentMember]=useState<MemberPerson>(people.maya);
+  useEffect(()=>{fetch("/api/auth/session").then(r=>r.json()).then(session=>{if(session?.user?.name)setCurrentMember({name:session.user.name,role:session.user.profession??"n2 member",img:session.user.image,isN2Admin:Boolean(session.user.isN2Admin)})}).catch(()=>undefined)},[]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(""),3200);return()=>clearTimeout(timer)},[toast]);
   useEffect(()=>{const key=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setSearchOpen(true)}if(event.key==="Escape"){setSearchOpen(false);setMatchOpen(false)}};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key)},[]);
   function go(next: View){ setView(next); setMenuOpen(false); window.scrollTo({top:0,behavior:"smooth"}); }
@@ -369,16 +376,16 @@ export default function HomePage() {
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <div><Logo onClick={()=>go("feed")} /><nav>{nav.map((item) => { const Icon=item.icon; return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={20}/><span>{item.label}</span>{item.count&&<b>{item.count}</b>}</button>})}</nav></div>
-        <div className="sidebar-bottom"><button onClick={()=>go("settings")} className={view==="settings"?"active":""}><Settings size={20}/><span>Settings</span></button><button onClick={()=>setToast("Help centre is coming next.")}><CircleHelp size={20}/><span>Help</span></button><button onClick={()=>signOut({redirectTo:"/signin"})}><LogOut size={20}/><span>Log out</span></button><button className="profile-chip" onClick={()=>go("profile")}><Avatar person={people.maya} size="sm"/><span><strong>Maya Chen</strong><small>View profile</small></span><ChevronDown size={16}/></button></div>
+        <div className="sidebar-bottom">{currentMember.isN2Admin&&<a className="admin-nav-link" href="/admin"><ShieldCheck size={20}/><span>Admin console</span><N2AdminBadge/></a>}<button onClick={()=>go("settings")} className={view==="settings"?"active":""}><Settings size={20}/><span>Settings</span></button><button onClick={()=>setToast("Help centre is coming next.")}><CircleHelp size={20}/><span>Help</span></button><button onClick={()=>signOut({redirectTo:"/signin"})}><LogOut size={20}/><span>Log out</span></button><button className="profile-chip" onClick={()=>go("profile")}><Avatar person={currentMember} size="sm"/><span><strong>{currentMember.name} {currentMember.isN2Admin&&<N2AdminBadge/>}</strong><small>View profile</small></span><ChevronDown size={16}/></button></div>
       </aside>
       <main className="main-content">
         <button className="mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Open navigation">{menuOpen?<ArrowLeft/>:<Menu/>}</button>
         <div className="content-column">
-          {view==="feed"&&<Feed onCreate={()=>setCreateOpen(true)} onMatch={()=>setMatchOpen(true)} onMessage={()=>go("messages")}/>} 
+          {view==="feed"&&<Feed currentMember={currentMember} onCreate={()=>setCreateOpen(true)} onMatch={()=>setMatchOpen(true)} onMessage={()=>go("messages")}/>}
           {view==="projects"&&<ProjectsView onCreate={()=>setCreateOpen(true)} hasNewProject={hasNewProject}/>} 
           {view==="messages"&&<MessagesView/>} 
           {view==="meet"&&<MeetView/>} 
-          {view==="profile"&&<ProfileView/>} 
+          {view==="profile"&&<ProfileView member={currentMember}/>}
           {view==="settings"&&<SettingsView/>}
         </div>
       </main>

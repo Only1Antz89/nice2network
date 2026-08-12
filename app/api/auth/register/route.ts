@@ -6,13 +6,15 @@ import { getDb } from "@/db";
 import { privacySettings, users, verificationTokens } from "@/db/schema";
 import { sendVerificationEmail } from "@/lib/email";
 import { eq } from "drizzle-orm";
+import { ageBand, ageFromDateOfBirth } from "@/lib/age";
+import { trackProductEvent } from "@/lib/analytics";
 
 const schema = z.object({
   title: z.enum(["Mr", "Ms", "Mrs", "Miss", "Mx", "Dr", "Prof"]),
   firstName: z.string().trim().min(2).max(50),
   lastName: z.string().trim().min(2).max(50),
-  age: z.coerce.number().int().min(18).max(120),
-  image: z.string().max(700_000).refine((value) => value.startsWith("data:image/"), "Choose a valid profile photo"),
+  dateOfBirth: z.coerce.date(),
+  image: z.string().max(700_000).refine((value) => !value || value.startsWith("data:image/"), "Choose a valid profile photo").optional(),
   email: z.email(),
   password: z.string().min(10).max(128),
 });
@@ -21,13 +23,17 @@ export async function POST(request: Request) {
   let createdEmail: string | undefined;
   try {
     const input = schema.parse(await request.json());
+    const age = ageFromDateOfBirth(input.dateOfBirth);
+    if (age < 16 || age > 120) return NextResponse.json({ error: "Members must be 16 or older." }, { status: 400 });
     const email = input.email.toLowerCase();
     const token = randomBytes(32).toString("base64url");
     const tokenHash = createHash("sha256").update(token).digest("hex");
     const db = getDb();
-    const [member] = await db.insert(users).values({ title: input.title, firstName: input.firstName, lastName: input.lastName, age: input.age, name: `${input.firstName} ${input.lastName}`, image: input.image, email, passwordHash: await hash(input.password, 12), status: "pending_verification" }).returning({ id: users.id });
+    const memberAgeBand = ageBand(input.dateOfBirth);
+    const [member] = await db.insert(users).values({ title: input.title, firstName: input.firstName, lastName: input.lastName, age, dateOfBirth: input.dateOfBirth, ageBand: memberAgeBand, name: `${input.firstName} ${input.lastName}`, image: input.image || null, email, passwordHash: await hash(input.password, 12), status: "pending_verification" }).returning({ id: users.id });
     createdEmail = email;
-    await getDb().insert(privacySettings).values({ userId: member.id });
+    await getDb().insert(privacySettings).values({ userId: member.id, ...(memberAgeBand === "teen_16_17" ? { profileVisibility: "connections", messagePermission: "connections", showLocation: false, useActivityForMatching: false } : {}) });
+    await trackProductEvent({ actorId: member.id, ageBand: memberAgeBand, event: "registration_started", entityType: "user", entityId: member.id });
     await db.delete(verificationTokens).where(eq(verificationTokens.identifier, `verify:${email}`));
     await db.insert(verificationTokens).values({ identifier: `verify:${email}`, token: tokenHash, expires: new Date(Date.now() + 60 * 60 * 1000) });
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
