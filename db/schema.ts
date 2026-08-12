@@ -81,6 +81,37 @@ export const projectUpdates = pgTable("project_updates", {
   id: uuid("id").defaultRandom().primaryKey(), projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }), authorId: uuid("author_id").notNull().references(() => users.id), type: text("type").notNull().default("update"), body: text("body").notNull(), metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("updates_project_idx").on(table.projectId)]);
 
+export const projectEyes = pgTable("project_eyes", {
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.projectId, table.userId] }), index("project_eyes_user_idx").on(table.userId)]);
+
+export const notifications = pgTable("notifications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  href: text("href"),
+  readAt: timestamp("read_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("notifications_user_time_idx").on(table.userId, table.createdAt), index("notifications_user_read_idx").on(table.userId, table.readAt)]);
+
+export const notificationPreferences = pgTable("notification_preferences", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  messages: boolean("messages").notNull().default(true),
+  projects: boolean("projects").notNull().default(true),
+  matches: boolean("matches").notNull().default(true),
+  meets: boolean("meets").notNull().default(true),
+  officialNotices: boolean("official_notices").notNull().default(true),
+  emailDigest: text("email_digest").notNull().default("weekly"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const integrationAccounts = pgTable("integration_accounts", {
   id: uuid("id").defaultRandom().primaryKey(), userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), provider: text("provider").notNull(), providerAccountId: text("provider_account_id"), email: text("email"), accessTokenEncrypted: text("access_token_encrypted").notNull(), refreshTokenEncrypted: text("refresh_token_encrypted"), expiresAt: timestamp("expires_at", { withTimezone: true }), scopes: text("scopes").array().notNull().default(sql`ARRAY[]::text[]`), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("integration_user_provider_unique").on(table.userId, table.provider)]);
@@ -258,5 +289,5 @@ export const complianceAssessments = pgTable("compliance_assessments", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("assessment_type_version_unique").on(table.type, table.version)]);
 
-export const usersRelations = relations(users, ({ many, one }) => ({ ownedProjects: many(projects), memberships: many(projectMembers), privacy: one(privacySettings) }));
+export const usersRelations = relations(users, ({ many, one }) => ({ ownedProjects: many(projects), memberships: many(projectMembers), privacy: one(privacySettings), notifications: many(notifications) }));
 export const projectsRelations = relations(projects, ({ one, many }) => ({ owner: one(users, { fields: [projects.ownerId], references: [users.id] }), roles: many(projectRoles), members: many(projectMembers), milestones: many(milestones), updates: many(projectUpdates) }));

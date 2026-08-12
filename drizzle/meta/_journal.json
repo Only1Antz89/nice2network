@@ -29,6 +29,13 @@
       "when": 1786546026638,
       "tag": "0003_eager_wither",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786551013182,
+      "tag": "0004_broken_gargoyle",
+      "breakpoints": true
     }
   ]
 }

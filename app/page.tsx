@@ -7,6 +7,7 @@ import {
   Bookmark,
   BriefcaseBusiness,
   CalendarDays,
+  CheckCheck,
   Check,
   ChevronDown,
   CircleHelp,
@@ -17,6 +18,7 @@ import {
   Home,
   Lightbulb,
   Link2,
+  Mail,
   LogOut,
   MapPin,
   Menu,
@@ -24,6 +26,7 @@ import {
   Plus,
   Search,
   Send,
+  Share2,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -39,6 +42,8 @@ import { signOut } from "next-auth/react";
 
 type View = "feed" | "projects" | "messages" | "meet" | "profile" | "settings";
 type MemberPerson = { name: string; role: string; img?: string | null; isN2Admin?: boolean };
+type ProjectRecord = { id:string; title:string; summary:string; description?:string|null; industry:string; stage:string; accent:string; ownerName:string|null; ownerImage:string|null; ownerIsAdmin?:boolean; eyeCount:number; createdAt:string };
+type NotificationRecord = { id:string; type:string; title:string; body:string; href?:string|null; readAt?:string|null; createdAt:string; actorName?:string|null; actorImage?:string|null };
 
 const people = {
   maya: { name: "Maya Chen", role: "Product Designer", img: "https://i.pravatar.cc/160?img=47" },
@@ -102,16 +107,17 @@ function TeamTrail({ second = false }: { second?: boolean }) {
   );
 }
 
-function InterestButton({ initial = 24, projectId }: { initial?: number; projectId: string }) {
+function InterestButton({ initial = 24, projectId, durable = false }: { initial?: number; projectId: string; durable?: boolean }) {
   const [watched, setWatched] = useState(false);
   useEffect(() => {
     const frame = requestAnimationFrame(() => setWatched(localStorage.getItem(`n2-eye-${projectId}`) === "true"));
     return () => cancelAnimationFrame(frame);
   }, [projectId]);
-  function toggle() {
+  async function toggle() {
     const next = !watched;
     setWatched(next);
     localStorage.setItem(`n2-eye-${projectId}`, String(next));
+    if(durable){const response=await fetch(`/api/projects/${projectId}/eyes`,{method:"POST"});if(response.ok){const result=await response.json();setWatched(result.watching);localStorage.setItem(`n2-eye-${projectId}`,String(result.watching))}}
   }
   return (
     <button className={`interest-btn ${watched ? "active" : ""}`} onClick={toggle} aria-pressed={watched}>
@@ -121,29 +127,26 @@ function InterestButton({ initial = 24, projectId }: { initial?: number; project
   );
 }
 
-function ProjectCard({ second = false, onMatch, onMessage }: { second?: boolean; onMatch?: () => void; onMessage?: () => void }) {
-  const owner = second ? people.sofia : people.marcus;
+function ProjectCard({ second = false, onMatch, onMessage, project, onShare }: { second?: boolean; onMatch?: () => void; onMessage?: () => void; project?:ProjectRecord; onShare?:(project:{id:string;title:string;summary:string})=>void }) {
+  const owner:MemberPerson = project?{name:project.ownerName??"n2 member",role:`${project.industry} · ${project.stage}`,img:project.ownerImage,isN2Admin:project.ownerIsAdmin}:second ? people.sofia : people.marcus;
+  const projectId=project?.id??(second?"after-dark":"energy"),title=project?.title??(second?"Make empty city spaces useful after dark":"Neighbourhood energy, shared fairly"),summary=project?.summary??(second?"A lightweight way for local groups to find and book underused spaces for classes, studios and community dinners. Looking for people who understand access, safety and local partnerships.":"I’m building a toolkit that helps one street buy, share and understand clean energy together. The pilot needs a product thinker, a community voice and someone who can make the numbers work.");
   return (
-    <article className={`project-card ${second ? "project-blue" : "project-orange"}`}>
-      <div className="project-accent" />
+    <article className={`project-card ${second ? "project-blue" : "project-orange"}`} style={project?{"--project-accent":project.accent} as React.CSSProperties:undefined}>
+      <div className="project-accent" style={project?{background:project.accent}:undefined}/>
       <div className="project-body">
         <div className="post-head">
           <div className="person-line">
             <Avatar person={owner} size="md" />
             <div>
-              <strong>{owner.name}</strong>
+              <strong>{owner.name} {owner.isN2Admin&&<N2AdminBadge/>}</strong>
               <span>{owner.role} · {second ? "3h" : "18m"}</span>
             </div>
           </div>
           <button className="icon-button" aria-label="Project options"><Ellipsis size={20} /></button>
         </div>
-        <div className="project-kicker"><span>PROJECT</span><span>{second ? "COMMUNITY" : "CLIMATE"}</span></div>
-        <h2>{second ? "Make empty city spaces useful after dark" : "Neighbourhood energy, shared fairly"}</h2>
-        <p className="project-copy">
-          {second
-            ? "A lightweight way for local groups to find and book underused spaces for classes, studios and community dinners. Looking for people who understand access, safety and local partnerships."
-            : "I’m building a toolkit that helps one street buy, share and understand clean energy together. The pilot needs a product thinker, a community voice and someone who can make the numbers work."}
-        </p>
+        <div className="project-kicker"><span>PROJECT</span><span>{project?.industry.toUpperCase()??(second ? "COMMUNITY" : "CLIMATE")}</span></div>
+        <h2>{title}</h2>
+        <p className="project-copy">{summary}</p>
         <div className="project-meta">
           <span><Clock3 size={15} /> {second ? "Early concept" : "Pilot in 6 weeks"}</span>
           <span><UsersRound size={15} /> {second ? "3 involved" : "4 involved"}</span>
@@ -158,17 +161,20 @@ function ProjectCard({ second = false, onMatch, onMessage }: { second?: boolean;
           <button onClick={onMatch}>See match <ArrowUpRight size={15} /></button>
         </div>
         <div className="post-actions">
-          <InterestButton projectId={second ? "after-dark" : "energy"} initial={second ? 41 : 24} />
+          <InterestButton projectId={projectId} durable={Boolean(project)} initial={project?.eyeCount??(second ? 41 : 24)} />
           <button onClick={onMessage}><MessageCircle size={18} /> {second ? 12 : 8}</button>
-          <button className="share-button" onClick={() => navigator.clipboard?.writeText(window.location.href)}><Link2 size={17} /> Copy link</button>
+          <button className="share-button" onClick={() => onShare?.({id:projectId,title,summary})}><Share2 size={17} /> Share</button>
         </div>
       </div>
     </article>
   );
 }
 
-function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish: () => void }) {
+function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish: (project:ProjectRecord)=>void }) {
   const [step, setStep] = useState(0);
+  const [form,setForm]=useState({title:"",summary:"",industry:"Community",stage:"idea",roles:"Fashion designer, Youth facilitator, Venue partner"});
+  const [busy,setBusy]=useState(false),[error,setError]=useState("");
+  async function publish(){setBusy(true);setError("");const roles=form.roles.split(",").map(title=>title.trim()).filter(Boolean).map(title=>({title,department:title.includes("designer")?"Design":title.includes("facilitator")?"Community":"Operations",skills:[title]}));const response=await fetch("/api/projects",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({title:form.title,summary:form.summary,industry:form.industry,stage:form.stage,visibility:"network",roles})});const result=await response.json();if(!response.ok){setError(response.status===401?"Sign in to publish this project.":result.error??"Could not publish this project.");setBusy(false);return}onPublish({...result,ownerName:"You",ownerImage:null,eyeCount:0,createdAt:new Date().toISOString()});onClose()}
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <section className="project-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -181,22 +187,23 @@ function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish:
           <div className="modal-content">
             <span className="eyebrow">START WITH THE SPARK</span>
             <h2 id="modal-title">What would you like to make happen?</h2>
-            <textarea placeholder="Describe the idea, why it matters, and where you'd like help…" defaultValue="A Saturday workshop where young people repair and customise old clothes with local designers." />
+            <label>Project title<input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Repair, remake, pass it on"/></label>
+            <textarea placeholder="Describe the idea, why it matters, and where you'd like help…" value={form.summary} onChange={e=>setForm({...form,summary:e.target.value})}/>
             <div className="field-row">
-              <label>Stage<select defaultValue="Idea"><option>Idea</option><option>Planning</option><option>Building</option></select></label>
-              <label>Industry<select defaultValue="Community"><option>Community</option><option>Technology</option><option>Climate</option><option>Creative</option></select></label>
+              <label>Stage<select value={form.stage} onChange={e=>setForm({...form,stage:e.target.value})}><option value="idea">Idea</option><option value="planning">Planning</option><option value="building">Building</option><option value="launching">Launching</option></select></label>
+              <label>Industry<select value={form.industry} onChange={e=>setForm({...form,industry:e.target.value})}><option>Community</option><option>Technology</option><option>Climate</option><option>Creative</option></select></label>
             </div>
-            <button className="primary-button wide" onClick={() => setStep(1)}>Find the gaps <N2Mark inverse /></button>
+            <button className="primary-button wide" disabled={form.title.trim().length<4||form.summary.trim().length<20} onClick={() => setStep(1)}>Find the gaps <N2Mark inverse /></button>
           </div>
         ) : (
           <div className="modal-content ai-result">
             <div className="ai-orbit"><N2Mark /><span>n2 project map</span></div>
             <h2 id="modal-title">A strong start needs three perspectives.</h2>
             <p>Based on your idea, we’ll recommend it to people in these areas.</p>
-            <div className="role-list">
-              {["Fashion designer", "Youth facilitator", "Venue partner"].map((role, i) => <div key={role}><span>{i + 1}</span><strong>{role}</strong><Check size={18} /></div>)}
-            </div>
-            <button className="primary-button wide" onClick={() => { onPublish(); onClose(); }}>Publish project <ArrowUpRight size={17} /></button>
+            <label className="role-editor">Roles or skills needed<input value={form.roles} onChange={e=>setForm({...form,roles:e.target.value})}/><small>Separate roles with commas. n2 uses these to notify good matches.</small></label>
+            <div className="role-list">{form.roles.split(",").map(role=>role.trim()).filter(Boolean).map((role, i) => <div key={`${role}-${i}`}><span>{i + 1}</span><strong>{role}</strong><Check size={18} /></div>)}</div>
+            {error&&<p className="form-error">{error}</p>}
+            <button className="primary-button wide" disabled={busy} onClick={publish}>{busy?"Publishing…":<>Publish project <ArrowUpRight size={17} /></>}</button>
           </div>
         )}
       </section>
@@ -204,13 +211,15 @@ function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish:
   );
 }
 
-function Feed({ onCreate, onMatch, onMessage, currentMember }: { onCreate: () => void; onMatch: () => void; onMessage: () => void; currentMember: MemberPerson }) {
+function Feed({ onCreate, onMatch, onMessage, onShare, onNotifications, unread, currentMember }: { onCreate: () => void; onMatch: () => void; onMessage: () => void; onShare:(project:{id:string;title:string;summary:string})=>void; onNotifications:()=>void; unread:number; currentMember: MemberPerson }) {
   const [filter, setFilter] = useState("For you");
   const [notices,setNotices]=useState<Array<{id:string;title:string;body:string;authorName:string|null}>>([]);
+  const [liveProjects,setLiveProjects]=useState<ProjectRecord[]>([]);
   useEffect(()=>{fetch("/api/notices").then(r=>r.ok?r.json():{notices:[]}).then(data=>setNotices(data.notices??[])).catch(()=>undefined)},[]);
+  useEffect(()=>{fetch("/api/projects?scope=discover").then(r=>r.ok?r.json():{projects:[]}).then(data=>setLiveProjects(data.projects??[])).catch(()=>undefined)},[]);
   return (
     <>
-      <div className="mobile-topbar"><Logo /><button className="icon-button"><Bell size={20} /></button></div>
+      <div className="mobile-topbar"><Logo /><button className="icon-button notification-button" onClick={onNotifications}><Bell size={20} />{unread>0&&<b>{unread>9?"9+":unread}</b>}</button></div>
       <header className="feed-intro">
         <div>
           <span className="eyebrow">TUESDAY, 12 AUGUST</span>
@@ -231,26 +240,30 @@ function Feed({ onCreate, onMatch, onMessage, currentMember }: { onCreate: () =>
       {notices.map(notice=><article className="official-notice" key={notice.id}><span className="official-badge"><b>n2</b> OFFICIAL NOTICE</span><h2>{notice.title}</h2><p>{notice.body}</p><small>{notice.authorName??"n2 team"} <N2AdminBadge/></small></article>)}
       {filter === "Following" && <div className="feed-context"><UsersRound size={16}/><span>Projects from people you know, with open roles that fit your network.</span></div>}
       {filter === "Newest" && <div className="feed-context"><Clock3 size={16}/><span>Fresh ideas from the last 24 hours.</span></div>}
-      <ProjectCard onMatch={onMatch} onMessage={onMessage} />
+      {liveProjects.length?liveProjects.map(project=><ProjectCard key={project.id} project={project} onShare={onShare} onMatch={onMatch} onMessage={onMessage}/>):<ProjectCard onShare={onShare} onMatch={onMatch} onMessage={onMessage} />}
       <article className="connection-card">
         <div className="connection-copy"><span className="eyebrow">WORTH MEETING</span><h3>You and Lena both care about purposeful brands.</h3><p>She’s looking to meet product designers working on climate and public good.</p><button>View Lena’s profile <ArrowUpRight size={16} /></button></div>
         <Avatar person={people.lena} size="xl" ring />
       </article>
-      <ProjectCard second onMatch={onMatch} onMessage={onMessage} />
+      {!liveProjects.length&&<ProjectCard second onShare={onShare} onMatch={onMatch} onMessage={onMessage} />}
       <div className="end-note"><span>n2</span><p>You’re all caught up for now.</p></div>
     </>
   );
 }
 
-function ProjectsView({ onCreate, hasNewProject }: { onCreate: () => void; hasNewProject: boolean }) {
+function ProjectsView({ onCreate, latestProject, onShare }: { onCreate: () => void; latestProject:ProjectRecord|null; onShare:(project:{id:string;title:string;summary:string})=>void }) {
+  const [records,setRecords]=useState<ProjectRecord[]>([]),[loading,setLoading]=useState(true);
+  useEffect(()=>{fetch("/api/projects?scope=mine").then(r=>r.ok?r.json():{projects:[]}).then(data=>setRecords(data.projects??[])).finally(()=>setLoading(false))},[latestProject]);
   return (
     <div className="subpage">
       <div className="subpage-head"><div><span className="eyebrow">YOUR WORK</span><h1>Projects</h1><p>The ideas you started and the ones you’re helping grow.</p></div><button className="primary-button" onClick={onCreate}><Plus size={18} /> New project</button></div>
-      <div className="stats-row"><div><strong>{hasNewProject ? "03" : "02"}</strong><span>Created</span></div><div><strong>04</strong><span>Involved</span></div><div><strong>128</strong><span>Eyes placed</span></div></div>
+      <div className="stats-row"><div><strong>{String(records.length+(latestProject&&!records.some(record=>record.id===latestProject.id)?1:0)).padStart(2,"0")}</strong><span>Your projects</span></div><div><strong>{records.filter(record=>record.ownerName!=="You").length}</strong><span>Involved</span></div><div><strong>{records.reduce((sum,record)=>sum+Number(record.eyeCount),0)}</strong><span>Eyes placed</span></div></div>
       <div className="section-title"><h3>In motion</h3><button>View all <ArrowUpRight size={15} /></button></div>
-      {hasNewProject && <article className="created-project-card"><div className="created-orbit"><span>1</span><span>0</span><span>0</span></div><div><span className="eyebrow">JUST PUBLISHED · COMMUNITY</span><h3>Repair, remake, pass it on</h3><p>A Saturday workshop where young people customise old clothes with local designers.</p><div className="role-chips"><span>Fashion designer</span><span>Youth facilitator</span><span>Venue partner</span></div></div><button className="icon-button border"><ArrowUpRight size={18}/></button></article>}
+      {latestProject && !records.some(record=>record.id===latestProject.id)&&<ProjectCard project={latestProject} onShare={onShare}/>}
+      {loading&&<div className="feed-context"><Clock3 size={16}/><span>Loading your project workspaces…</span></div>}
+      {records.map(record=><ProjectCard key={record.id} project={record} onShare={onShare}/>)}
       <ProjectWorkbench />
-      <ProjectCard />
+      {!records.length&&!latestProject&&!loading&&<div className="empty-meets"><BriefcaseBusiness size={20}/><strong>No projects yet</strong><p>Start an idea or join a project that needs your skills.</p></div>}
     </div>
   );
 }
@@ -311,11 +324,11 @@ function MeetView() {
   );
 }
 
-function ProfileView({member}:{member:MemberPerson}) {
+function ProfileView({member,isCurrent=true}:{member:MemberPerson;isCurrent?:boolean}) {
   return (
     <div className="subpage profile-page">
       <div className="profile-cover"><span>n2</span></div>
-      <div className="profile-main"><Avatar person={member} size="xl" ring/><button className="secondary-button">Edit profile</button><h1>{member.name} {member.isN2Admin&&<N2AdminBadge/>}</h1><p className="profile-role">{member.role}</p><p className="profile-bio">I turn complex problems into useful collaborations. Interested in people with complementary skills and ideas worth moving forward.</p><div className="skill-chips"><span>Collaboration</span><span>Strategy</span><span>Projects</span><span>Public good</span></div><div className="profile-numbers"><div><strong>04</strong><span>Projects</span></div><div><strong>38</strong><span>Connections</span></div><div><strong>12</strong><span>Meets</span></div></div></div>
+      <div className="profile-main"><Avatar person={member} size="xl" ring/><button className="secondary-button">{isCurrent?"Edit profile":"Connect"}</button><h1>{member.name} {member.isN2Admin&&<N2AdminBadge/>}</h1><p className="profile-role">{member.role}</p><p className="profile-bio">I turn complex problems into useful collaborations. Interested in people with complementary skills and ideas worth moving forward.</p><div className="skill-chips"><span>Collaboration</span><span>Strategy</span><span>Projects</span><span>Public good</span></div><div className="profile-numbers"><div><strong>04</strong><span>Projects</span></div><div><strong>38</strong><span>Connections</span></div><div><strong>12</strong><span>Meets</span></div></div></div>
     </div>
   );
 }
@@ -328,7 +341,27 @@ function MatchPanel({ onClose, onMessage }: { onClose: () => void; onMessage: ()
 
 function SearchOverlay({ onClose, onNavigate }: { onClose: () => void; onNavigate: (view: View) => void }) {
   const [query,setQuery]=useState("");
-  return <div className="search-overlay" role="dialog" aria-modal="true"><div className="search-modal"><div className="search-field"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search people, skills or projects"/><button onClick={onClose}>ESC</button></div><div className="search-results"><span className="eyebrow">{query?"BEST MATCHES":"TRY A SEARCH"}</span>{query?<><button onClick={()=>{onNavigate("profile");onClose()}}><Avatar person={people.lena} size="md"/><span><strong>Lena Vogt</strong><small>Brand strategy · climate · community</small></span><ArrowUpRight size={17}/></button><button onClick={()=>{onNavigate("projects");onClose()}}><span className="result-icon"><BriefcaseBusiness size={18}/></span><span><strong>Neighbourhood energy, shared fairly</strong><small>Project · Climate · Growth role open</small></span><ArrowUpRight size={17}/></button></>:<div className="search-prompts"><button onClick={()=>setQuery("Climate projects")}>Climate projects</button><button onClick={()=>setQuery("Product designers")}>Product designers</button><button onClick={()=>setQuery("Near me")}>Near me</button></div>}</div></div></div>;
+  const [results,setResults]=useState<{people:Array<Record<string,unknown>>;projects:Array<Record<string,unknown>>;roles:Array<Record<string,unknown>>}>({people:[],projects:[],roles:[]}),[loading,setLoading]=useState(false);
+  useEffect(()=>{const controller=new AbortController(),timer=setTimeout(()=>{if(query.trim().length<2){setResults({people:[],projects:[],roles:[]});setLoading(false);return}setLoading(true);fetch(`/api/search?q=${encodeURIComponent(query)}`,{signal:controller.signal}).then(r=>r.ok?r.json():{people:[],projects:[],roles:[]}).then(setResults).catch(()=>undefined).finally(()=>setLoading(false))},250);return()=>{clearTimeout(timer);controller.abort()}},[query]);
+  const total=results.people.length+results.projects.length+results.roles.length;
+  return <div className="search-overlay" role="dialog" aria-modal="true" aria-label="Search the network"><div className="search-modal"><div className="search-field"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search people, skills, industries or projects"/><button onClick={onClose}>ESC</button></div><div className="search-results"><span className="eyebrow">{loading?"SEARCHING THE NETWORK":query?`${total} RESULTS`:"TRY A SEARCH"}</span>{query.trim().length>=2?<>{results.people.map(person=><button key={String(person.id)} onClick={()=>{onNavigate("profile");onClose()}}><Avatar person={{name:String(person.name??"Member"),role:String(person.profession??person.industry??"n2 member"),img:person.image as string|null,isN2Admin:Boolean(person.isN2Admin)}} size="md"/><span><strong>{String(person.name)} {Boolean(person.isN2Admin)&&<N2AdminBadge/>}</strong><small>{String(person.profession??person.industry??"n2 member")} · {(person.skills as string[]).slice(0,3).join(" · ")}</small></span><ArrowUpRight size={17}/></button>)}{results.projects.map(project=><button key={String(project.id)} onClick={()=>{onNavigate("projects");onClose()}}><span className="result-icon"><BriefcaseBusiness size={18}/></span><span><strong>{String(project.title)}</strong><small>Project · {String(project.industry)} · {String(project.stage)}</small></span><ArrowUpRight size={17}/></button>)}{results.roles.map(role=><button key={String(role.id)} onClick={()=>{onNavigate("projects");onClose()}}><span className="result-icon"><UserPlus size={18}/></span><span><strong>{String(role.title)}</strong><small>{String(role.projectTitle)} · {String(role.department)}</small></span><ArrowUpRight size={17}/></button>)}{!loading&&!total&&<div className="search-empty"><Search size={19}/><strong>No exact match yet</strong><p>Try a skill, profession, industry, project name or open role.</p></div>}</>:<div className="search-prompts"><button onClick={()=>setQuery("Climate")}>Climate projects</button><button onClick={()=>setQuery("Product designer")}>Product designers</button><button onClick={()=>setQuery("Community")}>Community roles</button></div>}</div></div></div>;
+}
+
+function NotificationPanel({onClose,onUnread}:{onClose:()=>void;onUnread:(count:number)=>void}){
+  const [items,setItems]=useState<NotificationRecord[]>([]),[unread,setUnread]=useState(0),[loading,setLoading]=useState(true);
+  useEffect(()=>{fetch("/api/notifications").then(r=>r.ok?r.json():{notifications:[],unread:0}).then(data=>{setItems(data.notifications??[]);setUnread(data.unread??0);onUnread(data.unread??0)}).finally(()=>setLoading(false))},[onUnread]);
+  async function read(item?:NotificationRecord){await fetch("/api/notifications",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify(item?{action:"read",notificationId:item.id}:{action:"read_all"})});if(item){setItems(current=>current.map(row=>row.id===item.id?{...row,readAt:new Date().toISOString()}:row));if(!item.readAt){setUnread(value=>Math.max(0,value-1));onUnread(Math.max(0,unread-1))}}else{setItems(current=>current.map(row=>({...row,readAt:new Date().toISOString()})));setUnread(0);onUnread(0)}}
+  // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+  return <div className="panel-backdrop" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><aside className="notification-panel" role="dialog" aria-modal="true" aria-label="Notifications"><header><div><span className="eyebrow">YOUR NETWORK</span><h2>Notifications {unread>0&&<b>{unread}</b>}</h2></div><button className="icon-button" onClick={onClose}><X size={19}/></button></header>{unread>0&&<button className="mark-read" onClick={()=>read()}><CheckCheck size={15}/> Mark all as read</button>}<div className="notification-list">{loading?<p className="notification-empty">Loading notifications…</p>:items.length?items.map(item=><a key={item.id} className={item.readAt?"":"unread"} href={item.href??"#"} onClick={()=>read(item)}><Avatar person={{name:item.actorName??"nice 2 network",role:"",img:item.actorImage}} size="sm"/><span><strong>{item.title}</strong><p>{item.body}</p><small>{new Date(item.createdAt).toLocaleString()}</small></span>{!item.readAt&&<i/>}</a>):<div className="notification-empty"><Bell size={22}/><strong>You’re all caught up</strong><p>Project activity, messages, invitations and meets will appear here.</p></div>}</div></aside></div>
+}
+
+function ShareSheet({project,onClose,onToast}:{project:{id:string;title:string;summary:string};onClose:()=>void;onToast:(message:string)=>void}){
+  const url=typeof window!=="undefined"?`${window.location.origin}/?project=${project.id}`:"";
+  const encoded=encodeURIComponent(url),text=encodeURIComponent(`${project.title} — ${project.summary}`);
+  function track(channel:string){fetch(`/api/projects/${project.id}/share`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({channel})}).catch(()=>undefined)}
+  async function copy(){await navigator.clipboard.writeText(url);track("copy");onToast("Project link copied.");onClose()}
+  async function nativeShare(){if(navigator.share){await navigator.share({title:project.title,text:project.summary,url});track("native");onClose()}else await copy()}
+  return <div className="modal-backdrop" role="presentation" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><section className="share-sheet" role="dialog" aria-modal="true" aria-label={`Share ${project.title}`}><header><div><span className="eyebrow">BRING IN USEFUL PEOPLE</span><h2>Share this project</h2></div><button className="icon-button" onClick={onClose}><X size={19}/></button></header><div className="share-project"><N2Mark/><span><strong>{project.title}</strong><small>{project.summary}</small></span></div><div className="share-options"><button onClick={nativeShare}><Share2 size={19}/><span><strong>Share…</strong><small>Use your device sharing menu</small></span></button><a href={`https://wa.me/?text=${text}%20${encoded}`} target="_blank" rel="noreferrer"><MessageCircle size={19}/><span><strong>WhatsApp</strong><small>Send to a person or group</small></span></a><a href={`https://www.linkedin.com/sharing/share-offsite/?url=${encoded}`} target="_blank" rel="noreferrer"><UsersRound size={19}/><span><strong>LinkedIn</strong><small>Share with your professional network</small></span></a><a href={`mailto:?subject=${encodeURIComponent(project.title)}&body=${text}%0A%0A${encoded}`}><Mail size={19}/><span><strong>Email</strong><small>Send a personal introduction</small></span></a><button onClick={copy}><Link2 size={19}/><span><strong>Copy link</strong><small>Paste it anywhere</small></span></button></div></section></div>
 }
 
 function SettingsView() {
@@ -338,18 +371,18 @@ function SettingsView() {
   const [saved,setSaved]=useState(false);
   const [passwordStatus,setPasswordStatus]=useState({busy:false,error:"",success:false});
   const [profile,setProfile]=useState({name:"Maya Chen",headline:"Product designer · Civic technology",industry:"Design & public services",bio:"I turn complex public services into things people can actually use.",skills:"Product design, Research, Prototyping",interests:"Climate, Local communities, Public good"});
-  const [notifications,setNotifications]=useState({messages:true,projects:true,matches:true,meets:true,digest:"Weekly"});
+  const [notifications,setNotifications]=useState({messages:true,projects:true,matches:true,meets:true,officialNotices:true,digest:"weekly"});
   const [calendarPrefs,setCalendarPrefs]=useState({defaultCalendar:"Google Calendar",autoLinks:true,showExternal:true});
   const [privacy,setPrivacy]=useState({visibility:"Network only",searchable:true,showInterests:true,showLocation:false,messages:"Connections and project members"});
-  useEffect(()=>{const frame=requestAnimationFrame(()=>{const stored=localStorage.getItem("n2-settings");if(!stored)return;try{const value=JSON.parse(stored);if(value.profile)setProfile(value.profile);if(value.notifications)setNotifications(value.notifications);if(value.calendarPrefs)setCalendarPrefs(value.calendarPrefs);if(value.privacy)setPrivacy(value.privacy);if(typeof value.recommendations==="boolean")setRecommendations(value.recommendations);if(typeof value.availability==="boolean")setAvailability(value.availability)}catch{/* Keep safe defaults when local settings are invalid. */}});return()=>cancelAnimationFrame(frame)},[]);
-  function saveSettings(){localStorage.setItem("n2-settings",JSON.stringify({profile,notifications,calendarPrefs,privacy,recommendations,availability}));setSaved(true);setTimeout(()=>setSaved(false),2200);if(panel==="privacy")fetch("/api/privacy",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({profileVisibility:privacy.visibility.toLowerCase().replaceAll(" ","_"),discoverable:privacy.searchable,showInterests:privacy.showInterests,showLocation:privacy.showLocation,messagePermission:privacy.messages})}).catch(()=>undefined)}
+  useEffect(()=>{const frame=requestAnimationFrame(()=>{const stored=localStorage.getItem("n2-settings");if(stored)try{const value=JSON.parse(stored);if(value.profile)setProfile(value.profile);if(value.calendarPrefs)setCalendarPrefs(value.calendarPrefs);if(value.privacy)setPrivacy(value.privacy);if(typeof value.recommendations==="boolean")setRecommendations(value.recommendations);if(typeof value.availability==="boolean")setAvailability(value.availability)}catch{/* Keep safe defaults when local settings are invalid. */}fetch("/api/notifications").then(r=>r.ok?r.json():null).then(data=>{if(data?.preferences)setNotifications({messages:data.preferences.messages,projects:data.preferences.projects,matches:data.preferences.matches,meets:data.preferences.meets,officialNotices:data.preferences.officialNotices,digest:data.preferences.emailDigest})}).catch(()=>undefined)});return()=>cancelAnimationFrame(frame)},[]);
+  function saveSettings(){localStorage.setItem("n2-settings",JSON.stringify({profile,calendarPrefs,privacy,recommendations,availability}));setSaved(true);setTimeout(()=>setSaved(false),2200);if(panel==="privacy")fetch("/api/privacy",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({profileVisibility:privacy.visibility.toLowerCase().replaceAll(" ","_"),discoverable:privacy.searchable,showInterests:privacy.showInterests,showLocation:privacy.showLocation,messagePermission:privacy.messages})}).catch(()=>undefined);if(panel==="notifications")fetch("/api/notifications",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({action:"preferences",messages:notifications.messages,projects:notifications.projects,matches:notifications.matches,meets:notifications.meets,officialNotices:notifications.officialNotices,emailDigest:notifications.digest})}).catch(()=>undefined)}
   async function changePassword(event:FormEvent<HTMLFormElement>){event.preventDefault();const form=event.currentTarget;const data=new FormData(form);const newPassword=String(data.get("newPassword"));if(newPassword!==data.get("confirmPassword")){setPasswordStatus({busy:false,error:"New passwords do not match.",success:false});return}setPasswordStatus({busy:true,error:"",success:false});const response=await fetch("/api/auth/password/change",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({currentPassword:data.get("currentPassword"),newPassword})});const result=await response.json();if(!response.ok){setPasswordStatus({busy:false,error:result.error,success:false});return}form.reset();setPasswordStatus({busy:false,error:"",success:true})}
   const toggle=(on:boolean,action:()=>void,label:string)=><button aria-label={label} aria-pressed={on} className={`toggle ${on?"on":""}`} onClick={action}><i/></button>;
   if(panel!=="root"){
     const titles={profile:["Profile and expertise","Help useful people understand what you bring."],notifications:["Messages and notifications","Choose what deserves your attention."],calendar:["Calendar connections","Bring Google, Outlook, Meet and Teams together."],privacy:["Privacy and visibility","Decide who can find, contact and understand you."],security:["Security and password","Keep your account secure and your access private."]} as const;
     return <div className="subpage settings-page settings-detail"><div className="detail-head"><button className="icon-button border" onClick={()=>setPanel("root")} aria-label="Back to settings"><ArrowLeft size={18}/></button><div><span className="eyebrow">SETTINGS</span><h1>{titles[panel][0]}</h1><p>{titles[panel][1]}</p></div>{panel!=="security"&&<button className={`save-button ${saved?"saved":""}`} onClick={saveSettings}>{saved?<><Check size={15}/> Saved</>:"Save changes"}</button>}</div>
       {panel==="profile"&&<div className="settings-form"><div className="profile-settings-lead"><Avatar person={people.maya} size="lg"/><div><strong>Profile picture</strong><small>Use a clear photo so people recognise you in person.</small></div><button>Change</button></div><div className="form-grid"><label>Full name<input value={profile.name} onChange={e=>setProfile({...profile,name:e.target.value})}/></label><label>Professional headline<input value={profile.headline} onChange={e=>setProfile({...profile,headline:e.target.value})}/></label><label>Industry<select value={profile.industry} onChange={e=>setProfile({...profile,industry:e.target.value})}><option>Design & public services</option><option>Technology</option><option>Climate & energy</option><option>Creative industries</option><option>Community & nonprofit</option></select></label><label className="full">Short bio<textarea value={profile.bio} onChange={e=>setProfile({...profile,bio:e.target.value})}/><small>Share the problems you enjoy solving and the contribution you make.</small></label><label className="full">Skills<input value={profile.skills} onChange={e=>setProfile({...profile,skills:e.target.value})}/><small>Separate skills with commas.</small></label><label className="full">Interests<input value={profile.interests} onChange={e=>setProfile({...profile,interests:e.target.value})}/></label></div></div>}
-      {panel==="notifications"&&<div className="settings-form"><div className="settings-section-title"><strong>Direct activity</strong><small>Immediate updates for things involving you.</small></div>{[["New messages","When someone starts or replies to a conversation","messages"],["Project invitations","Applications, invitations and role changes","projects"],["Recommended matches","High-quality people and project suggestions","matches"],["Meet reminders","A reminder before an upcoming room or event","meets"]].map(([title,copy,key])=><div className="preference-row" key={key}><span><strong>{title}</strong><small>{copy}</small></span>{toggle(notifications[key as keyof typeof notifications]===true,()=>setNotifications({...notifications,[key]:!notifications[key as keyof typeof notifications]}),`Toggle ${title}`)}</div>)}<label className="select-setting"><span><strong>Email digest</strong><small>A calm summary of network activity.</small></span><select aria-label="Email digest frequency" value={notifications.digest} onChange={e=>setNotifications({...notifications,digest:e.target.value})}><option>Daily</option><option>Weekly</option><option>Never</option></select></label></div>}
+      {panel==="notifications"&&<div className="settings-form"><div className="settings-section-title"><strong>Direct activity</strong><small>Immediate updates for things involving you.</small></div>{[["New messages","When someone starts or replies to a conversation","messages"],["Project activity","Applications, invitations, eyes and role changes","projects"],["Recommended matches","High-quality people and project suggestions","matches"],["Meet reminders","A reminder before an upcoming room or event","meets"],["Official n2 notices","Important product and community announcements","officialNotices"]].map(([title,copy,key])=><div className="preference-row" key={key}><span><strong>{title}</strong><small>{copy}</small></span>{toggle(notifications[key as keyof typeof notifications]===true,()=>setNotifications({...notifications,[key]:!notifications[key as keyof typeof notifications]}),`Toggle ${title}`)}</div>)}<label className="select-setting"><span><strong>Email digest</strong><small>A calm summary of network activity.</small></span><select aria-label="Email digest frequency" value={notifications.digest} onChange={e=>setNotifications({...notifications,digest:e.target.value})}><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="never">Never</option></select></label></div>}
       {panel==="calendar"&&<div className="settings-form"><div className="connection-setting"><span className="calendar-brand google">G</span><span><strong>Google Calendar & Meet</strong><small>Not connected</small></span><a href="/api/integrations/google/connect">Connect</a></div><div className="connection-setting"><span className="calendar-brand microsoft">M</span><span><strong>Microsoft Outlook & Teams</strong><small>Not connected</small></span><a href="/api/integrations/microsoft/connect">Connect</a></div><label className="select-setting spaced"><span><strong>Default calendar</strong><small>New n2 meets will be added here.</small></span><select aria-label="Default calendar" value={calendarPrefs.defaultCalendar} onChange={e=>setCalendarPrefs({...calendarPrefs,defaultCalendar:e.target.value})}><option>Google Calendar</option><option>Microsoft Outlook</option><option>Ask each time</option></select></label><div className="preference-row"><span><strong>Add video links automatically</strong><small>Use Meet or Teams based on the selected calendar.</small></span>{toggle(calendarPrefs.autoLinks,()=>setCalendarPrefs({...calendarPrefs,autoLinks:!calendarPrefs.autoLinks}),"Toggle automatic video links")}</div><div className="preference-row"><span><strong>Show external events in Meet</strong><small>Display busy time without exposing private event details.</small></span>{toggle(calendarPrefs.showExternal,()=>setCalendarPrefs({...calendarPrefs,showExternal:!calendarPrefs.showExternal}),"Toggle external events")}</div></div>}
       {panel==="privacy"&&<div className="settings-form"><label className="select-setting"><span><strong>Profile visibility</strong><small>Who can open your complete member profile.</small></span><select aria-label="Profile visibility" value={privacy.visibility} onChange={e=>setPrivacy({...privacy,visibility:e.target.value})}><option>Network only</option><option>Connections only</option><option>Private</option></select></label>{[["Appear in search","Let members find you by name, skill and industry","searchable"],["Show interests","Use interests to make useful connections visible","showInterests"],["Show approximate location","Share your city, never your precise location","showLocation"]].map(([title,copy,key])=><div className="preference-row" key={key}><span><strong>{title}</strong><small>{copy}</small></span>{toggle(privacy[key as keyof typeof privacy]===true,()=>setPrivacy({...privacy,[key]:!privacy[key as keyof typeof privacy]}),`Toggle ${title}`)}</div>)}<label className="select-setting"><span><strong>Who can message you</strong><small>Project owners can always contact applicants.</small></span><select aria-label="Message permissions" value={privacy.messages} onChange={e=>setPrivacy({...privacy,messages:e.target.value})}><option>Connections and project members</option><option>Connections only</option><option>No one</option></select></label><div className="safety-panel"><ShieldCheck size={18}/><span><strong>Safety controls</strong><small>Review blocked people or report behaviour to the moderation team.</small></span><button>Manage</button></div></div>}
       {panel==="security"&&<div className="settings-form password-settings"><div className="settings-section-title"><strong>Change password</strong><small>Use at least 10 characters and avoid a password you use elsewhere.</small></div><form onSubmit={changePassword}><label>Current password<input name="currentPassword" type="password" autoComplete="current-password" required/></label><label>New password<input name="newPassword" type="password" autoComplete="new-password" minLength={10} required/></label><label>Confirm new password<input name="confirmPassword" type="password" autoComplete="new-password" minLength={10} required/></label>{passwordStatus.error&&<p className="form-error">{passwordStatus.error}</p>}{passwordStatus.success&&<p className="form-success"><Check size={14}/> Password changed successfully.</p>}<button className="primary-button" disabled={passwordStatus.busy}>{passwordStatus.busy?"Updating…":"Change password"}</button></form><div className="security-note"><ShieldCheck size={17}/><span><strong>Forgot your current password?</strong><small>Sign out and use the password-reset link on the sign-in page.</small></span></div></div>}
@@ -364,11 +397,15 @@ export default function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [matchOpen, setMatchOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [hasNewProject, setHasNewProject] = useState(false);
+  const [latestProject, setLatestProject] = useState<ProjectRecord|null>(null);
+  const [shareProject,setShareProject]=useState<{id:string;title:string;summary:string}|null>(null);
+  const [notificationsOpen,setNotificationsOpen]=useState(false);
+  const [unreadNotifications,setUnreadNotifications]=useState(0);
   const [toast, setToast] = useState("");
   const [connections, setConnections] = useState<string[]>([]);
   const [currentMember,setCurrentMember]=useState<MemberPerson>(people.maya);
   useEffect(()=>{fetch("/api/auth/session").then(r=>r.json()).then(session=>{if(session?.user?.name)setCurrentMember({name:session.user.name,role:session.user.profession??"n2 member",img:session.user.image,isN2Admin:Boolean(session.user.isN2Admin)})}).catch(()=>undefined)},[]);
+  useEffect(()=>{fetch("/api/notifications").then(r=>r.ok?r.json():{unread:0}).then(data=>setUnreadNotifications(data.unread??0)).catch(()=>undefined)},[]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(""),3200);return()=>clearTimeout(timer)},[toast]);
   useEffect(()=>{const key=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setSearchOpen(true)}if(event.key==="Escape"){setSearchOpen(false);setMatchOpen(false)}};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key)},[]);
   function go(next: View){ setView(next); setMenuOpen(false); window.scrollTo({top:0,behavior:"smooth"}); }
@@ -381,8 +418,8 @@ export default function HomePage() {
       <main className="main-content">
         <button className="mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Open navigation">{menuOpen?<ArrowLeft/>:<Menu/>}</button>
         <div className="content-column">
-          {view==="feed"&&<Feed currentMember={currentMember} onCreate={()=>setCreateOpen(true)} onMatch={()=>setMatchOpen(true)} onMessage={()=>go("messages")}/>}
-          {view==="projects"&&<ProjectsView onCreate={()=>setCreateOpen(true)} hasNewProject={hasNewProject}/>} 
+          {view==="feed"&&<Feed currentMember={currentMember} onCreate={()=>setCreateOpen(true)} onMatch={()=>setMatchOpen(true)} onMessage={()=>go("messages")} onShare={setShareProject} onNotifications={()=>setNotificationsOpen(true)} unread={unreadNotifications}/>}
+          {view==="projects"&&<ProjectsView onCreate={()=>setCreateOpen(true)} latestProject={latestProject} onShare={setShareProject}/>}
           {view==="messages"&&<MessagesView/>} 
           {view==="meet"&&<MeetView/>} 
           {view==="profile"&&<ProfileView member={currentMember}/>}
@@ -390,15 +427,17 @@ export default function HomePage() {
         </div>
       </main>
       <aside className="right-rail">
-        <div className="rail-top"><button className="search-button" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Search people & projects</span><kbd>⌘K</kbd></button><button className="icon-button border" onClick={()=>setToast("You have 2 new project matches.")}><Bell size={19}/><i/></button></div>
+        <div className="rail-top"><button className="search-button" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Search people & projects</span><kbd>⌘K</kbd></button><button className="icon-button border notification-button" onClick={()=>setNotificationsOpen(true)}><Bell size={19}/>{unreadNotifications>0&&<b>{unreadNotifications>9?"9+":unreadNotifications}</b>}</button></div>
         <section className="rail-card"><div className="rail-title"><span>PEOPLE TO KNOW</span><button onClick={()=>setSearchOpen(true)}>See all</button></div>{[people.lena,people.dev,people.sofia].map((p,i)=><div className="person-suggest" key={p.name}><Avatar person={p} size="md"/><div><strong>{p.name}</strong><span>{p.role}</span><small>{i===0?"3 shared interests":i===1?"2 mutual projects":"Near you"}</small></div><button className={connections.includes(p.name)?"connected":""} aria-label={`Connect with ${p.name}`} onClick={()=>{setConnections(c=>c.includes(p.name)?c.filter(n=>n!==p.name):[...c,p.name]);setToast(connections.includes(p.name)?`Removed ${p.name}`:`Connection request sent to ${p.name}`)}}>{connections.includes(p.name)?<Check size={17}/>:<Plus size={17}/>}</button></div>)}</section>
         <section className="rail-card pulse-card"><div className="pulse-head"><span>NETWORK PULSE</span><i>LIVE</i></div><strong>34</strong><p>new connections made this week.</p><div className="pulse-bar"><span/></div><small>12% more than last week</small></section>
         <footer><Logo/><p>Useful people, brought together.</p><div><button>About</button><button>Privacy</button><button>Community</button></div><small>© 2026 nice 2 network</small></footer>
       </aside>
       <nav className="mobile-nav">{nav.slice(0,4).map((item)=>{const Icon=item.icon;return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}<button onClick={()=>go("profile")} className={view==="profile"?"active":""}><UserRound size={21}/><span>Me</span></button></nav>
-      {createOpen&&<CreateProject onClose={()=>setCreateOpen(false)} onPublish={()=>{setHasNewProject(true);setToast("Project published — we’re finding useful people now.");go("projects")}}/>} 
+      {createOpen&&<CreateProject onClose={()=>setCreateOpen(false)} onPublish={project=>{setLatestProject(project);setToast("Project published — useful matches are being notified.");go("projects")}}/>}
       {matchOpen&&<MatchPanel onClose={()=>setMatchOpen(false)} onMessage={()=>{setMatchOpen(false);go("messages")}}/>}
       {searchOpen&&<SearchOverlay onClose={()=>setSearchOpen(false)} onNavigate={go}/>} 
+      {notificationsOpen&&<NotificationPanel onClose={()=>setNotificationsOpen(false)} onUnread={setUnreadNotifications}/>}
+      {shareProject&&<ShareSheet project={shareProject} onClose={()=>setShareProject(null)} onToast={setToast}/>}
       {toast&&<div className="toast"><Check size={16}/>{toast}</div>}
     </div>
   );

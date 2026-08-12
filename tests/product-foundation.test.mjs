@@ -93,3 +93,20 @@ test("limits raw analytics retention and excludes direct identifiers", async () 
   assert.match(cron, /- 90/);
   assert.match(cron, /delete\(productEvents\)/);
 });
+
+test("ships durable notifications, search, projects and sharing", async () => {
+  const [schema, notifications, search, projects, eyes, page] = await Promise.all([
+    read("db/schema.ts"), read("app/api/notifications/route.ts"), read("app/api/search/route.ts"),
+    read("app/api/projects/route.ts"), read("app/api/projects/[projectId]/eyes/route.ts"), read("app/page.tsx"),
+  ]);
+  for (const table of ["notifications", "notificationPreferences", "projectEyes"]) assert.match(schema, new RegExp(`export const ${table} = pgTable`));
+  assert.match(notifications, /read_all/);
+  assert.match(notifications, /preferences/);
+  assert.match(search, /privacySettings/);
+  assert.match(search, /projectRoles/);
+  assert.match(projects, /scope === "mine"/);
+  assert.match(eyes, /project_eye_added/);
+  assert.match(page, /ShareSheet/);
+  assert.match(page, /WhatsApp/);
+  assert.match(page, /LinkedIn/);
+});
