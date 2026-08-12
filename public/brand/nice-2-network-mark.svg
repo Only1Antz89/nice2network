@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">nice 2 network n2 mark</title>
+  <desc id="desc">The letters n2 in white inside a black circle.</desc>
+  <rect width="512" height="512" rx="80" fill="#f7f7f3"/>
+  <circle cx="256" cy="256" r="192" fill="#11110f"/>
+  <text x="256" y="310" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="160" font-weight="700" letter-spacing="-15">n2</text>
+</svg>

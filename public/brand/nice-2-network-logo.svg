@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">nice 2 network logo</title>
+  <desc id="desc">A black circular n2 symbol with the nice 2 network wordmark.</desc>
+  <rect width="1200" height="420" rx="36" fill="#f7f7f3"/>
+  <circle cx="210" cy="210" r="132" fill="#11110f"/>
+  <text x="210" y="247" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="108" font-weight="700" letter-spacing="-10">n2</text>
+  <text x="400" y="237" fill="#11110f" font-family="Arial, Helvetica, sans-serif" font-size="86" font-weight="700" letter-spacing="-4">nice 2 network</text>
+</svg>
