@@ -44,3 +44,17 @@ test("requires verified email before professional onboarding", async () => {
   assert.match(onboarding, /onboardingCompletedAt/);
   assert.match(credentials, /member\.status !== "active"/);
 });
+
+test("supports authenticated password changes and private reset links", async () => {
+  const [change, forgot, reset] = await Promise.all([
+    read("app/api/auth/password/change/route.ts"),
+    read("app/api/auth/password/forgot/route.ts"),
+    read("app/api/auth/password/reset/route.ts"),
+  ]);
+  assert.match(change, /requireMember\(\)/);
+  assert.match(change, /compare\(input\.currentPassword/);
+  assert.match(forgot, /If that account exists/);
+  assert.match(forgot, /30 \* 60 \* 1000/);
+  assert.match(reset, /verificationTokens\.expires/);
+  assert.match(reset, /delete\(sessions\)/);
+});

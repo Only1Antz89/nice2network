@@ -1,0 +1,11 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Check, LockKeyhole } from "lucide-react";
+
+export default function ResetPasswordForm({email,token}:{email:string;token:string}){
+  const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [done,setDone]=useState(false);
+  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();setError("");const data=new FormData(event.currentTarget);const password=String(data.get("password"));if(password!==data.get("confirm")){setError("Passwords do not match.");return}setBusy(true);const response=await fetch("/api/auth/password/reset",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,token,password})});const result=await response.json();if(!response.ok){setError(result.error);setBusy(false);return}setDone(true);setBusy(false)}
+  return <main className="recovery-page"><Link className="recovery-logo" href="/"><span>n2</span>nice 2 network</Link><section className="recovery-card">{done?<><span className="verification-icon success"><Check size={22}/></span><span className="eyebrow">PASSWORD UPDATED</span><h1>You’re ready to return.</h1><p>Your new password is active. Use it the next time you sign in.</p><Link className="primary-button wide recovery-signin" href="/signin">Continue to sign in</Link></>:<><span className="verification-icon"><LockKeyhole size={22}/></span><span className="eyebrow">CHOOSE A NEW PASSWORD</span><h1>Make it strong and memorable.</h1><p>This reset link can be used once and expires after 30 minutes.</p><form onSubmit={submit}><label>New password<input type="password" name="password" autoComplete="new-password" minLength={10} required/><small>At least 10 characters.</small></label><label>Confirm new password<input type="password" name="confirm" autoComplete="new-password" minLength={10} required/></label>{error&&<p className="form-error">{error}</p>}<button className="primary-button wide" disabled={busy}>{busy?"Updating…":"Update password"}</button></form><Link className="recovery-text-link" href="/signin"><ArrowLeft size={14}/> Back to sign in</Link></>}</section></main>;
+}

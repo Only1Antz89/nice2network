@@ -24,6 +24,22 @@ export async function sendVerificationEmail(input: { email: string; firstName: s
   return { delivered: true };
 }
 
+export async function sendPasswordResetEmail(input: { email: string; firstName: string; resetUrl: string }) {
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) throw new Error("Email delivery is not configured");
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      from: process.env.EMAIL_FROM,
+      to: [input.email],
+      subject: "Reset your nice 2 network password",
+      html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;color:#111"><div style="width:38px;height:38px;border-radius:50%;background:#111;color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px">n2</div><h1 style="font-size:28px;letter-spacing:-1px;margin:28px 0 10px">Reset your password.</h1><p style="color:#666;line-height:1.6">Hi ${escapeHtml(input.firstName)}, use the secure link below to choose a new password.</p><a href="${input.resetUrl}" style="display:inline-block;margin-top:18px;background:#111;color:#fff;text-decoration:none;border-radius:999px;padding:13px 20px;font-weight:700">Choose a new password</a><p style="font-size:12px;color:#888;margin-top:28px">This link expires in 30 minutes. If you didn’t request it, your password has not changed.</p></div>`,
+      text: `Hi ${input.firstName}, reset your nice 2 network password: ${input.resetUrl}\n\nThis link expires in 30 minutes.`,
+    }),
+  });
+  if (!response.ok) throw new Error(`Email delivery failed (${response.status})`);
+}
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 }
