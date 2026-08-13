@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   emailVerified: timestamp("email_verified", { mode: "date" }),
   image: text("image"),
+  coverImage: text("cover_image"),
   passwordHash: text("password_hash"),
   profession: text("profession"),
   headline: text("headline"),
@@ -186,6 +187,16 @@ export const meetings = pgTable("meetings", {
   id: uuid("id").defaultRandom().primaryKey(), projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }), createdBy: uuid("created_by").notNull().references(() => users.id), provider: text("provider").notNull(), providerEventId: text("provider_event_id"), title: text("title").notNull(), description: text("description"), startsAt: timestamp("starts_at", { withTimezone: true }).notNull(), endsAt: timestamp("ends_at", { withTimezone: true }).notNull(), timezone: text("timezone").notNull().default("Europe/London"), joinUrl: text("join_url"), location: text("location"), attendees: jsonb("attendees").$type<Array<{ email: string; name?: string }>>().default([]), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const meetingSignals = pgTable("meeting_signals", {
+  id: uuid("id").defaultRandom().primaryKey(), meetingId: uuid("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }), senderId: uuid("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }), recipientId: uuid("recipient_id").references(() => users.id, { onDelete: "cascade" }), type: text("type").notNull(), payload: jsonb("payload").$type<Record<string, unknown>>().notNull(), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [index("meeting_signals_room_idx").on(table.meetingId, table.createdAt)]);
+
+export const conversationTyping = pgTable("conversation_typing", {
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [primaryKey({ columns: [table.conversationId, table.userId] }), index("conversation_typing_updated_idx").on(table.updatedAt)]);
+
 export const reports = pgTable("reports", {
   id: uuid("id").defaultRandom().primaryKey(), reporterId: uuid("reporter_id").notNull().references(() => users.id), targetType: text("target_type").notNull(), targetId: uuid("target_id").notNull(), reason: text("reason").notNull(), details: text("details"), status: text("status").notNull().default("open"), priority: text("priority").notNull().default("normal"), responseDueAt: timestamp("response_due_at", { withTimezone: true }), assignedTo: uuid("assigned_to").references(() => users.id), resolution: text("resolution"), resolvedAt: timestamp("resolved_at", { withTimezone: true }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("reports_status_idx").on(table.status)]);
@@ -322,6 +333,7 @@ export const conversations = pgTable("conversations", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
   initiatedBy: uuid("initiated_by").notNull().references(() => users.id),
+  name: text("name"),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -331,6 +343,8 @@ export const conversationMembers = pgTable("conversation_members", {
   conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   acceptedAt: timestamp("accepted_at", { withTimezone: true }).defaultNow().notNull(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
 }, (table) => [primaryKey({ columns: [table.conversationId, table.userId] }), index("conversation_member_user_idx").on(table.userId)]);
 
 export const messages = pgTable("messages", {
@@ -338,7 +352,10 @@ export const messages = pgTable("messages", {
   conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
   senderId: uuid("sender_id").notNull().references(() => users.id),
   body: text("body").notNull(),
+  attachmentType: text("attachment_type"),
+  attachmentUrl: text("attachment_url"),
   status: text("status").notNull().default("visible"),
+  editedAt: timestamp("edited_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("messages_conversation_idx").on(table.conversationId, table.createdAt)]);
 

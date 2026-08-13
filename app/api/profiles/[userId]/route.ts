@@ -10,6 +10,8 @@ import { recomputeMemberRecommendations } from "@/lib/recommendations/service";
 
 const profileSchema = z.object({
   name: z.string().trim().min(2).max(120),
+  image: z.string().max(900_000).refine(value => !value || /^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
+  coverImage: z.string().max(1_500_000).refine(value => !value || /^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
   headline: z.string().trim().max(160).nullable().optional(),
   profession: z.string().trim().max(100).nullable().optional(),
   industry: z.string().trim().max(100).nullable().optional(),
@@ -27,7 +29,7 @@ const profileSchema = z.object({
 export async function GET(_: Request, { params }: { params: Promise<{ userId: string }> }) {
   try {
     const viewer = await requireMember(), { userId } = await params, db = getDb();
-    const [row] = await db.select({ id: users.id, name: users.name, image: users.image, profession: users.profession, headline: users.headline, bio: users.bio, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, location: users.location, city: users.city, country: users.country, timezone: users.timezone, workMode: users.workMode, ageBand: users.ageBand, visibility: privacySettings.profileVisibility, showLocation: privacySettings.showLocation, isN2Admin: adminAssignments.id, isDemo: sql<boolean>`${users.role} = 'demo_member'` })
+    const [row] = await db.select({ id: users.id, name: users.name, image: users.image, coverImage: users.coverImage, profession: users.profession, headline: users.headline, bio: users.bio, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, location: users.location, city: users.city, country: users.country, timezone: users.timezone, workMode: users.workMode, ageBand: users.ageBand, visibility: privacySettings.profileVisibility, showLocation: privacySettings.showLocation, isN2Admin: adminAssignments.id, isDemo: sql<boolean>`${users.role} = 'demo_member'` })
       .from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active"))).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     if (!row) throw new ApiError(404, "Profile not found");
     const isCurrent = viewer.id === userId;
@@ -50,7 +52,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ user
     if (viewer.id !== userId) throw new ApiError(403, "You can only edit your own profile");
     const input = profileSchema.parse(await request.json()), db = getDb();
     await db.transaction(async tx => {
-      await tx.update(users).set({ name: input.name, headline: input.headline, profession: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: [input.primarySkill, input.secondarySkill, input.tertiarySkill], interests: input.interests, city: input.city, country: input.country, timezone: input.timezone, workMode: input.workMode, location: [input.city, input.country].filter(Boolean).join(", ") || null, updatedAt: new Date() }).where(eq(users.id, userId));
+      await tx.update(users).set({ name: input.name, image: input.image, coverImage: input.coverImage, headline: input.headline, profession: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: [input.primarySkill, input.secondarySkill, input.tertiarySkill], interests: input.interests, city: input.city, country: input.country, timezone: input.timezone, workMode: input.workMode, location: [input.city, input.country].filter(Boolean).join(", ") || null, updatedAt: new Date() }).where(eq(users.id, userId));
       await tx.delete(careerHistory).where(eq(careerHistory.userId, userId));
       if (input.career.length) await tx.insert(careerHistory).values(input.career.map((item, sortOrder) => ({ ...item, id: undefined, userId, startDate: item.startDate ?? null, endDate: item.current ? null : item.endDate ?? null, sortOrder })));
       await tx.delete(educationHistory).where(eq(educationHistory.userId, userId));

@@ -125,3 +125,22 @@ test("ships durable project-team recommendations and owner approval", async () =
   assert.match(feed, /rolloutStage >= 2/);
   assert.match(admin, /system\.manage/);
 });
+
+test("ships editable profiles, durable chat controls and four-person n2 meets", async () => {
+  const [schema, profile, conversations, chat, message, calendar, signals, room, page] = await Promise.all([
+    read("db/schema.ts"), read("app/api/profiles/[userId]/route.ts"), read("app/api/conversations/route.ts"),
+    read("app/api/conversations/[conversationId]/messages/route.ts"), read("app/api/messages/[messageId]/route.ts"),
+    read("app/api/calendar/events/route.ts"), read("app/api/meetings/[meetingId]/signals/route.ts"),
+    read("app/meet/[meetingId]/page.tsx"), read("app/page.tsx"),
+  ]);
+  for (const field of ["coverImage", "archivedAt", "snoozedUntil", "attachmentUrl", "editedAt"]) assert.match(schema, new RegExp(field));
+  assert.match(profile, /careerHistory/);
+  assert.match(profile, /educationHistory/);
+  for (const action of ["archive", "snooze", "delete"]) assert.match(conversations, new RegExp(action));
+  assert.match(chat, /nudge/);
+  assert.match(message, /editedAt/);
+  assert.match(calendar, /provider:z\.enum\(\["n2"/);
+  assert.match(signals, /limited to four people/);
+  assert.match(room, /RTCPeerConnection/);
+  assert.match(page, /Create group chat/);
+});

@@ -1,28 +1,5 @@
-import { and, eq, isNull, or, gt } from "drizzle-orm";
-import { NextResponse } from "next/server";
-import { z } from "zod";
-import { getDb } from "@/db";
-import { conversationMembers, messages, sanctions } from "@/db/schema";
-import { ApiError, apiError, requireMember } from "@/lib/api";
-import { trackProductEvent } from "@/lib/analytics";
-import { createNotifications } from "@/lib/notifications";
-
-const schema = z.object({ body: z.string().trim().min(1).max(5000) });
-
-export async function POST(request: Request, { params }: { params: Promise<{ conversationId: string }> }) {
-  try {
-    const member = await requireMember();
-    const { conversationId } = await params;
-    const input = schema.parse(await request.json());
-    const db = getDb();
-    const [membership] = await db.select().from(conversationMembers).where(and(eq(conversationMembers.conversationId, conversationId), eq(conversationMembers.userId, member.id))).limit(1);
-    if (!membership) throw new ApiError(403, "Conversation access required");
-    const [restriction] = await db.select({ id: sanctions.id }).from(sanctions).where(and(eq(sanctions.userId, member.id), eq(sanctions.status, "active"), eq(sanctions.type, "messaging_restriction"), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, new Date())))).limit(1);
-    if (restriction) throw new ApiError(403, "Messaging is restricted on this account");
-    const [message] = await db.insert(messages).values({ conversationId, senderId: member.id, body: input.body }).returning({ id: messages.id, createdAt: messages.createdAt });
-    const recipients = await db.select({ userId: conversationMembers.userId }).from(conversationMembers).where(eq(conversationMembers.conversationId, conversationId));
-    await createNotifications(recipients.filter(row=>row.userId!==member.id).map(row=>({userId:row.userId,actorId:member.id,type:"message" as const,title:`New message from ${member.name??"an n2 member"}`,body:input.body.slice(0,140),entityType:"conversation",entityId:conversationId,href:"/?view=messages"})));
-    await trackProductEvent({ actorId: member.id, event: "message_sent", entityType: "conversation", entityId: conversationId });
-    return NextResponse.json(message, { status: 201 });
-  } catch (error) { return apiError(error); }
-}
+import { and,asc,eq,gt,isNull,or } from "drizzle-orm";import { NextResponse } from "next/server";import { z } from "zod";import { getDb } from "@/db";import { conversationMembers,conversations,messages,sanctions,users } from "@/db/schema";import { ApiError,apiError,requireMember } from "@/lib/api";import { trackProductEvent } from "@/lib/analytics";import { createNotifications } from "@/lib/notifications";
+const media=z.string().max(2_900_000).refine(value=>/^data:(image|video)\//.test(value)||/^data:application\/(pdf|zip)/.test(value));const schema=z.object({body:z.string().trim().max(5000).default(""),attachmentType:z.enum(["image","video","file"]).nullable().optional(),attachmentUrl:media.nullable().optional(),type:z.enum(["message","nudge"]).default("message")}).refine(v=>v.body||v.attachmentUrl,"Add a message or attachment");
+async function access(conversationId:string,userId:string){const [row]=await getDb().select().from(conversationMembers).where(and(eq(conversationMembers.conversationId,conversationId),eq(conversationMembers.userId,userId))).limit(1);if(!row)throw new ApiError(403,"Conversation access required")}
+export async function GET(_:Request,{params}:{params:Promise<{conversationId:string}>}){try{const member=await requireMember(),{conversationId}=await params;await access(conversationId,member.id);const rows=await getDb().select({id:messages.id,body:messages.body,attachmentType:messages.attachmentType,attachmentUrl:messages.attachmentUrl,status:messages.status,editedAt:messages.editedAt,createdAt:messages.createdAt,senderId:users.id,senderName:users.name,senderImage:users.image}).from(messages).innerJoin(users,eq(users.id,messages.senderId)).where(eq(messages.conversationId,conversationId)).orderBy(asc(messages.createdAt)).limit(300);return NextResponse.json({messages:rows})}catch(error){return apiError(error)}}
+export async function POST(request:Request,{params}:{params:Promise<{conversationId:string}>}){try{const member=await requireMember(),{conversationId}=await params,input=schema.parse(await request.json()),db=getDb();await access(conversationId,member.id);const [restriction]=await db.select({id:sanctions.id}).from(sanctions).where(and(eq(sanctions.userId,member.id),eq(sanctions.status,"active"),eq(sanctions.type,"messaging_restriction"),or(isNull(sanctions.expiresAt),gt(sanctions.expiresAt,new Date())))).limit(1);if(restriction)throw new ApiError(403,"Messaging is restricted on this account");const body=input.type==="nudge"?"👋 Nudge — a response would be useful when you have a moment.":input.body;const [message]=await db.insert(messages).values({conversationId,senderId:member.id,body,attachmentType:input.attachmentType??null,attachmentUrl:input.attachmentUrl??null}).returning();await db.update(conversations).set({updatedAt:new Date()}).where(eq(conversations.id,conversationId));const recipients=await db.select({userId:conversationMembers.userId}).from(conversationMembers).where(eq(conversationMembers.conversationId,conversationId));await createNotifications(recipients.filter(r=>r.userId!==member.id).map(r=>({userId:r.userId,actorId:member.id,type:"message" as const,title:input.type==="nudge"?`${member.name??"A member"} nudged you`:`New message from ${member.name??"an n2 member"}`,body:body.slice(0,140),entityType:"conversation",entityId:conversationId,href:"/?view=messages"})));await trackProductEvent({actorId:member.id,event:input.type==="nudge"?"message_nudge":"message_sent",entityType:"conversation",entityId:conversationId});return NextResponse.json(message,{status:201})}catch(error){return apiError(error)}}

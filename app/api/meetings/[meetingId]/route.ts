@@ -1,0 +1,2 @@
+import { eq } from "drizzle-orm";import { NextResponse } from "next/server";import { getDb } from "@/db";import { meetings } from "@/db/schema";import { ApiError,apiError,requireMember } from "@/lib/api";
+export async function GET(_:Request,{params}:{params:Promise<{meetingId:string}>}){try{await requireMember();const {meetingId}=await params;const [meeting]=await getDb().select().from(meetings).where(eq(meetings.id,meetingId)).limit(1);if(!meeting)throw new ApiError(404,"Meet not found");return NextResponse.json({meeting})}catch(error){return apiError(error)}}
