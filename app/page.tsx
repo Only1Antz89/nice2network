@@ -57,7 +57,7 @@ import EmojiPicker from "@/components/emoji-picker";
 
 type View = "feed" | "projects" | "messages" | "meet" | "profile" | "settings";
 type MemberPerson = { id?: string; name: string; role: string; img?: string | null; isN2Admin?: boolean };
-type ProjectRecord = { id:string; title:string; summary:string; description?:string|null; imageUrl?:string|null; industry:string; stage:string; status?:string; visibility?:string; accent:string; workMode?:string; city?:string|null; country?:string|null; ownerId?:string; ownerName:string|null; ownerImage:string|null; ownerIsAdmin?:boolean; isDemo?:boolean; isOwner?:boolean; isPinned?:boolean; isBookmarked?:boolean; eyeCount:number; commentCount?:number; matchScore?:number; recommendationId?:string; recommendationTier?:string; recommendationReasons?:string[]; matchedRole?:string; eyeMomentum?:number; roles?:Array<{id:string;title:string;department:string;phase:string;status:string;criticality:string;capacity:number;filled:number}>; team?:Array<{userId:string;name:string|null;image:string|null;profession:string|null;department:string|null;membershipRole:string}>; createdAt:string };
+type ProjectRecord = { id:string; title:string; summary:string; description?:string|null; imageUrl?:string|null; industry:string; stage:string; status?:string; visibility?:string; accent:string; workMode?:string; city?:string|null; country?:string|null; ownerId?:string; ownerName:string|null; ownerImage:string|null; ownerIsAdmin?:boolean; isDemo?:boolean; isOwner?:boolean; isPinned?:boolean; isBookmarked?:boolean; eyeCount:number; commentCount?:number; matchScore?:number; recommendationId?:string; recommendationTier?:string; recommendationReasons?:string[]; matchedRole?:string; eyeMomentum?:number; roles?:Array<{id:string;title:string;department:string;phase:string;status:string;criticality:string;capacity:number;filled:number}>; team?:Array<{userId:string;roleId?:string|null;name:string|null;image:string|null;profession:string|null;department:string|null;membershipRole:string}>; createdAt:string };
 
 const PROJECT_INDUSTRIES = [
   "Agriculture & food", "Arts & culture", "Automotive & mobility", "Beauty & wellness",
@@ -139,7 +139,7 @@ function N2Mark({ inverse = false }: { inverse?: boolean }) {
 }
 
 function TeamTrail({ second = false, project }: { second?: boolean; project?:ProjectRecord }) {
-  if(project){const owner={id:project.ownerId,name:project.ownerName??"n2 member",role:"Project owner",img:project.ownerImage};const contributors=(project.team??[]).filter(member=>member.userId!==project.ownerId);const openRoles=(project.roles??[]).filter(role=>role.phase==="now");return <div className="team-map" aria-label="Project owner, team and open roles"><div className="map-line"/><button className="team-person owner" onClick={()=>project.ownerId&&window.dispatchEvent(new CustomEvent("n2:open-profile",{detail:project.ownerId}))}><Avatar person={owner} size="lg" ring/><span className="team-role">Owner</span></button>{contributors.slice(0,3).map(member=><button className="team-person" key={member.userId} onClick={()=>window.dispatchEvent(new CustomEvent("n2:open-profile",{detail:member.userId}))}><Avatar person={{name:member.name??"n2 member",role:member.department??"Contributor",img:member.image}} size="md"/><span className="dept">{member.department??"Team"}</span></button>)}{openRoles.slice(0,Math.max(1,4-contributors.length)).map(role=><div className="open-person" key={`${role.department}-${role.title}`} title={role.title}><Plus size={16}/><span>{role.title}</span></div>)}</div>}
+  if(project){const owner={id:project.ownerId,name:project.ownerName??"n2 member",role:"Project owner",img:project.ownerImage},contributors=(project.team??[]).filter(member=>member.userId!==project.ownerId),used=new Set<string>();const assignments=(project.roles??[]).flatMap(role=>Array.from({length:Math.max(1,role.capacity)},(_,slot)=>{const member=contributors.find(candidate=>!used.has(candidate.userId)&&(candidate.roleId===role.id||candidate.department===role.title||candidate.department===role.department));if(member)used.add(member.userId);return{role,member,slot}}));return <div className="team-map" aria-label="Project owner, filled roles and open roles"><div className="map-line"/><button className="team-person owner" onClick={()=>project.ownerId&&window.dispatchEvent(new CustomEvent("n2:open-profile",{detail:project.ownerId}))}><Avatar person={owner} size="lg" ring/><span className="team-role">Owner</span></button>{assignments.map(({role,member,slot})=>member?<button className="team-person filled-role" key={`${role.id}-${slot}`} onClick={()=>window.dispatchEvent(new CustomEvent("n2:open-profile",{detail:member.userId}))} title={`${member.name} · ${role.title}`}><Avatar person={{name:member.name??"n2 member",role:role.title,img:member.image}} size="md"/><span className="dept">{role.title}</span></button>:<div className="open-person" key={`${role.id}-${slot}`} title={`Open role: ${role.title}`}><Plus size={16}/><span>{role.title}</span></div>)}</div>}
   const team = second
     ? [people.sofia, people.jordan, people.lena]
     : [people.marcus, people.maya, people.dev, people.ali];
@@ -203,13 +203,17 @@ function FallbackProjectMenu({projectId,title,summary,onShare,onToast}:{projectI
 function ProjectCard({ second = false, onMatch, onComments, onProfile, project, onShare, onChanged, onToast, authenticated=true, onRequireAuth }: { second?: boolean; onMatch?: () => void; onComments?: (project:ProjectRecord)=>void; onProfile?:(userId:string)=>void; project?:ProjectRecord; onShare?:(project:{id:string;title:string;summary:string})=>void; onChanged?:(project:ProjectRecord|null)=>void; onToast?:(message:string)=>void; authenticated?:boolean; onRequireAuth?:()=>void }) {
   const owner:MemberPerson = project?{name:project.ownerName??"n2 member",role:`${project.industry} · ${project.stage}`,img:project.ownerImage,isN2Admin:project.ownerIsAdmin}:second ? people.sofia : people.marcus;
   const projectId=project?.id??(second?"after-dark":"energy"),title=project?.title??(second?"Make empty city spaces useful after dark":"Neighbourhood energy, shared fairly"),summary=project?.summary??(second?"A lightweight way for local groups to find and book underused spaces for classes, studios and community dinners. Looking for people who understand access, safety and local partnerships.":"I’m building a toolkit that helps one street buy, share and understand clean energy together. The pilot needs a product thinker, a community voice and someone who can make the numbers work.");
-  const currentPeople=project?.team?.length??(second?3:4),openSpots=project?.roles?.reduce((total,role)=>total+(role.status==="open"?Math.max(0,role.capacity-role.filled):0),0)??0,requiredPeople=currentPeople+openSpots;
+  const currentPeople=project?.team?.length??(second?3:4),roleCapacity=project?.roles?.reduce((total,role)=>total+role.capacity,0)??0,requiredPeople=project?Math.max(currentPeople,1+roleCapacity):(second?3:4),teamComplete=project&&currentPeople>=requiredPeople;
   async function feedback(signal:"not_relevant"|"not_now"){if(!project?.recommendationId)return;const response=await fetch("/api/matches/feedback",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({recommendationId:project.recommendationId,signal})});if(response.ok){onChanged?.(null);onToast?.(signal==="not_now"?"Project hidden for two weeks.":"Thanks — this will refine future suggestions.")}}
   return (
     <article className={`project-card ${second ? "project-blue" : "project-orange"}`} style={project?{"--project-accent":project.accent} as React.CSSProperties:undefined}>
       <div className="project-accent" style={project?{background:project.accent}:undefined}/>
       <div className="project-body">
-        <div className="post-head">
+        <div className="project-card-title">
+          <div className="project-kicker"><span>PROJECT</span><span>{project?.industry.toUpperCase()??(second ? "COMMUNITY" : "CLIMATE")}</span></div>
+          <button className="project-title-link" disabled={!project} onClick={()=>project&&window.dispatchEvent(new CustomEvent("n2:open-project",{detail:project.id}))}><h2>{title}</h2></button>
+        </div>
+        <div className="post-head project-owner-line">
           <div className="person-line">
             <Avatar person={owner} size="md" />
             <div>
@@ -219,13 +223,11 @@ function ProjectCard({ second = false, onMatch, onComments, onProfile, project, 
           </div>
           {authenticated?(project?<ProjectMenu project={project} onChanged={onChanged} onToast={onToast}/>:<FallbackProjectMenu projectId={projectId} title={title} summary={summary} onShare={onShare} onToast={onToast}/>):null}
         </div>
-        <div className="project-kicker"><span>PROJECT</span><span>{project?.industry.toUpperCase()??(second ? "COMMUNITY" : "CLIMATE")}</span></div>
-        <button className="project-title-link" disabled={!project} onClick={()=>project&&window.dispatchEvent(new CustomEvent("n2:open-project",{detail:project.id}))}><h2>{title}</h2></button>
         <p className="project-copy">{summary}</p>
         {project?.imageUrl&&<button className="project-card-image" onClick={()=>window.dispatchEvent(new CustomEvent("n2:open-project",{detail:project.id}))}><img src={project.imageUrl} alt={`${project.title} project`}/></button>}
         <div className="project-meta">
           <span><Clock3 size={15} /> {project?`${project.stage.charAt(0).toUpperCase()}${project.stage.slice(1)}`:(second ? "Early concept" : "Pilot in 6 weeks")}</span>
-          <span><UsersRound size={15} /> {project?`${currentPeople}/${requiredPeople} people`:(second ? "3 involved" : "4 involved")}</span>
+          <span><UsersRound size={15} /> {project?teamComplete?`${currentPeople}/${requiredPeople} people · Team complete`:`${currentPeople}/${requiredPeople} people`:(second ? "3 involved" : "4 involved")}</span>
         </div>
         <TeamTrail second={second} project={project} />
         <div className="ai-gap">
