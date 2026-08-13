@@ -126,7 +126,7 @@ function TeamTrail({ second = false }: { second?: boolean }) {
   );
 }
 
-function InterestButton({ initial = 24, projectId, durable = false }: { initial?: number; projectId: string; durable?: boolean }) {
+function InterestButton({ initial = 24, projectId, durable = false, authenticated = true, onRequireAuth }: { initial?: number; projectId: string; durable?: boolean; authenticated?:boolean; onRequireAuth?:()=>void }) {
   const [watched, setWatched] = useState(false);
   const [total,setTotal]=useState(initial);
   useEffect(() => {
@@ -134,6 +134,7 @@ function InterestButton({ initial = 24, projectId, durable = false }: { initial?
     return () => cancelAnimationFrame(frame);
   }, [projectId]);
   async function toggle() {
+    if(!authenticated){onRequireAuth?.();return}
     const next = !watched;
     setWatched(next);setTotal(value=>Math.max(0,value+(next?1:-1)));
     localStorage.setItem(`n2-eye-${projectId}`, String(next));
@@ -156,7 +157,7 @@ function ProjectMenu({project,onChanged,onToast}:{project:ProjectRecord;onChange
   return <div className="project-menu-wrap"><button className="icon-button" aria-label="Project options" aria-expanded={open} onClick={()=>setOpen(!open)}><Ellipsis size={20}/></button>{open&&<div className="project-menu"><button onClick={()=>preference("pin")}><Pin size={15}/>{pinned?"Unpin":"Pin"}</button><button onClick={()=>preference("star")}><Star size={15} fill={starred?"currentColor":"none"}/>{starred?"Unstar":"Star"}</button>{project.isOwner&&<><hr/><button onClick={edit}><Pencil size={15}/>Edit project</button><button onClick={visibility}>{project.visibility==="private"?<Globe2 size={15}/>:<ShieldCheck size={15}/>}Make {project.visibility==="private"?"public":"private"}</button><button className="danger" onClick={remove}><Trash2 size={15}/>Delete project</button></>}</div>}</div>
 }
 
-function ProjectCard({ second = false, onMatch, onComments, onProfile, project, onShare, onChanged, onToast }: { second?: boolean; onMatch?: () => void; onComments?: (project:ProjectRecord)=>void; onProfile?:(userId:string)=>void; project?:ProjectRecord; onShare?:(project:{id:string;title:string;summary:string})=>void; onChanged?:(project:ProjectRecord|null)=>void; onToast?:(message:string)=>void }) {
+function ProjectCard({ second = false, onMatch, onComments, onProfile, project, onShare, onChanged, onToast, authenticated=true, onRequireAuth }: { second?: boolean; onMatch?: () => void; onComments?: (project:ProjectRecord)=>void; onProfile?:(userId:string)=>void; project?:ProjectRecord; onShare?:(project:{id:string;title:string;summary:string})=>void; onChanged?:(project:ProjectRecord|null)=>void; onToast?:(message:string)=>void; authenticated?:boolean; onRequireAuth?:()=>void }) {
   const owner:MemberPerson = project?{name:project.ownerName??"n2 member",role:`${project.industry} · ${project.stage}`,img:project.ownerImage,isN2Admin:project.ownerIsAdmin}:second ? people.sofia : people.marcus;
   const projectId=project?.id??(second?"after-dark":"energy"),title=project?.title??(second?"Make empty city spaces useful after dark":"Neighbourhood energy, shared fairly"),summary=project?.summary??(second?"A lightweight way for local groups to find and book underused spaces for classes, studios and community dinners. Looking for people who understand access, safety and local partnerships.":"I’m building a toolkit that helps one street buy, share and understand clean energy together. The pilot needs a product thinker, a community voice and someone who can make the numbers work.");
   async function feedback(signal:"not_relevant"|"not_now"){if(!project?.recommendationId)return;const response=await fetch("/api/matches/feedback",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({recommendationId:project.recommendationId,signal})});if(response.ok){onChanged?.(null);onToast?.(signal==="not_now"?"Project hidden for two weeks.":"Thanks — this will refine future suggestions.")}}
@@ -172,7 +173,7 @@ function ProjectCard({ second = false, onMatch, onComments, onProfile, project, 
               <span>{owner.role} · {second ? "3h" : "18m"}</span>
             </div>
           </div>
-          {project?<ProjectMenu project={project} onChanged={onChanged} onToast={onToast}/>:<button className="icon-button" aria-label="Project options"><Ellipsis size={20} /></button>}
+          {authenticated?(project?<ProjectMenu project={project} onChanged={onChanged} onToast={onToast}/>:<button className="icon-button" aria-label="Project options"><Ellipsis size={20} /></button>):null}
         </div>
         <div className="project-kicker"><span>PROJECT</span><span>{project?.industry.toUpperCase()??(second ? "COMMUNITY" : "CLIMATE")}</span></div>
         <h2>{title}</h2>
@@ -192,8 +193,8 @@ function ProjectCard({ second = false, onMatch, onComments, onProfile, project, 
         </div>
         {project?.recommendationId&&<div className="recommendation-feedback"><span>Was this useful?</span><button onClick={()=>feedback("not_now")}>Not now</button><button onClick={()=>feedback("not_relevant")}><ThumbsDown size={13}/> Not relevant</button></div>}
         <div className="post-actions">
-          <InterestButton projectId={projectId} durable={Boolean(project)} initial={project?.eyeCount??(second ? 41 : 24)} />
-          <button onClick={()=>project&&onComments?.(project)}><MessageCircle size={18} /> {project?.commentCount??(second ? 12 : 8)} comments</button>
+          <InterestButton projectId={projectId} durable={Boolean(project)} initial={project?.eyeCount??(second ? 41 : 24)} authenticated={authenticated} onRequireAuth={onRequireAuth}/>
+          <button onClick={()=>authenticated?(project&&onComments?.(project)):onRequireAuth?.()}><MessageCircle size={18} /> {project?.commentCount??(second ? 12 : 8)} comments</button>
           <button className="share-button" onClick={() => onShare?.({id:projectId,title,summary})}><Share2 size={17} /> Share</button>
         </div>
       </div>
@@ -263,9 +264,9 @@ function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish:
 
 function videoEmbed(url:string){try{const parsed=new URL(url);if(parsed.hostname.includes("youtube.com")){const id=parsed.searchParams.get("v");return id?`https://www.youtube-nocookie.com/embed/${id}`:null}if(parsed.hostname==="youtu.be")return `https://www.youtube-nocookie.com/embed/${parsed.pathname.slice(1)}`;if(parsed.hostname.includes("vimeo.com")){const id=parsed.pathname.split("/").filter(Boolean).pop();return id?`https://player.vimeo.com/video/${id}`:null}}catch{}return null}
 
-function TimelinePostCard({post,onProfile,onProject}:{post:TimelinePost;onProfile:(id:string)=>void;onProject:()=>void}){
+function TimelinePostCard({post,onProfile,onProject,onEngage}:{post:TimelinePost;onProfile:(id:string)=>void;onProject:()=>void;onEngage:()=>void}){
   const embed=post.videoUrl?videoEmbed(post.videoUrl):null;
-  return <article className="timeline-post"><header><Avatar person={{name:post.authorName??"n2 member",role:post.authorProfession??"n2 member",img:post.authorImage,isN2Admin:post.authorIsAdmin}} size="md"/><div><button className="profile-name" onClick={()=>onProfile(post.authorId)}>{post.authorName??"n2 member"} {post.authorIsAdmin&&<N2AdminBadge/>} {post.isDemo&&<DemoBadge/>}</button><span>{post.authorProfession??"n2 member"} · {new Date(post.createdAt).toLocaleDateString(undefined,{day:"numeric",month:"short"})}</span></div><button className="icon-button" aria-label="Post options"><Ellipsis size={18}/></button></header><p>{post.body}</p>{post.linkedProjects.length>0&&<div className="post-project-links">{post.linkedProjects.map(project=><button key={project.id} onClick={onProject}>#{project.title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}</button>)}</div>}{post.attachmentType==="image"&&post.attachmentUrl&&<img className="post-media" src={post.attachmentUrl} alt="Post attachment"/>}{post.attachmentType==="video"&&post.attachmentUrl&&<video className="post-media" src={post.attachmentUrl} controls preload="metadata"/>}{embed&&<div className="post-video-embed"><iframe src={embed} title="Video shared in post" allow="accelerometer; autoplay; encrypted-media; picture-in-picture" allowFullScreen/></div>}{post.videoUrl&&!embed&&<a className="post-video-link" href={post.videoUrl} target="_blank" rel="noreferrer"><Video size={16}/> Watch shared video <ArrowUpRight size={14}/></a>}<footer><button><MessageCircle size={16}/> Comment</button><button><Share2 size={16}/> Share</button></footer></article>
+  return <article className="timeline-post"><header><Avatar person={{name:post.authorName??"n2 member",role:post.authorProfession??"n2 member",img:post.authorImage,isN2Admin:post.authorIsAdmin}} size="md"/><div><button className="profile-name" onClick={()=>onProfile(post.authorId)}>{post.authorName??"n2 member"} {post.authorIsAdmin&&<N2AdminBadge/>} {post.isDemo&&<DemoBadge/>}</button><span>{post.authorProfession??"n2 member"} · {new Date(post.createdAt).toLocaleDateString(undefined,{day:"numeric",month:"short"})}</span></div><button className="icon-button" aria-label="Post options" onClick={onEngage}><Ellipsis size={18}/></button></header><p>{post.body}</p>{post.linkedProjects.length>0&&<div className="post-project-links">{post.linkedProjects.map(project=><button key={project.id} onClick={onProject}>#{project.title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}</button>)}</div>}{post.attachmentType==="image"&&post.attachmentUrl&&<img className="post-media" src={post.attachmentUrl} alt="Post attachment"/>}{post.attachmentType==="video"&&post.attachmentUrl&&<video className="post-media" src={post.attachmentUrl} controls preload="metadata"/>}{embed&&<div className="post-video-embed"><iframe src={embed} title="Video shared in post" allow="accelerometer; autoplay; encrypted-media; picture-in-picture" allowFullScreen/></div>}{post.videoUrl&&!embed&&<a className="post-video-link" href={post.videoUrl} target="_blank" rel="noreferrer"><Video size={16}/> Watch shared video <ArrowUpRight size={14}/></a>}<footer><button onClick={onEngage}><MessageCircle size={16}/> Comment</button><button onClick={onEngage}><Share2 size={16}/> Share</button></footer></article>
 }
 
 function PostComposer({currentMember,onClose,onPosted,onToast}:{currentMember:MemberPerson;onClose:()=>void;onPosted:(post:TimelinePost)=>void;onToast:(message:string)=>void}){
@@ -287,7 +288,7 @@ function NetworkPulse({onProjects}:{onProjects:()=>void}){
   return <section className="rail-card pulse-card" aria-roledescription="carousel" aria-label="Network pulse" onMouseEnter={()=>setPaused(true)} onMouseLeave={()=>setPaused(false)}><div className="pulse-head"><span>NETWORK PULSE</span><i>LIVE</i></div><div className="pulse-viewport"><div className="pulse-track" style={{transform:`translateX(-${active*100}%)`}}>{(slides.length?slides:[slide]).map(item=><article key={item.id} aria-hidden={item.id!==slide.id}><span>{item.label}</span><strong>{item.value}</strong><button disabled={!item.projectId} onClick={item.projectId?onProjects:undefined}>{item.title}</button><small>{item.detail}</small><div className="pulse-bar"><span style={{width:`${Math.max(4,item.progress)}%`}}/></div></article>)}</div></div><footer><div className="pulse-dots">{slides.slice(0,12).map((item,index)=><button key={item.id} aria-label={`Show ${item.label}`} className={index===active?"active":""} onClick={()=>setActive(index)}/>)}</div><div className="pulse-controls"><button aria-label="Previous pulse" disabled={slides.length<2} onClick={()=>move(-1)}><ChevronLeft size={14}/></button><span>{slides.length?`${active+1}/${slides.length}`:"0/0"}</span><button aria-label="Next pulse" disabled={slides.length<2} onClick={()=>move(1)}><ChevronRight size={14}/></button></div></footer></section>
 }
 
-function Feed({ onCreate, onShareIdea, onMatch, onComments, onProfile, onProject, onShare, onNotifications, onToast, unread, currentMember, newPost }: { onCreate: () => void; onShareIdea:()=>void; onMatch: () => void; onComments:(project:ProjectRecord)=>void; onProfile:(userId:string)=>void; onProject:()=>void; onShare:(project:{id:string;title:string;summary:string})=>void; onNotifications:()=>void; onToast:(message:string)=>void; unread:number; currentMember: MemberPerson; newPost:TimelinePost|null }) {
+function Feed({ onCreate, onShareIdea, onMatch, onComments, onProfile, onProject, onShare, onNotifications, onToast, unread, currentMember, newPost, authenticated, onRequireAuth }: { onCreate: () => void; onShareIdea:()=>void; onMatch: () => void; onComments:(project:ProjectRecord)=>void; onProfile:(userId:string)=>void; onProject:()=>void; onShare:(project:{id:string;title:string;summary:string})=>void; onNotifications:()=>void; onToast:(message:string)=>void; unread:number; currentMember: MemberPerson; newPost:TimelinePost|null; authenticated:boolean; onRequireAuth:()=>void }) {
   const [filter, setFilter] = useState("For you");
   const [notices,setNotices]=useState<Array<{id:string;title:string;body:string;authorName:string|null}>>([]);
   const [liveProjects,setLiveProjects]=useState<ProjectRecord[]>([]);
@@ -296,40 +297,40 @@ function Feed({ onCreate, onShareIdea, onMatch, onComments, onProfile, onProject
   useEffect(()=>{fetch("/api/notices").then(r=>r.ok?r.json():{notices:[]}).then(data=>setNotices(data.notices??[])).catch(()=>undefined)},[]);
   useEffect(()=>{fetch("/api/posts").then(r=>r.ok?r.json():{posts:[]}).then(data=>setPosts(data.posts??[])).catch(()=>undefined)},[]);
   useEffect(()=>{if(newPost)setPosts(rows=>[newPost,...rows.filter(row=>row.id!==newPost.id)])},[newPost]);
-  useEffect(()=>{const controller=new AbortController();fetch(`/api/projects?scope=discover&filter=${encodeURIComponent(filter.toLowerCase().replaceAll(" ","_"))}`,{signal:controller.signal}).then(r=>r.ok?r.json():{projects:[]}).then(data=>{setLiveProjects(data.projects??[]);setNextCursor(data.nextCursor??null);setAlgorithmMode(data.algorithmMode??"shadow")}).catch(()=>undefined);return()=>controller.abort()},[filter]);
+  useEffect(()=>{const controller=new AbortController();fetch(`/api/projects?scope=discover&filter=${encodeURIComponent(filter.toLowerCase().replaceAll(" ","_"))}`,{signal:controller.signal}).then(r=>r.ok?r.json():{projects:[]}).then(data=>{setLiveProjects(data.projects??[]);setNextCursor(data.nextCursor??null);setAlgorithmMode(data.algorithmMode??"shadow")}).catch(()=>undefined);return()=>controller.abort()},[filter,authenticated]);
   async function loadMore(){if(!nextCursor)return;setLoadingMore(true);const response=await fetch(`/api/projects?scope=discover&filter=${encodeURIComponent(filter.toLowerCase().replaceAll(" ","_"))}&cursor=${encodeURIComponent(nextCursor)}`);const data=await response.json();if(response.ok){setLiveProjects(rows=>[...rows,...(data.projects??[])]);setNextCursor(data.nextCursor??null)}setLoadingMore(false)}
   return (
     <>
-      <div className="mobile-topbar"><Logo /><button className="icon-button notification-button" onClick={onNotifications}><Bell size={20} />{unread>0&&<b>{unread>9?"9+":unread}</b>}</button></div>
+      <div className="mobile-topbar"><Logo />{authenticated?<button className="icon-button notification-button" onClick={onNotifications}><Bell size={20} />{unread>0&&<b>{unread>9?"9+":unread}</b>}</button>:<a className="public-mobile-signin" href="/signin?next=/">Sign in</a>}</div>
       <header className="feed-intro">
         <div>
-          <span className="eyebrow">TUESDAY, 12 AUGUST</span>
-          <h1>Good morning, {currentMember.name.split(" ")[0]}.</h1>
-          <p>Three projects could use someone like you today.</p>
+          <span className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</span>
+          <h1>{authenticated?`Good morning, ${currentMember.name.split(" ")[0]}.`:"See what useful people are building."}</h1>
+          <p>{authenticated?"Projects across the network could use someone like you today.":"Explore real ideas, open roles and collaborations growing across n2."}</p>
         </div>
-        <button className="primary-button" onClick={onCreate}><Plus size={18} /> Start a project</button>
+        <button className="primary-button" onClick={authenticated?onCreate:onRequireAuth}><Plus size={18} /> Start a project</button>
       </header>
       <section className="composer">
-        <Avatar person={currentMember} size="md" />
-        <button onClick={onShareIdea}>Share an idea that needs good people…</button>
+        <Avatar person={authenticated?currentMember:{name:"nice 2 network",role:"Public network"}} size="md" />
+        <button onClick={authenticated?onShareIdea:onRequireAuth}>{authenticated?"Share an idea that needs good people…":"Join n2 to share an idea that needs good people…"}</button>
         <span><Lightbulb size={18} /></span>
       </section>
-      <div className="feed-filter">
+      {authenticated?<div className="feed-filter">
         {["For you","Following","Newest"].map(item => <button key={item} className={filter===item?"active":""} onClick={()=>setFilter(item)}>{item}</button>)}
         <button className="filter-control"><SlidersHorizontal size={14}/> Filters</button>
-      </div>
+      </div>:<div className="public-feed-label"><span>PUBLIC NETWORK</span><p>Ideas and projects from across nice 2 network</p></div>}
       {notices.map(notice=><article className="official-notice" key={notice.id}><span className="official-badge"><b>n2</b> OFFICIAL NOTICE</span><h2>{notice.title}</h2><p>{notice.body}</p><small>{notice.authorName??"n2 team"} <N2AdminBadge/></small></article>)}
-      {filter === "Following" && <div className="feed-context"><UsersRound size={16}/><span>Projects from people you know, with open roles that fit your network.</span></div>}
-      {filter === "Newest" && <div className="feed-context"><Clock3 size={16}/><span>Fresh ideas from the last 24 hours.</span></div>}
-      {filter === "For you"&&algorithmMode==="shadow"&&<div className="feed-context"><N2Mark/><span>n2 is validating team recommendations in shadow mode. Your feed stays stable while quality is measured.</span></div>}
-      {posts.map(post=><TimelinePostCard key={post.id} post={post} onProfile={onProfile} onProject={onProject}/>)}
-      {liveProjects.length?liveProjects.map(project=><ProjectCard key={project.id} project={project} onShare={onShare} onMatch={onMatch} onComments={onComments} onProfile={onProfile} onToast={onToast} onChanged={next=>setLiveProjects(rows=>next?rows.map(row=>row.id===next.id?next:row):rows.filter(row=>row.id!==project.id))}/>):<ProjectCard onShare={onShare} onMatch={onMatch} />}
+      {authenticated&&filter === "Following" && <div className="feed-context"><UsersRound size={16}/><span>Projects from people you know, with open roles that fit your network.</span></div>}
+      {authenticated&&filter === "Newest" && <div className="feed-context"><Clock3 size={16}/><span>Fresh ideas from the last 24 hours.</span></div>}
+      {authenticated&&filter === "For you"&&algorithmMode==="shadow"&&<div className="feed-context"><N2Mark/><span>n2 is validating team recommendations in shadow mode. Your feed stays stable while quality is measured.</span></div>}
+      {posts.map(post=><TimelinePostCard key={post.id} post={post} onProfile={onProfile} onProject={authenticated?onProject:onRequireAuth} onEngage={authenticated?()=>undefined:onRequireAuth}/>) }
+      {liveProjects.length?liveProjects.map(project=><ProjectCard key={project.id} project={project} onShare={onShare} onMatch={authenticated?onMatch:onRequireAuth} onComments={onComments} onProfile={onProfile} onToast={onToast} authenticated={authenticated} onRequireAuth={onRequireAuth} onChanged={next=>setLiveProjects(rows=>next?rows.map(row=>row.id===next.id?next:row):rows.filter(row=>row.id!==project.id))}/>):<ProjectCard onShare={onShare} onMatch={authenticated?onMatch:onRequireAuth} authenticated={authenticated} onRequireAuth={onRequireAuth}/>}
       {nextCursor&&<button className="feed-load-more" disabled={loadingMore} onClick={loadMore}>{loadingMore?"Loading useful projects…":"Load more projects"}</button>}
       <article className="connection-card">
-        <div className="connection-copy"><span className="eyebrow">WORTH MEETING</span><h3>You and Lena both care about purposeful brands.</h3><p>She’s looking to meet product designers working on climate and public good.</p><button onClick={()=>onProfile("demo-lena")}>View Lena’s profile <ArrowUpRight size={16} /></button></div>
+        <div className="connection-copy"><span className="eyebrow">WORTH MEETING</span><h3>{authenticated?"You and Lena both care about purposeful brands.":"Useful projects start with people you would not usually meet."}</h3><p>{authenticated?"She’s looking to meet product designers working on climate and public good.":"Join n2 to discover relevant collaborators across industries and skills."}</p><button onClick={authenticated?()=>onProfile("demo-lena"):onRequireAuth}>{authenticated?"View Lena’s profile":"Join the network"} <ArrowUpRight size={16} /></button></div>
         <Avatar person={people.lena} size="xl" ring />
       </article>
-      {!liveProjects.length&&<ProjectCard second onShare={onShare} onMatch={onMatch} />}
+      {!liveProjects.length&&<ProjectCard second onShare={onShare} onMatch={authenticated?onMatch:onRequireAuth} authenticated={authenticated} onRequireAuth={onRequireAuth}/>}
       <div className="end-note"><span>n2</span><p>You’re all caught up for now.</p></div>
     </>
   );
@@ -499,43 +500,45 @@ export default function HomePage() {
   const [unreadNotifications,setUnreadNotifications]=useState(0);
   const [toast, setToast] = useState("");
   const [connections, setConnections] = useState<string[]>([]);
-  const [currentMember,setCurrentMember]=useState<MemberPerson>(people.maya);
-  useEffect(()=>{fetch("/api/auth/session").then(r=>r.json()).then(session=>{if(session?.user?.name)setCurrentMember({id:session.user.id,name:session.user.name,role:session.user.profession??"n2 member",img:session.user.image,isN2Admin:Boolean(session.user.isN2Admin)})}).catch(()=>undefined)},[]);
-  useEffect(()=>{fetch("/api/notifications").then(r=>r.ok?r.json():{unread:0}).then(data=>setUnreadNotifications(data.unread??0)).catch(()=>undefined)},[]);
+  const [currentMember,setCurrentMember]=useState<MemberPerson>({name:"nice 2 network",role:"Public network"});
+  const [authenticated,setAuthenticated]=useState(false);
+  useEffect(()=>{fetch("/api/auth/session").then(r=>r.json()).then(session=>{if(session?.user?.id&&session?.user?.name){setAuthenticated(true);setCurrentMember({id:session.user.id,name:session.user.name,role:session.user.profession??"n2 member",img:session.user.image,isN2Admin:Boolean(session.user.isN2Admin)})}}).catch(()=>undefined)},[]);
+  useEffect(()=>{if(!authenticated)return;fetch("/api/notifications").then(r=>r.ok?r.json():{unread:0}).then(data=>setUnreadNotifications(data.unread??0)).catch(()=>undefined)},[authenticated]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(""),3200);return()=>clearTimeout(timer)},[toast]);
   useEffect(()=>{const key=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setSearchOpen(true)}if(event.key==="Escape"){setSearchOpen(false);setMatchOpen(false)}};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key)},[]);
-  function go(next: View){ setView(next); setMenuOpen(false); window.scrollTo({top:0,behavior:"smooth"}); }
-  function openProfile(userId:string){if(!userId.startsWith("demo-")){setSelectedProfileId(userId);setCommentProject(null);go("profile")}}
-  function openOwnProfile(){setSelectedProfileId(currentMember.id??null);go("profile")}
+  function requireSignIn(){window.location.href="/signin?next=/"}
+  function go(next: View){if(!authenticated&&next!=="feed"){requireSignIn();return}setView(next);setMenuOpen(false);window.scrollTo({top:0,behavior:"smooth"})}
+  function openProfile(userId:string){if(!authenticated){requireSignIn();return}if(!userId.startsWith("demo-")){setSelectedProfileId(userId);setCommentProject(null);go("profile")}}
+  function openOwnProfile(){if(!authenticated){requireSignIn();return}setSelectedProfileId(currentMember.id??null);go("profile")}
   return (
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
-        <div><Logo onClick={()=>go("feed")} /><nav>{nav.map((item) => { const Icon=item.icon; return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={20}/><span>{item.label}</span></button>})}</nav></div>
-        <div className="sidebar-bottom">{currentMember.isN2Admin&&<a className="admin-nav-link" href="/admin"><ShieldCheck size={20}/><span>Admin console</span><N2AdminBadge/></a>}<button onClick={()=>{setEditProfileRequested(false);go("settings")}} className={view==="settings"?"active":""}><Settings size={20}/><span>Settings</span></button><button onClick={()=>setToast("Help centre is coming next.")}><CircleHelp size={20}/><span>Help</span></button><button onClick={()=>signOut({redirectTo:"/signin"})}><LogOut size={20}/><span>Log out</span></button><button className="profile-chip" onClick={openOwnProfile}><Avatar person={currentMember} size="sm"/><span><strong>{currentMember.name} {currentMember.isN2Admin&&<N2AdminBadge/>}</strong><small>View profile</small></span><ChevronDown size={16}/></button></div>
+        <div><Logo onClick={()=>go("feed")} /><nav>{nav.filter(item=>authenticated||item.id==="feed").map((item) => { const Icon=item.icon; return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={20}/><span>{item.label}</span></button>})}</nav></div>
+        <div className="sidebar-bottom">{authenticated?<>{currentMember.isN2Admin&&<a className="admin-nav-link" href="/admin"><ShieldCheck size={20}/><span>Admin console</span><N2AdminBadge/></a>}<button onClick={()=>{setEditProfileRequested(false);go("settings")}} className={view==="settings"?"active":""}><Settings size={20}/><span>Settings</span></button><button onClick={()=>setToast("Help centre is coming next.")}><CircleHelp size={20}/><span>Help</span></button><button onClick={()=>signOut({redirectTo:"/signin"})}><LogOut size={20}/><span>Log out</span></button><button className="profile-chip" onClick={openOwnProfile}><Avatar person={currentMember} size="sm"/><span><strong>{currentMember.name} {currentMember.isN2Admin&&<N2AdminBadge/>}</strong><small>View profile</small></span><ChevronDown size={16}/></button></>:<div className="public-sidebar-auth"><p>Have a skill, idea or useful introduction?</p><a href="/signin?next=/">Sign in</a><a className="join" href="/signin?next=/">Join n2</a></div>}</div>
       </aside>
       <main className="main-content">
         <button className="mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Open navigation">{menuOpen?<ArrowLeft/>:<Menu/>}</button>
         <div className="content-column">
-          {view==="feed"&&<Feed currentMember={currentMember} newPost={latestPost} onCreate={()=>setCreateOpen(true)} onShareIdea={()=>setPostComposerOpen(true)} onMatch={()=>setMatchOpen(true)} onComments={setCommentProject} onProfile={openProfile} onProject={()=>go("projects")} onShare={setShareProject} onToast={setToast} onNotifications={()=>setNotificationsOpen(true)} unread={unreadNotifications}/>}
-          {view==="projects"&&<ProjectsView onCreate={()=>setCreateOpen(true)} latestProject={latestProject} onComments={setCommentProject} onProfile={openProfile} onShare={setShareProject} onToast={setToast} onShortlist={setShortlistProjectId}/>}
-          {view==="messages"&&<MessagesView currentMember={currentMember}/>}
-          {view==="meet"&&<MeetView/>} 
-          {view==="profile"&&<ProfileView key={selectedProfileId??currentMember.id??"self"} member={currentMember} userId={selectedProfileId??currentMember.id} onEdit={()=>{setEditProfileRequested(true);go("settings")}}/>}
-          {view==="settings"&&<SettingsView key={editProfileRequested?"profile-edit":"settings"} initialPanel={editProfileRequested?"profile":"root"}/>}
+          {view==="feed"&&<Feed currentMember={currentMember} newPost={latestPost} authenticated={authenticated} onRequireAuth={requireSignIn} onCreate={()=>setCreateOpen(true)} onShareIdea={()=>setPostComposerOpen(true)} onMatch={()=>setMatchOpen(true)} onComments={project=>authenticated?setCommentProject(project):requireSignIn()} onProfile={openProfile} onProject={()=>go("projects")} onShare={setShareProject} onToast={setToast} onNotifications={()=>setNotificationsOpen(true)} unread={unreadNotifications}/>}
+          {authenticated&&view==="projects"&&<ProjectsView onCreate={()=>setCreateOpen(true)} latestProject={latestProject} onComments={setCommentProject} onProfile={openProfile} onShare={setShareProject} onToast={setToast} onShortlist={setShortlistProjectId}/>}
+          {authenticated&&view==="messages"&&<MessagesView currentMember={currentMember}/>}
+          {authenticated&&view==="meet"&&<MeetView/>}
+          {authenticated&&view==="profile"&&<ProfileView key={selectedProfileId??currentMember.id??"self"} member={currentMember} userId={selectedProfileId??currentMember.id} onEdit={()=>{setEditProfileRequested(true);go("settings")}}/>}
+          {authenticated&&view==="settings"&&<SettingsView key={editProfileRequested?"profile-edit":"settings"} initialPanel={editProfileRequested?"profile":"root"}/>}
         </div>
       </main>
       <aside className="right-rail">
-        <div className="rail-top"><button className="search-button" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Search people & projects</span><kbd>⌘K</kbd></button><button className="icon-button border notification-button" onClick={()=>setNotificationsOpen(true)}><Bell size={19}/>{unreadNotifications>0&&<b>{unreadNotifications>9?"9+":unreadNotifications}</b>}</button></div>
-        <section className="rail-card"><div className="rail-title"><span>PEOPLE TO KNOW</span><button onClick={()=>setSearchOpen(true)}>See all</button></div>{[people.lena,people.dev,people.sofia].map((p,i)=><div className="person-suggest" key={p.name}><Avatar person={p} size="md"/><div><strong>{p.name}</strong><span>{p.role}</span><small>{i===0?"3 shared interests":i===1?"2 mutual projects":"Near you"}</small></div><button className={connections.includes(p.name)?"connected":""} aria-label={`Connect with ${p.name}`} onClick={()=>{setConnections(c=>c.includes(p.name)?c.filter(n=>n!==p.name):[...c,p.name]);setToast(connections.includes(p.name)?`Removed ${p.name}`:`Connection request sent to ${p.name}`)}}>{connections.includes(p.name)?<Check size={17}/>:<Plus size={17}/>}</button></div>)}</section>
+        {authenticated?<div className="rail-top"><button className="search-button" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Search people & projects</span><kbd>⌘K</kbd></button><button className="icon-button border notification-button" onClick={()=>setNotificationsOpen(true)}><Bell size={19}/>{unreadNotifications>0&&<b>{unreadNotifications>9?"9+":unreadNotifications}</b>}</button></div>:<div className="public-rail-auth"><a href="/signin?next=/">Sign in</a><a href="/signin?next=/">Join n2</a></div>}
+        <section className="rail-card"><div className="rail-title"><span>PEOPLE TO KNOW</span>{authenticated&&<button onClick={()=>setSearchOpen(true)}>See all</button>}</div>{[people.lena,people.dev,people.sofia].map((p,i)=><div className="person-suggest" key={p.name}><Avatar person={p} size="md"/><div><strong>{p.name}</strong><span>{p.role}</span><small>{i===0?"3 shared interests":i===1?"2 mutual projects":"Near you"}</small></div><button className={authenticated&&connections.includes(p.name)?"connected":""} aria-label={`Connect with ${p.name}`} onClick={()=>{if(!authenticated){requireSignIn();return}setConnections(c=>c.includes(p.name)?c.filter(n=>n!==p.name):[...c,p.name]);setToast(connections.includes(p.name)?`Removed ${p.name}`:`Connection request sent to ${p.name}`)}}>{authenticated&&connections.includes(p.name)?<Check size={17}/>:<Plus size={17}/>}</button></div>)}</section>
         <NetworkPulse onProjects={()=>go("projects")}/>
         <footer><Logo/><p>Useful people, brought together.</p><div><button>About</button><button>Privacy</button><button>Community</button></div><small>© 2026 nice 2 network</small></footer>
       </aside>
-      <nav className="mobile-nav">{nav.slice(0,4).map((item)=>{const Icon=item.icon;return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}<button onClick={openOwnProfile} className={view==="profile"?"active":""}><UserRound size={21}/><span>Me</span></button></nav>
-      {createOpen&&<CreateProject onClose={()=>setCreateOpen(false)} onPublish={project=>{setLatestProject(project);setToast("Project published — useful matches are being notified.");go("projects")}}/>}
-      {postComposerOpen&&<PostComposer currentMember={currentMember} onClose={()=>setPostComposerOpen(false)} onPosted={setLatestPost} onToast={setToast}/>}
-      {matchOpen&&<MatchPanel onClose={()=>setMatchOpen(false)} onMessage={()=>{setMatchOpen(false);go("messages")}}/>}
-      {searchOpen&&<SearchOverlay onClose={()=>setSearchOpen(false)} onNavigate={go} onProfile={openProfile}/>}
-      {notificationsOpen&&<NotificationPanel onClose={()=>setNotificationsOpen(false)} onUnread={setUnreadNotifications}/>}
+      {authenticated&&<nav className="mobile-nav">{nav.slice(0,4).map((item)=>{const Icon=item.icon;return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}<button onClick={openOwnProfile} className={view==="profile"?"active":""}><UserRound size={21}/><span>Me</span></button></nav>}
+      {authenticated&&createOpen&&<CreateProject onClose={()=>setCreateOpen(false)} onPublish={project=>{setLatestProject(project);setToast("Project published — useful matches are being notified.");go("projects")}}/>}
+      {authenticated&&postComposerOpen&&<PostComposer currentMember={currentMember} onClose={()=>setPostComposerOpen(false)} onPosted={setLatestPost} onToast={setToast}/>}
+      {authenticated&&matchOpen&&<MatchPanel onClose={()=>setMatchOpen(false)} onMessage={()=>{setMatchOpen(false);go("messages")}}/>}
+      {authenticated&&searchOpen&&<SearchOverlay onClose={()=>setSearchOpen(false)} onNavigate={go} onProfile={openProfile}/>}
+      {authenticated&&notificationsOpen&&<NotificationPanel onClose={()=>setNotificationsOpen(false)} onUnread={setUnreadNotifications}/>}
       {shareProject&&<ShareSheet project={shareProject} onClose={()=>setShareProject(null)} onToast={setToast}/>}
       {commentProject&&<ProjectComments project={commentProject} onClose={()=>setCommentProject(null)} onProfile={openProfile}/>}
       {shortlistProjectId&&<ShortlistPanel projectId={shortlistProjectId} onClose={()=>setShortlistProjectId(null)} onProfile={openProfile} onToast={setToast}/>}

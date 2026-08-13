@@ -1,9 +1,10 @@
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { auth } from "@/auth";
 import { getDb } from "@/db";
 import { adminAssignments, projectBookmarks, projectMembers, projectRecommendations, projectRoles, projects, recommendationEvents, users } from "@/db/schema";
-import { apiError, requireMember } from "@/lib/api";
+import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
 import { canonicalTerm, feedScore } from "@/lib/recommendations/scoring";
@@ -57,15 +58,18 @@ function enforceOwnerDiversity(rows: FeedProject[]) {
 
 export async function GET(request: Request) {
   try {
-    const member = await requireMember(), db = getDb(), url = new URL(request.url), scope = url.searchParams.get("scope") ?? "discover", filter = (url.searchParams.get("filter") ?? "for_you").toLowerCase().replaceAll(" ", "_");
+    const session=await auth(),member=session?.user,db = getDb(), url = new URL(request.url), scope = url.searchParams.get("scope") ?? "discover", filter = (url.searchParams.get("filter") ?? "for_you").toLowerCase().replaceAll(" ", "_");
+    if(scope==="mine"&&!member?.id)throw new ApiError(401,"Sign in required");
     const limit = Math.min(40, Math.max(1, Number(url.searchParams.get("limit") ?? 20))), cursor = url.searchParams.get("cursor");
-    const memberships = await db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, member.id));
+    const memberId=member?.id??"00000000-0000-0000-0000-000000000000";
+    const memberships = member?.id?await db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, member.id)):[];
     const memberProjectIds = memberships.map(row => row.projectId);
     const condition = scope === "mine"
-      ? or(eq(projects.ownerId, member.id), memberProjectIds.length ? inArray(projects.id, memberProjectIds) : eq(projects.ownerId, member.id))
+      ? or(eq(projects.ownerId, memberId), memberProjectIds.length ? inArray(projects.id, memberProjectIds) : eq(projects.ownerId, memberId))
       : and(eq(projects.status, "active"), eq(projects.visibility, "network"));
-    let rows: FeedProject[] = await baseProjects(member.id, condition);
+    let rows: FeedProject[] = await baseProjects(memberId, condition);
     if (scope === "discover") {
+      if(!member?.id){const start=cursor?Math.max(0,rows.findIndex(row=>row.id===cursor)+1):0,page=rows.slice(start,start+limit);return NextResponse.json({projects:page,nextCursor:start+limit<rows.length?page.at(-1)?.id:null,algorithmMode:"public"})}
       const settings = await getActiveAlgorithmSettings();
       const [profile, recommendations] = await Promise.all([
         db.select({ industry: users.industry, interests: users.interests, ageBand: users.ageBand }).from(users).where(eq(users.id, member.id)).limit(1).then(result => result[0]),

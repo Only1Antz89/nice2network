@@ -1,11 +1,10 @@
 import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "@/db";
-import { apiError, requireMember } from "@/lib/api";
+import { apiError } from "@/lib/api";
 
 export async function GET() {
   try {
-    await requireMember();
     const db = getDb();
     const progress = await db.execute(sql`select p.id, p.title, count(m.id)::int as total, count(m.id) filter (where m.status = 'completed')::int as completed from projects p left join milestones m on m.project_id = p.id where p.status = 'active' and p.visibility = 'network' group by p.id, p.title order by p.updated_at desc limit 12`);
     const [connections] = await db.execute(sql`select count(*)::int as value from project_members where membership_role not in ('owner','co_owner') and joined_at >= now() - interval '7 days'`);

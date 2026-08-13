@@ -21,7 +21,6 @@ const postSchema = z.object({
 
 export async function GET() {
   try {
-    await requireMember();
     const db = getDb();
     const rows = await db.select({
       id: timelinePosts.id, body: timelinePosts.body, linkedProjectIds: timelinePosts.linkedProjectIds,
