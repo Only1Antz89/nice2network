@@ -728,7 +728,7 @@ export default function HomePage() {
         <NetworkPulse onProjects={()=>go("projects")}/>
         <footer><Logo/><p>Useful people, brought together.</p><div><button>About</button><button>Privacy</button><button>Community</button></div><small>© 2026 nice 2 network</small></footer>
       </aside>}
-      <nav className="mobile-nav">{nav.slice(0,5).map((item)=>{const Icon=item.icon;return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}<button onClick={openOwnProfile} className={view==="profile"?"active":""}><UserRound size={21}/><span>Me</span></button></nav>
+      <nav className="mobile-nav" aria-label="Mobile navigation">{nav.slice(0,5).filter(item=>item.id!==view).map((item)=>{const Icon=item.icon;return <button key={item.id} onClick={()=>go(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}{view!=="profile"&&<button onClick={openOwnProfile}><UserRound size={21}/><span>Me</span></button>}</nav>
       {authenticated&&createOpen&&<CreateProject currentMember={currentMember} onClose={()=>setCreateOpen(false)} onPublish={project=>{setLatestProject(project);setToast("Project published — useful matches are being notified.");go("projects")}}/>}
       {authenticated&&postComposerOpen&&<PostComposer currentMember={currentMember} onClose={()=>setPostComposerOpen(false)} onPosted={setLatestPost} onToast={setToast}/>}
       {authenticated&&matchOpen&&<MatchPanel onClose={()=>setMatchOpen(false)} onMessage={()=>{setMatchOpen(false);go("messages")}}/>}
