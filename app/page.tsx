@@ -5441,6 +5441,10 @@ function NetworkView({
     [loading, setLoading] = useState(true),
     [profession, setProfession] = useState("All professions"),
     [skill, setSkill] = useState(""),
+    [platformPeople, setPlatformPeople] = useState<
+      Array<Record<string, unknown>>
+    >([]),
+    [platformSearching, setPlatformSearching] = useState(false),
     [selected, setSelected] = useState<NetworkNodeRecord | null>(null);
   useEffect(() => {
     fetch("/api/network/graph")
@@ -5450,6 +5454,31 @@ function NetworkView({
       .then(setData)
       .finally(() => setLoading(false));
   }, []);
+  useEffect(() => {
+    const controller = new AbortController(),
+      query = skill.trim(),
+      timer = setTimeout(() => {
+        if (query.length < 2) {
+          setPlatformPeople([]);
+          setPlatformSearching(false);
+          return;
+        }
+        setPlatformSearching(true);
+        fetch(`/api/search?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal,
+        })
+          .then((response) =>
+            response.ok ? response.json() : { people: [] },
+          )
+          .then((result) => setPlatformPeople(result.people ?? []))
+          .catch(() => undefined)
+          .finally(() => setPlatformSearching(false));
+      }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [skill]);
   const categories = [
       "All professions",
       ...Array.from(new Set(data.nodes.map(networkProfession))).sort(),
@@ -5561,7 +5590,7 @@ function NetworkView({
                 value={skill}
                 onChange={(event) => setSkill(event.target.value)}
                 placeholder="Search people or skills"
-                aria-label="Search your network"
+                aria-label="Search people across n2"
               />
               {skill && (
                 <button onClick={() => setSkill("")} aria-label="Clear search">
@@ -5593,6 +5622,48 @@ function NetworkView({
               </button>
             )}
           </div>
+          {skill.trim().length >= 2 && (
+            <section className="network-platform-results" aria-live="polite">
+              <div>
+                <span className="eyebrow">PEOPLE ACROSS N2</span>
+                <small>
+                  {platformSearching
+                    ? "Searching…"
+                    : `${platformPeople.length} found`}
+                </small>
+              </div>
+              {!platformSearching && !platformPeople.length && (
+                <p>No public or network-visible profiles match this search.</p>
+              )}
+              {platformPeople.map((person) => (
+                <button
+                  key={String(person.id)}
+                  onClick={() => onProfile(String(person.id))}
+                >
+                  <Avatar
+                    person={{
+                      name: String(person.name ?? "n2 member"),
+                      role: String(person.profession ?? "Member"),
+                      img: person.image ? String(person.image) : null,
+                    }}
+                    size="md"
+                  />
+                  <span>
+                    <strong>{String(person.name ?? "n2 member")}</strong>
+                    <small>{String(person.profession ?? "n2 member")}</small>
+                    <em>
+                      {person.isMutual
+                        ? "Mutual connection"
+                        : person.isFollowing
+                          ? "Following"
+                          : "View profile"}
+                    </em>
+                  </span>
+                  <ArrowUpRight size={16} />
+                </button>
+              ))}
+            </section>
+          )}
           {nodes.map((node) => {
             const position = positions.get(node.id)!,
               category = networkProfession(node);
