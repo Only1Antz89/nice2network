@@ -296,3 +296,20 @@ test("ships a connected-member network map with profession and skill discovery",
   assert.match(styles, /\.network-node \.avatar/);
   assert.match(styles, /\.app-shell\.network-shell/);
 });
+
+test("connects every open project contribution to a profile-aware application flow", async () => {
+  const [page, apply, styles] = await Promise.all([
+    read("app/page.tsx"),
+    read("app/api/projects/[projectId]/apply/route.ts"),
+    read("app/globals.css"),
+  ]);
+  assert.match(page, /function ContributionDialog/);
+  assert.match(page, /n2:apply-role/);
+  assert.match(page, /Get involved/);
+  assert.match(page, /Your profile may not closely match this contribution/);
+  assert.match(page, /Offer another contribution/);
+  assert.match(apply, /professionMatch/);
+  assert.match(apply, /requiredMatches/);
+  assert.match(apply, /You have already applied for this role/);
+  assert.match(styles, /\.role-fit\.warning/);
+});
