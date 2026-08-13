@@ -70,6 +70,15 @@ function formatNetworkDate(value: Date | string, options: Intl.DateTimeFormatOpt
   return new Intl.DateTimeFormat("en-GB", { ...options, timeZone: "Europe/London" }).format(typeof value === "string" ? new Date(value) : value);
 }
 
+function localGreeting(value: Date) {
+  const hour=value.getHours();
+  if(hour<5)return "Good night";
+  if(hour<12)return "Good morning";
+  if(hour<18)return "Good afternoon";
+  if(hour<22)return "Good evening";
+  return "Good night";
+}
+
 const people = {
   maya: { name: "Maya Chen", role: "Product Designer", img: "https://i.pravatar.cc/160?img=47" },
   marcus: { name: "Marcus Okafor", role: "Founder · Clean Energy", img: "https://i.pravatar.cc/160?img=12" },
@@ -318,11 +327,13 @@ function FeedFilters({value,industries,onClose,onApply}:{value:FeedFilterState;i
 
 function Feed({ onCreate, onShareIdea, onMatch, onComments, onPostThread, onProfile, onProject, onShare, onNotifications, onToast, unread, currentMember, newPost, authenticated, onRequireAuth }: { onCreate: () => void; onShareIdea:()=>void; onMatch: () => void; onComments:(project:ProjectRecord)=>void; onPostThread:(post:TimelinePost)=>void; onProfile:(userId:string)=>void; onProject:()=>void; onShare:(project:{id:string;title:string;summary:string;kind?:"project"|"post"})=>void; onNotifications:()=>void; onToast:(message:string)=>void; unread:number; currentMember: MemberPerson; newPost:TimelinePost|null; authenticated:boolean; onRequireAuth:()=>void }) {
   const [filter, setFilter] = useState("For you");
+  const [clock,setClock]=useState<Date|null>(null);
   const [filtersOpen,setFiltersOpen]=useState(false),[projectFilters,setProjectFilters]=useState<FeedFilterState>({industry:"",stage:"",workMode:"",location:""});
   const [notices,setNotices]=useState<Array<{id:string;title:string;body:string;authorName:string|null}>>([]);
   const [liveProjects,setLiveProjects]=useState<ProjectRecord[]>([]);
   const [posts,setPosts]=useState<TimelinePost[]>([]);
   const [nextCursor,setNextCursor]=useState<string|null>(null),[loadingMore,setLoadingMore]=useState(false),[algorithmMode,setAlgorithmMode]=useState("shadow");
+  useEffect(()=>{const sync=()=>setClock(new Date());sync();const timer=window.setInterval(sync,60_000);window.addEventListener("focus",sync);const visible=()=>{if(document.visibilityState==="visible")sync()};document.addEventListener("visibilitychange",visible);return()=>{window.clearInterval(timer);window.removeEventListener("focus",sync);document.removeEventListener("visibilitychange",visible)}},[]);
   useEffect(()=>{fetch("/api/notices").then(r=>r.ok?r.json():{notices:[]}).then(data=>setNotices(data.notices??[])).catch(()=>undefined)},[]);
   useEffect(()=>{fetch("/api/posts").then(r=>r.ok?r.json():{posts:[]}).then(data=>setPosts(data.posts??[])).catch(()=>undefined)},[]);
   useEffect(()=>{if(newPost)setPosts(rows=>[newPost,...rows.filter(row=>row.id!==newPost.id)])},[newPost]);
@@ -336,8 +347,8 @@ function Feed({ onCreate, onShareIdea, onMatch, onComments, onPostThread, onProf
       <div className="mobile-topbar"><Logo /><div className="public-mobile-actions"><button className="icon-button notification-button" onClick={authenticated?onNotifications:onRequireAuth}><Bell size={20} />{authenticated&&unread>0&&<b>{unread>9?"9+":unread}</b>}</button>{!authenticated&&<a className="public-mobile-signin" href="/signin?mode=register">Join n2</a>}</div></div>
       <header className="feed-intro">
         <div>
-          <span className="eyebrow">{formatNetworkDate(new Date(),{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</span>
-          <h1>{authenticated?`Good morning, ${currentMember.name.split(" ")[0]}.`:"See what useful people are building."}</h1>
+          <span className="eyebrow">{clock?new Intl.DateTimeFormat(undefined,{weekday:"long",day:"numeric",month:"long"}).format(clock).toUpperCase():"YOUR NETWORK"}</span>
+          <h1>{authenticated?`${clock?localGreeting(clock):"Hello"}, ${currentMember.name.split(" ")[0]}.`:"See what useful people are building."}</h1>
           <p>{authenticated?"Projects across the network could use someone like you today.":"Explore real ideas, open roles and collaborations growing across n2."}</p>
         </div>
         <button className="primary-button" onClick={authenticated?onCreate:onRequireAuth}><Plus size={18} /> Start a project</button>
