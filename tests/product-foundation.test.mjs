@@ -156,3 +156,10 @@ test("ships editable profiles, durable chat controls and four-person n2 meets", 
   assert.match(room, /RTCPeerConnection/);
   assert.match(page, /Create group chat/);
 });
+
+test("keeps the server and browser timeline heading deterministic", async () => {
+  const page = await read("app/page.tsx");
+  assert.match(page, /new Intl\.DateTimeFormat\("en-GB"/);
+  assert.match(page, /timeZone: "Europe\/London"/);
+  assert.doesNotMatch(page, /new Date\(\)\.toLocaleDateString\(undefined/);
+});

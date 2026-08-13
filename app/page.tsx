@@ -65,6 +65,10 @@ type TimelinePost = { id:string;body:string;attachmentType?:"image"|"video"|null
 type PulseSlide = {id:string;kind:string;label:string;value:string;title:string;detail:string;progress:number;projectId?:string};
 type FeedFilterState = { industry:string;stage:string;workMode:string;location:string };
 
+function formatNetworkDate(value: Date | string, options: Intl.DateTimeFormatOptions) {
+  return new Intl.DateTimeFormat("en-GB", { ...options, timeZone: "Europe/London" }).format(typeof value === "string" ? new Date(value) : value);
+}
+
 const people = {
   maya: { name: "Maya Chen", role: "Product Designer", img: "https://i.pravatar.cc/160?img=47" },
   marcus: { name: "Marcus Okafor", role: "Founder · Clean Energy", img: "https://i.pravatar.cc/160?img=12" },
@@ -318,7 +322,7 @@ function Feed({ onCreate, onShareIdea, onMatch, onComments, onProfile, onProject
       <div className="mobile-topbar"><Logo /><div className="public-mobile-actions"><button className="icon-button notification-button" onClick={authenticated?onNotifications:onRequireAuth}><Bell size={20} />{authenticated&&unread>0&&<b>{unread>9?"9+":unread}</b>}</button>{!authenticated&&<a className="public-mobile-signin" href="/signin?mode=register">Join n2</a>}</div></div>
       <header className="feed-intro">
         <div>
-          <span className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</span>
+          <span className="eyebrow">{formatNetworkDate(new Date(),{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</span>
           <h1>{authenticated?`Good morning, ${currentMember.name.split(" ")[0]}.`:"See what useful people are building."}</h1>
           <p>{authenticated?"Projects across the network could use someone like you today.":"Explore real ideas, open roles and collaborations growing across n2."}</p>
         </div>
