@@ -1,4 +1,4 @@
-/* eslint-disable no-empty, jsx-a11y/media-has-caption, jsx-a11y/no-autofocus, react-hooks/set-state-in-effect, react-hooks/immutability */
+/* eslint-disable no-empty, @next/next/no-img-element, jsx-a11y/media-has-caption, jsx-a11y/no-autofocus, react-hooks/set-state-in-effect, react-hooks/immutability */
 "use client";
 
 import {
@@ -51,7 +51,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { signOut } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 
 type View = "feed" | "projects" | "messages" | "meet" | "profile" | "settings";
 type MemberPerson = { id?: string; name: string; role: string; img?: string | null; isN2Admin?: boolean };
@@ -313,7 +313,7 @@ function Feed({ onCreate, onShareIdea, onMatch, onComments, onProfile, onProject
   const filterCount=Object.values(projectFilters).filter(Boolean).length;
   return (
     <>
-      <div className="mobile-topbar"><Logo />{authenticated?<button className="icon-button notification-button" onClick={onNotifications}><Bell size={20} />{unread>0&&<b>{unread>9?"9+":unread}</b>}</button>:<a className="public-mobile-signin" href="/signin?next=/">Sign in</a>}</div>
+      <div className="mobile-topbar"><Logo />{authenticated?<button className="icon-button notification-button" onClick={onNotifications}><Bell size={20} />{unread>0&&<b>{unread>9?"9+":unread}</b>}</button>:<button className="public-mobile-signin" onClick={onRequireAuth}>Join n2</button>}</div>
       <header className="feed-intro">
         <div>
           <span className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</span>
@@ -469,6 +469,13 @@ function HelpPanel({onClose,onNavigate}:{onClose:()=>void;onNavigate:(view:View)
   return <div className="panel-backdrop" role="presentation" onMouseDown={event=>event.target===event.currentTarget&&onClose()}><aside className="help-panel" role="dialog" aria-modal="true" aria-label="Help centre"><header><div><span className="eyebrow">N2 SUPPORT</span><h2>How can we help?</h2></div><button className="icon-button" onClick={onClose}><X size={19}/></button></header><label className="help-search"><Search size={17}/><input autoFocus value={query} onChange={event=>setQuery(event.target.value)} placeholder="Search help"/></label><div className="help-topics">{visible.map(topic=><article key={topic.id}><button onClick={()=>setOpen(current=>current===topic.id?null:topic.id)}><span>{topic.title}</span><ChevronDown size={16}/></button>{open===topic.id&&<div><p>{topic.answer}</p><button onClick={()=>{onNavigate(topic.view);onClose()}}>{topic.label}<ArrowUpRight size={14}/></button></div>}</article>)}{!visible.length&&<div className="help-empty"><CircleHelp size={21}/><strong>No matching help article</strong><p>Try “projects”, “messages”, “profile” or “meet”.</p></div>}</div><footer><ShieldCheck size={16}/><p><strong>Safety concern?</strong><span>Use the report option on the relevant project, post or member so the n2 team receives the right context.</span></p></footer></aside></div>
 }
 
+function GuestAuthPrompt({onClose,initialMode="register"}:{onClose:()=>void;initialMode?:"register"|"signin"}){
+  const [mode,setMode]=useState<"register"|"signin">(initialMode),[busy,setBusy]=useState(false),[error,setError]=useState(""),[photo,setPhoto]=useState("");
+  async function choosePhoto(file?:File){if(!file)return;if(file.size>500_000){setError("Choose a photo smaller than 500 KB.");return}const reader=new FileReader();reader.onload=()=>setPhoto(String(reader.result));reader.readAsDataURL(file)}
+  async function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();setBusy(true);setError("");const data=new FormData(event.currentTarget),email=String(data.get("email")),password=String(data.get("password"));if(mode==="signin"){const result=await signIn("credentials",{email,password,redirect:false});if(result?.error){setError("Check your email and password.");setBusy(false);return}window.location.reload();return}const response=await fetch("/api/auth/register",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({title:data.get("title"),firstName:data.get("firstName"),lastName:data.get("lastName"),dateOfBirth:data.get("dateOfBirth"),image:photo,email,password})});const result=await response.json();if(!response.ok){setError(result.error??"Could not create your account.");setBusy(false);return}window.location.href=result.onboarding?"/onboarding":"/signin"}
+  return <div className="modal-backdrop guest-auth-backdrop" role="presentation" onMouseDown={event=>event.target===event.currentTarget&&onClose()}><section className="guest-auth-modal" role="dialog" aria-modal="true" aria-label={mode==="register"?"Create an n2 account":"Sign in to n2"}><header><Logo/><button className="icon-button" onClick={onClose}><X size={19}/></button></header><div className="guest-auth-intro"><span className="eyebrow">{mode==="register"?"JOIN THE NETWORK":"WELCOME BACK"}</span><h2>{mode==="register"?"Turn interest into contribution.":"Continue where you left off."}</h2><p>{mode==="register"?"Create an account to place Eyes, comment, share ideas, start projects and meet useful people.":"Sign in to interact with projects and your network."}</p></div><div className="guest-auth-tabs"><button className={mode==="register"?"active":""} onClick={()=>{setMode("register");setError("")}}>Create account</button><button className={mode==="signin"?"active":""} onClick={()=>{setMode("signin");setError("")}}>Sign in</button></div><form onSubmit={submit}>{mode==="register"&&<><div className="guest-signup-grid"><label>Title<select name="title" defaultValue="Ms" required><option>Mr</option><option>Ms</option><option>Mrs</option><option>Miss</option><option>Mx</option><option>Dr</option><option>Prof</option></select></label><label>Date of birth<input name="dateOfBirth" type="date" max={new Date(new Date().setFullYear(new Date().getFullYear()-16)).toISOString().slice(0,10)} required/></label><label>First name<input name="firstName" autoComplete="given-name" minLength={2} required/></label><label>Surname<input name="lastName" autoComplete="family-name" minLength={2} required/></label></div><label className="guest-photo-field"><span>Profile photo <small>Optional</small></span><span className="guest-photo-picker">{photo?<img src={photo} alt="Profile preview"/>:<b>n2</b>}<span>{photo?"Photo ready":"Use the n2 mark or add a photo"}</span><ImageIcon size={15}/><input aria-label="Choose a profile photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>choosePhoto(event.target.files?.[0])}/></span></label></>}<label>Email<input name="email" type="email" autoComplete="email" required/></label><label>Password<input name="password" type="password" autoComplete={mode==="register"?"new-password":"current-password"} minLength={10} required/><small>At least 10 characters.</small></label>{error&&<p className="form-error">{error}</p>}<button className="primary-button wide" disabled={busy}>{busy?"One moment…":mode==="register"?"Create account":"Sign in"}</button></form><small className="guest-auth-terms">By joining, you agree to follow the n2 community standards and privacy choices.</small></section></div>
+}
+
 function ShareSheet({project,onClose,onToast}:{project:{id:string;title:string;summary:string};onClose:()=>void;onToast:(message:string)=>void}){
   const url=typeof window!=="undefined"?`${window.location.origin}/?project=${project.id}`:"";
   const encoded=encodeURIComponent(url),text=encodeURIComponent(`${project.title} — ${project.summary}`);
@@ -523,6 +530,7 @@ export default function HomePage() {
   const [shortlistProjectId,setShortlistProjectId]=useState<string|null>(null);
   const [shareProject,setShareProject]=useState<{id:string;title:string;summary:string}|null>(null);
   const [helpOpen,setHelpOpen]=useState(false);
+  const [guestAuthMode,setGuestAuthMode]=useState<"register"|"signin"|null>(null);
   const [notificationsOpen,setNotificationsOpen]=useState(false);
   const [unreadNotifications,setUnreadNotifications]=useState(0);
   const [toast, setToast] = useState("");
@@ -533,7 +541,7 @@ export default function HomePage() {
   useEffect(()=>{if(!authenticated)return;fetch("/api/notifications").then(r=>r.ok?r.json():{unread:0}).then(data=>setUnreadNotifications(data.unread??0)).catch(()=>undefined)},[authenticated]);
   useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(""),3200);return()=>clearTimeout(timer)},[toast]);
   useEffect(()=>{const key=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setSearchOpen(true)}if(event.key==="Escape"){setSearchOpen(false);setMatchOpen(false)}};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key)},[]);
-  function requireSignIn(){window.location.href="/signin?next=/"}
+  function requireSignIn(){setGuestAuthMode("register")}
   function go(next: View){if(!authenticated&&next!=="feed"){requireSignIn();return}setView(next);setMenuOpen(false);window.scrollTo({top:0,behavior:"smooth"})}
   function openProfile(userId:string){if(!authenticated){requireSignIn();return}if(!userId.startsWith("demo-")){setSelectedProfileId(userId);setCommentProject(null);go("profile")}}
   function openOwnProfile(){if(!authenticated){requireSignIn();return}setSelectedProfileId(currentMember.id??null);go("profile")}
@@ -541,7 +549,7 @@ export default function HomePage() {
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <div><Logo onClick={()=>go("feed")} /><nav>{nav.filter(item=>authenticated||item.id==="feed").map((item) => { const Icon=item.icon; return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={20}/><span>{item.label}</span></button>})}</nav></div>
-        <div className="sidebar-bottom">{authenticated?<>{currentMember.isN2Admin&&<a className="admin-nav-link" href="/admin"><ShieldCheck size={20}/><span>Admin console</span><N2AdminBadge/></a>}<button onClick={()=>{setEditProfileRequested(false);go("settings")}} className={view==="settings"?"active":""}><Settings size={20}/><span>Settings</span></button><button onClick={()=>setHelpOpen(true)}><CircleHelp size={20}/><span>Help</span></button><button onClick={()=>signOut({redirectTo:"/signin"})}><LogOut size={20}/><span>Log out</span></button><button className="profile-chip" onClick={openOwnProfile}><Avatar person={currentMember} size="sm"/><span><strong>{currentMember.name} {currentMember.isN2Admin&&<N2AdminBadge/>}</strong><small>View profile</small></span><ChevronDown size={16}/></button></>:<div className="public-sidebar-auth"><p>Have a skill, idea or useful introduction?</p><a href="/signin?next=/">Sign in</a><a className="join" href="/signin?next=/">Join n2</a></div>}</div>
+        <div className="sidebar-bottom">{authenticated?<>{currentMember.isN2Admin&&<a className="admin-nav-link" href="/admin"><ShieldCheck size={20}/><span>Admin console</span><N2AdminBadge/></a>}<button onClick={()=>{setEditProfileRequested(false);go("settings")}} className={view==="settings"?"active":""}><Settings size={20}/><span>Settings</span></button><button onClick={()=>setHelpOpen(true)}><CircleHelp size={20}/><span>Help</span></button><button onClick={()=>signOut({redirectTo:"/signin"})}><LogOut size={20}/><span>Log out</span></button><button className="profile-chip" onClick={openOwnProfile}><Avatar person={currentMember} size="sm"/><span><strong>{currentMember.name} {currentMember.isN2Admin&&<N2AdminBadge/>}</strong><small>View profile</small></span><ChevronDown size={16}/></button></>:<div className="public-sidebar-auth"><p>Have a skill, idea or useful introduction?</p><button onClick={()=>setGuestAuthMode("signin")}>Sign in</button><button className="join" onClick={requireSignIn}>Join n2</button></div>}</div>
       </aside>
       <main className="main-content">
         <button className="mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Open navigation">{menuOpen?<ArrowLeft/>:<Menu/>}</button>
@@ -555,7 +563,7 @@ export default function HomePage() {
         </div>
       </main>
       <aside className="right-rail">
-        {authenticated?<div className="rail-top"><button className="search-button" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Search people & projects</span><kbd>⌘K</kbd></button><button className="icon-button border notification-button" onClick={()=>setNotificationsOpen(true)}><Bell size={19}/>{unreadNotifications>0&&<b>{unreadNotifications>9?"9+":unreadNotifications}</b>}</button></div>:<div className="public-rail-auth"><a href="/signin?next=/">Sign in</a><a href="/signin?next=/">Join n2</a></div>}
+        {authenticated?<div className="rail-top"><button className="search-button" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Search people & projects</span><kbd>⌘K</kbd></button><button className="icon-button border notification-button" onClick={()=>setNotificationsOpen(true)}><Bell size={19}/>{unreadNotifications>0&&<b>{unreadNotifications>9?"9+":unreadNotifications}</b>}</button></div>:<div className="public-rail-auth"><button onClick={()=>setGuestAuthMode("signin")}>Sign in</button><button onClick={requireSignIn}>Join n2</button></div>}
         <section className="rail-card"><div className="rail-title"><span>PEOPLE TO KNOW</span>{authenticated&&<button onClick={()=>setSearchOpen(true)}>See all</button>}</div>{[people.lena,people.dev,people.sofia].map((p,i)=><div className="person-suggest" key={p.name}><Avatar person={p} size="md"/><div><strong>{p.name}</strong><span>{p.role}</span><small>{i===0?"3 shared interests":i===1?"2 mutual projects":"Near you"}</small></div><button className={authenticated&&connections.includes(p.name)?"connected":""} aria-label={`Connect with ${p.name}`} onClick={()=>{if(!authenticated){requireSignIn();return}setConnections(c=>c.includes(p.name)?c.filter(n=>n!==p.name):[...c,p.name]);setToast(connections.includes(p.name)?`Removed ${p.name}`:`Connection request sent to ${p.name}`)}}>{authenticated&&connections.includes(p.name)?<Check size={17}/>:<Plus size={17}/>}</button></div>)}</section>
         <NetworkPulse onProjects={()=>go("projects")}/>
         <footer><Logo/><p>Useful people, brought together.</p><div><button>About</button><button>Privacy</button><button>Community</button></div><small>© 2026 nice 2 network</small></footer>
@@ -567,6 +575,7 @@ export default function HomePage() {
       {authenticated&&searchOpen&&<SearchOverlay onClose={()=>setSearchOpen(false)} onNavigate={go} onProfile={openProfile}/>}
       {authenticated&&notificationsOpen&&<NotificationPanel onClose={()=>setNotificationsOpen(false)} onUnread={setUnreadNotifications}/>}
       {authenticated&&helpOpen&&<HelpPanel onClose={()=>setHelpOpen(false)} onNavigate={go}/>}
+      {!authenticated&&guestAuthMode&&<GuestAuthPrompt initialMode={guestAuthMode} onClose={()=>setGuestAuthMode(null)}/>}
       {shareProject&&<ShareSheet project={shareProject} onClose={()=>setShareProject(null)} onToast={setToast}/>}
       {commentProject&&<ProjectComments project={commentProject} onClose={()=>setCommentProject(null)} onProfile={openProfile}/>}
       {shortlistProjectId&&<ShortlistPanel projectId={shortlistProjectId} onClose={()=>setShortlistProjectId(null)} onProfile={openProfile} onToast={setToast}/>}
