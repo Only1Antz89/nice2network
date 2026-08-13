@@ -32,6 +32,7 @@ async function baseProjects(memberId: string, condition: ReturnType<typeof and> 
     id: projects.id, title: projects.title, summary: projects.summary, description: projects.description, industry: projects.industry, stage: projects.stage,
     status: projects.status, visibility: projects.visibility, accent: projects.accent, workMode: projects.workMode, city: projects.city, country: projects.country,
     ownerId: projects.ownerId, ownerName: users.name, ownerImage: users.image,
+    isDemo: sql<boolean>`${users.role} = 'demo_member'`,
     ownerIsAdmin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`,
     isOwner: sql<boolean>`${projects.ownerId} = ${memberId} or exists (select 1 from project_members pm where pm.project_id = ${projects.id} and pm.user_id = ${memberId} and pm.membership_role = 'co_owner')`,
     isPinned: sql<boolean>`coalesce(${projectBookmarks.pinned}, false)`, isStarred: sql<boolean>`coalesce(${projectBookmarks.starred}, false)`, eyeCount, commentCount, createdAt: projects.createdAt,

@@ -48,10 +48,10 @@ import { signOut } from "next-auth/react";
 
 type View = "feed" | "projects" | "messages" | "meet" | "profile" | "settings";
 type MemberPerson = { id?: string; name: string; role: string; img?: string | null; isN2Admin?: boolean };
-type ProjectRecord = { id:string; title:string; summary:string; description?:string|null; industry:string; stage:string; status?:string; visibility?:string; accent:string; workMode?:string; city?:string|null; country?:string|null; ownerId?:string; ownerName:string|null; ownerImage:string|null; ownerIsAdmin?:boolean; isOwner?:boolean; isPinned?:boolean; isStarred?:boolean; eyeCount:number; commentCount?:number; matchScore?:number; recommendationId?:string; recommendationTier?:string; recommendationReasons?:string[]; matchedRole?:string; eyeMomentum?:number; createdAt:string };
+type ProjectRecord = { id:string; title:string; summary:string; description?:string|null; industry:string; stage:string; status?:string; visibility?:string; accent:string; workMode?:string; city?:string|null; country?:string|null; ownerId?:string; ownerName:string|null; ownerImage:string|null; ownerIsAdmin?:boolean; isDemo?:boolean; isOwner?:boolean; isPinned?:boolean; isStarred?:boolean; eyeCount:number; commentCount?:number; matchScore?:number; recommendationId?:string; recommendationTier?:string; recommendationReasons?:string[]; matchedRole?:string; eyeMomentum?:number; createdAt:string };
 type BlueprintRole = { phase:"now"|"next"|"later";department:string;title:string;headcount:number;professions:string[];requiredSkills:string[];usefulSkills:string[];criticality:"critical"|"important"|"useful";reason:string;workMode:"remote"|"hybrid"|"in_person" };
 type BlueprintRecord = { id:string;outcome:string;assumptions:string[];coveredContributions:Array<{area:string;evidence:string}>;milestones:Array<{title:string;phase:string}>;gaps:string[];risks:string[];roles:BlueprintRole[];provider:string;usedFallback?:boolean;failureStatus?:string|null };
-type ProfileRecord = { id:string;name:string|null;image:string|null;profession:string|null;headline:string|null;bio:string|null;industry:string|null;rankedSkills:string[];interests:string[];location:string|null;isN2Admin:boolean;isCurrent:boolean;projectCount:number;involvedCount:number;career:Array<{id:string;title:string;company:string;location:string|null;startDate:string|null;endDate:string|null;current:boolean;description:string|null}>;education:Array<{id:string;institution:string;qualification:string;fieldOfStudy:string|null;startYear:number|null;endYear:number|null;description:string|null}> };
+type ProfileRecord = { id:string;name:string|null;image:string|null;profession:string|null;headline:string|null;bio:string|null;industry:string|null;rankedSkills:string[];interests:string[];location:string|null;isN2Admin:boolean;isDemo?:boolean;isCurrent:boolean;projectCount:number;involvedCount:number;career:Array<{id:string;title:string;company:string;location:string|null;startDate:string|null;endDate:string|null;current:boolean;description:string|null}>;education:Array<{id:string;institution:string;qualification:string;fieldOfStudy:string|null;startYear:number|null;endYear:number|null;description:string|null}> };
 type NotificationRecord = { id:string; type:string; title:string; body:string; href?:string|null; readAt?:string|null; createdAt:string; actorName?:string|null; actorImage?:string|null };
 
 const people = {
@@ -77,6 +77,7 @@ function Avatar({ person, size = "md", ring = false }: { person: MemberPerson; s
 }
 
 function N2AdminBadge() { return <span className="n2-admin-badge" aria-label="Official n2 administrator"><b>n2</b> ADMIN</span>; }
+function DemoBadge() { return <span className="demo-badge" title="Faux content that will be removed before launch">DEMO</span>; }
 
 function Logo({ onClick }: { onClick?: () => void }) {
   return (
@@ -158,7 +159,7 @@ function ProjectCard({ second = false, onMatch, onComments, onProfile, project, 
           <div className="person-line">
             <Avatar person={owner} size="md" />
             <div>
-              <button className="profile-name" disabled={!project?.ownerId} onClick={()=>project?.ownerId&&onProfile?.(project.ownerId)}>{owner.name} {owner.isN2Admin&&<N2AdminBadge/>}</button>
+              <button className="profile-name" disabled={!project?.ownerId} onClick={()=>project?.ownerId&&onProfile?.(project.ownerId)}>{owner.name} {owner.isN2Admin&&<N2AdminBadge/>} {project?.isDemo&&<DemoBadge/>}</button>
               <span>{owner.role} · {second ? "3h" : "18m"}</span>
             </div>
           </div>
