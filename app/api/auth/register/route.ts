@@ -26,20 +26,28 @@ export async function POST(request: Request) {
     const age = ageFromDateOfBirth(input.dateOfBirth);
     if (age < 16 || age > 120) return NextResponse.json({ error: "Members must be 16 or older." }, { status: 400 });
     const email = input.email.toLowerCase();
+    const instantSignup = process.env.SIGNUP_VERIFICATION_MODE === "instant";
     const token = randomBytes(32).toString("base64url");
     const tokenHash = createHash("sha256").update(token).digest("hex");
     const db = getDb();
     const memberAgeBand = ageBand(input.dateOfBirth);
-    const [member] = await db.insert(users).values({ title: input.title, firstName: input.firstName, lastName: input.lastName, age, dateOfBirth: input.dateOfBirth, ageBand: memberAgeBand, name: `${input.firstName} ${input.lastName}`, image: input.image || null, email, passwordHash: await hash(input.password, 12), status: "pending_verification" }).returning({ id: users.id });
+    const [member] = await db.insert(users).values({ title: input.title, firstName: input.firstName, lastName: input.lastName, age, dateOfBirth: input.dateOfBirth, ageBand: memberAgeBand, name: `${input.firstName} ${input.lastName}`, image: input.image || null, email, passwordHash: await hash(input.password, 12), emailVerified: instantSignup ? new Date() : null, status: instantSignup ? "pending_onboarding" : "pending_verification" }).returning({ id: users.id });
     createdEmail = email;
     await getDb().insert(privacySettings).values({ userId: member.id, ...(memberAgeBand === "teen_16_17" ? { profileVisibility: "connections", messagePermission: "connections", showLocation: false, useActivityForMatching: false } : {}) });
     await trackProductEvent({ actorId: member.id, ageBand: memberAgeBand, event: "registration_started", entityType: "user", entityId: member.id });
+    if (instantSignup) {
+      const onboardingToken = randomBytes(32).toString("base64url");
+      await db.insert(verificationTokens).values({ identifier: `onboarding:${email}`, token: createHash("sha256").update(onboardingToken).digest("hex"), expires: new Date(Date.now() + 24 * 60 * 60 * 1000) });
+      const response = NextResponse.json({ id: member.id, email, onboarding: true, verificationRequired: false }, { status: 201 });
+      response.cookies.set("n2_onboarding", onboardingToken, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 24 * 60 * 60, path: "/" });
+      return response;
+    }
     await db.delete(verificationTokens).where(eq(verificationTokens.identifier, `verify:${email}`));
     await db.insert(verificationTokens).values({ identifier: `verify:${email}`, token: tokenHash, expires: new Date(Date.now() + 60 * 60 * 1000) });
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
     const verificationUrl = `${appUrl}/api/auth/verify?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
     const delivery = await sendVerificationEmail({ email, firstName: input.firstName, verificationUrl });
-    return NextResponse.json({ id: member.id, email, delivered: delivery.delivered, ...(process.env.NODE_ENV !== "production" ? { verificationUrl } : {}) }, { status: 201 });
+    return NextResponse.json({ id: member.id, email, delivered: delivery.delivered, verificationRequired: true, ...(process.env.NODE_ENV !== "production" ? { verificationUrl } : {}) }, { status: 201 });
   } catch (error) {
     if (createdEmail) {
       try { await getDb().delete(users).where(eq(users.email, createdEmail)); } catch { /* The original registration error remains authoritative. */ }
