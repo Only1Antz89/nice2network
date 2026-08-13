@@ -2899,7 +2899,7 @@ function PostComposer({
               className={videoUrl ? "active" : ""}
               onClick={() => setVideoLinkOpen((open) => !open)}
             >
-              <Link2 size={17} /> Video link
+              <Link2 size={17} /> Link
             </button>
             {videoLinkOpen && (
               <div className="video-link-popover">
@@ -3449,26 +3449,6 @@ function Feed({
           <Lightbulb size={18} />
         </span>
       </section>
-      {authenticated && (
-        <div className="mobile-composer-tools" aria-label="Post attachments">
-          <button onClick={onShareIdea}>
-            <SmilePlus size={17} />
-            <span>Emoji</span>
-          </button>
-          <button onClick={onShareIdea}>
-            <ImageIcon size={17} />
-            <span>Image</span>
-          </button>
-          <button onClick={onShareIdea}>
-            <Video size={17} />
-            <span>Video</span>
-          </button>
-          <button onClick={onShareIdea}>
-            <Link2 size={17} />
-            <span>Link</span>
-          </button>
-        </div>
-      )}
       <div className="feed-filter">
         {["For you", "Following", "Newest"].map((item) => (
           <button
@@ -7666,9 +7646,9 @@ function ProfileView({
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
-      "profile" | "projects" | "following" | "media" | "bookmarks"
+      "profile" | "projects" | "followers" | "following" | "media" | "bookmarks"
     >("profile"),
-    [following, setFollowing] = useState<
+    [networkPeople, setNetworkPeople] = useState<
       Array<{
         id: string;
         name: string | null;
@@ -7696,16 +7676,18 @@ function ProfileView({
     [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!userId) return;
-    fetch(`/api/profiles/${userId}`)
+    fetch(`/api/profiles/${userId}`, { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => setProfile(data?.profile ?? null));
   }, [userId]);
   useEffect(() => {
     if (!userId) return;
-    if (section === "following")
-      fetch(`/api/profiles/${userId}/follows?list=following`)
+    if (section === "followers" || section === "following")
+      fetch(`/api/profiles/${userId}/follows?list=${section}`, {
+        cache: "no-store",
+      })
         .then((response) => (response.ok ? response.json() : { people: [] }))
-        .then((data) => setFollowing(data.people ?? []));
+        .then((data) => setNetworkPeople(data.people ?? []));
     if (section === "media")
       fetch(`/api/profiles/${userId}/media`)
         .then((response) => (response.ok ? response.json() : { media: [] }))
@@ -7788,13 +7770,19 @@ function ProfileView({
           {profile?.location ? ` · ${profile.location}` : ""}
         </p>
         <div className="profile-network-counts">
-          <span>
+          <button
+            className={section === "followers" ? "active" : ""}
+            onClick={() => setSection("followers")}
+          >
             <strong>{profile?.followers ?? 0}</strong> followers
-          </span>
-          <button onClick={() => setSection("following")}>
+          </button>
+          <button
+            className={section === "following" ? "active" : ""}
+            onClick={() => setSection("following")}
+          >
             <strong>{profile?.following ?? 0}</strong> following
           </button>
-          {profile?.isMutual && <b>Mutual connection</b>}
+          {profile?.isMutual && <b>Connected</b>}
         </div>
         <nav className="profile-tabs">
           {(["profile", "projects", "following", "media"] as const).map(
@@ -7817,17 +7805,22 @@ function ProfileView({
             </button>
           )}
         </nav>
-        {section === "following" ? (
+        {section === "followers" || section === "following" ? (
           <section className="profile-library">
             <div className="profile-section-head">
-              <span className="eyebrow">FOLLOWING</span>
+              <span className="eyebrow">{section.toUpperCase()}</span>
               <small>
-                People{" "}
-                {profile?.isCurrent ? "you follow" : `${person.name} follows`}
+                {section === "followers"
+                  ? profile?.isCurrent
+                    ? "People who follow you"
+                    : `People who follow ${person.name}`
+                  : profile?.isCurrent
+                    ? "People you follow"
+                    : `People ${person.name} follows`}
               </small>
             </div>
             <div className="following-list">
-              {following.map((item) => (
+              {networkPeople.map((item) => (
                 <article key={item.id}>
                   <Avatar
                     person={{
@@ -7843,9 +7836,9 @@ function ProfileView({
                   </span>
                 </article>
               ))}
-              {!following.length && (
+              {!networkPeople.length && (
                 <p className="profile-empty">
-                  No visible followed members yet.
+                  No visible {section} yet.
                 </p>
               )}
             </div>

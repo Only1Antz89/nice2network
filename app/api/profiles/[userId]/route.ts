@@ -53,7 +53,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
     const rankedSkills = [row.primarySkill, row.secondarySkill, row.tertiarySkill].filter(Boolean);
     const fallbackSkills = rankedSkills.length ? rankedSkills : row.skills.slice(0, 3);
     const projectHistory=[...ownedProjects.map(project=>({...project,isOwner:true,membershipRole:"owner",department:"Leadership"})),...joinedProjects.map(project=>({...project,isOwner:false}))];
-    return NextResponse.json({ profile: { ...row, location: isCurrent || row.showLocation ? row.location : null, isN2Admin: Boolean(row.isN2Admin), rankedSkills: fallbackSkills, career, education, projects:projectHistory, projectCount:ownedProjects.length, involvedCount:joinedProjects.length, followers:followerCount[0]?.value??0,following:followingCount[0]?.value??0,isFollowing:Boolean(viewerFollow[0]),isMutual:Boolean(viewerFollow[0]&&targetFollow[0]),isCurrent } });
+    return NextResponse.json(
+      { profile: { ...row, location: isCurrent || row.showLocation ? row.location : null, isN2Admin: Boolean(row.isN2Admin), rankedSkills: fallbackSkills, career, education, projects:projectHistory, projectCount:ownedProjects.length, involvedCount:joinedProjects.length, followers:followerCount[0]?.value??0,following:followingCount[0]?.value??0,isFollowing:Boolean(viewerFollow[0]),isMutual:Boolean(viewerFollow[0]&&targetFollow[0]),isCurrent } },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (error) { return apiError(error); }
 }
 
