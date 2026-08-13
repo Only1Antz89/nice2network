@@ -226,3 +226,20 @@ test("ships durable project-first people discovery and mutual following", async 
   assert.match(conversations,/Follow each other or join a shared project/);assert.match(page,/PeopleDiscoveryPanel/);assert.match(page,/api\/people\/suggestions\?limit=3/);
   assert.match(migration,/CREATE TABLE "follows"/);assert.match(migration,/member_recommendations_feed_idx/);
 });
+
+test("ships a connected-member network map with profession and skill discovery", async () => {
+  const [page, graph, styles] = await Promise.all([
+    read("app/page.tsx"),
+    read("app/api/network/graph/route.ts"),
+    read("app/network.css"),
+  ]);
+  assert.match(page, /label: "Networks"/);
+  assert.match(page, /function NetworkView/);
+  assert.match(page, /All professions/);
+  assert.match(page, /View full profile/);
+  assert.match(page, /profile\?\.isMutual\?"Connected"/);
+  assert.match(graph, /from follows mine join users/);
+  assert.match(graph, /show_followers=true/);
+  assert.match(styles, /\.network-canvas/);
+  assert.match(styles, /\.network-node \.avatar/);
+});
