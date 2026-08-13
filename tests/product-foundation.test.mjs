@@ -198,3 +198,19 @@ test("ships durable post threads, likes, reposts and purgeable demo activity", a
   assert.match(demo, /,'visible',true,/);
   assert.match(demo, /delete from post_replies where is_demo = true/);
 });
+
+test("shares clean public URLs with rich social preview metadata", async () => {
+  const [page, sharedPage, image, content] = await Promise.all([
+    read("app/page.tsx"), read("app/share/[kind]/[id]/page.tsx"),
+    read("app/share/[kind]/[id]/opengraph-image.tsx"), read("lib/shared-content.ts"),
+  ]);
+  assert.match(page, /\/share\/\$\{kind\}\/\$\{item\.id\}/);
+  assert.match(page, /wa\.me\/\?text=\$\{encoded\}/);
+  assert.doesNotMatch(page, /wa\.me\/\?text=\$\{text\}/);
+  for (const platform of ["LinkedIn", "Facebook", "Telegram"]) assert.match(page, new RegExp(platform));
+  assert.match(sharedPage, /openGraph/);
+  assert.match(sharedPage, /summary_large_image/);
+  assert.match(image, /ImageResponse/);
+  assert.match(image, /content\.image/);
+  assert.match(content, /timelinePosts\.visibility,"network"/);
+});
