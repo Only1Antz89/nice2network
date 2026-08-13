@@ -6,6 +6,7 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Check, Mail } from "lucide-react";
+import PasswordInput from "@/components/password-input";
 
 function SignInContent() {
   const searchParams=useSearchParams();
@@ -45,7 +46,7 @@ function SignInContent() {
         <form onSubmit={submit}>
           {mode==="register"&&<><div className="signup-grid"><label>Title<select name="title" defaultValue="Ms" required><option>Mr</option><option>Ms</option><option>Mrs</option><option>Miss</option><option>Mx</option><option>Dr</option><option>Prof</option></select></label><label>Date of birth<input name="dateOfBirth" type="date" max={new Date(new Date().setFullYear(new Date().getFullYear()-16)).toISOString().slice(0,10)} required/></label><label>First name<input name="firstName" autoComplete="given-name" required minLength={2}/></label><label>Surname<input name="lastName" autoComplete="family-name" required minLength={2}/></label></div><label className="photo-field">Profile photo <small>Optional — n2 is your default.</small><span className="photo-picker">{photo?<img src={photo} alt="Profile preview"/>:<span className="default-photo-preview">n2</span>}<span><strong>{photo?"Photo ready":"Use n2 or choose a photo"}</strong><small>JPG, PNG or WebP · up to 500 KB</small></span><input aria-label="Profile photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>choosePhoto(event.target.files?.[0])}/></span></label></>}
           <label>Email<input name="email" type="email" autoComplete="email" required/></label>
-          <label>Password{mode==="signin"&&<Link className="forgot-link" href="/forgot-password">Forgot password?</Link>}<input name="password" type="password" autoComplete={mode==="signin"?"current-password":"new-password"} required minLength={10}/><small>At least 10 characters.</small></label>
+          <label htmlFor="auth-password">Password{mode==="signin"&&<Link className="forgot-link" href="/forgot-password">Forgot password?</Link>}<PasswordInput id="auth-password" name="password" autoComplete={mode==="signin"?"current-password":"new-password"} required minLength={10}/><small>At least 10 characters.</small></label>
           {error&&<p className="form-error">{error}</p>}
           <button className="primary-button wide" disabled={busy}>{busy?"One moment…":mode==="signin"?"Sign in":<>Create account <ArrowRight size={16}/></>}</button>
         </form>
