@@ -24,9 +24,9 @@ export async function GET(_:Request,{params}:{params:Promise<{projectId:string}>
       db.select({userId:projectMembers.userId,name:users.name,image:users.image,profession:users.profession,membershipRole:projectMembers.membershipRole,department:projectMembers.department,joinedAt:projectMembers.joinedAt}).from(projectMembers).innerJoin(users,eq(users.id,projectMembers.userId)).where(eq(projectMembers.projectId,projectId)).orderBy(asc(projectMembers.joinedAt)),
       db.select().from(projectRoles).where(eq(projectRoles.projectId,projectId)).orderBy(asc(projectRoles.createdAt)),
       db.select().from(milestones).where(eq(milestones.projectId,projectId)).orderBy(asc(milestones.sortOrder),asc(milestones.createdAt)),
-      db.select({id:projectUpdates.id,type:projectUpdates.type,body:projectUpdates.body,createdAt:projectUpdates.createdAt,authorId:projectUpdates.authorId,authorName:users.name,authorImage:users.image}).from(projectUpdates).innerJoin(users,eq(users.id,projectUpdates.authorId)).where(eq(projectUpdates.projectId,projectId)).orderBy(desc(projectUpdates.createdAt)).limit(30),
+      db.select({id:projectUpdates.id,milestoneId:projectUpdates.milestoneId,type:projectUpdates.type,body:projectUpdates.body,attachmentType:projectUpdates.attachmentType,attachmentUrl:projectUpdates.attachmentUrl,attachmentName:projectUpdates.attachmentName,updatedAt:projectUpdates.updatedAt,createdAt:projectUpdates.createdAt,authorId:projectUpdates.authorId,authorName:users.name,authorImage:users.image}).from(projectUpdates).innerJoin(users,eq(users.id,projectUpdates.authorId)).where(and(eq(projectUpdates.projectId,projectId),eq(projectUpdates.status,"visible"))).orderBy(desc(projectUpdates.createdAt)).limit(100),
     ]);
-    return NextResponse.json({project:{...project,isOwner:project.ownerId===member.id||membership?.role==="co_owner",team,roles,milestones:roadmap,updates}});
+    return NextResponse.json({project:{...project,currentUserId:member.id,isMember:Boolean(membership)||project.ownerId===member.id,isOwner:project.ownerId===member.id||membership?.role==="co_owner",team,roles,milestones:roadmap,updates}});
   }catch(error){return apiError(error)}
 }
 

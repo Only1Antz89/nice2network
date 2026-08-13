@@ -92,7 +92,7 @@ export async function generateProjectBlueprint(projectId: string, requestedBy: s
   return { ...record, latencyMs: Date.now() - started, usedFallback: Boolean(failureStatus) };
 }
 
-export async function approveProjectBlueprint(input: { projectId: string; blueprintId: string; userId: string; roles: BlueprintRole[]; visibility: "network" | "connections" | "private" }) {
+export async function approveProjectBlueprint(input: { projectId: string; blueprintId: string; userId: string; roles: BlueprintRole[]; milestones:Array<{title:string;description?:string;phase:"now"|"next"|"later";ownerId?:string|null;dueAt?:string|null}>; visibility: "network" | "connections" | "private" }) {
   const db = getDb();
   const roles = projectBlueprintSchema.shape.roles.parse(input.roles);
   const [blueprint] = await db.select({ blueprint: projectBlueprints, project: projects }).from(projectBlueprints).innerJoin(projects, eq(projects.id, projectBlueprints.projectId)).where(and(eq(projectBlueprints.id, input.blueprintId), eq(projectBlueprints.projectId, input.projectId))).limit(1);
@@ -109,7 +109,10 @@ export async function approveProjectBlueprint(input: { projectId: string; bluepr
       usefulSkills: role.usefulSkills, phase: role.phase, criticality: role.criticality, workMode: role.workMode, reason: role.reason, capacity: role.headcount,
     })));
     const [{ total }] = await tx.select({ total: count() }).from(milestones).where(eq(milestones.projectId, input.projectId));
-    if (!Number(total)) await tx.insert(milestones).values(blueprint.blueprint.milestones.map((item, index) => ({ projectId: input.projectId, title: item.title, status: "planned", sortOrder: index })));
+    if (blueprint.project.status === "draft") {
+      await tx.delete(milestones).where(eq(milestones.projectId,input.projectId));
+      await tx.insert(milestones).values(input.milestones.map((item,index)=>({projectId:input.projectId,title:item.title,description:item.description,phase:item.phase,ownerId:item.ownerId,dueAt:item.dueAt?new Date(item.dueAt):null,status:index===0?"in_progress":"planned",startedAt:index===0?new Date():null,sortOrder:index})));
+    } else if (!Number(total)) await tx.insert(milestones).values(input.milestones.map((item,index)=>({projectId:input.projectId,title:item.title,description:item.description,phase:item.phase,ownerId:item.ownerId,dueAt:item.dueAt?new Date(item.dueAt):null,status:index===0?"in_progress":"planned",startedAt:index===0?new Date():null,sortOrder:index})));
     await tx.update(projects).set({ status: "active", visibility: input.visibility, updatedAt: new Date() }).where(eq(projects.id, input.projectId));
   });
   await recomputeProjectRecommendations(input.projectId);
