@@ -1,4 +1,4 @@
-import { and, asc, count, eq, ne, sql } from "drizzle-orm";
+import { and, asc, count, eq, ne, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
@@ -33,7 +33,12 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
       .from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active"))).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     if (!row) throw new ApiError(404, "Profile not found");
     const isCurrent = viewer.id === userId;
-    if (!isCurrent && row.visibility && row.visibility !== "network") throw new ApiError(403, "This profile is not visible to the wider network");
+    if (!isCurrent && row.visibility === "private") throw new ApiError(403, "This profile is private");
+    if (!isCurrent && row.visibility === "connections") {
+      const directions=await db.select({followerId:follows.followerId,followingId:follows.followingId}).from(follows).where(or(and(eq(follows.followerId,viewer.id),eq(follows.followingId,userId)),and(eq(follows.followerId,userId),eq(follows.followingId,viewer.id))));
+      const mutual=directions.some(item=>item.followerId===viewer.id)&&directions.some(item=>item.followerId===userId);
+      if(!mutual)throw new ApiError(403,"This profile is visible to mutual connections");
+    }
     const projectVisibility = isCurrent ? undefined : eq(projects.visibility, "network");
     const [career, education, ownedProjects, joinedProjects, followerCount, followingCount, viewerFollow, targetFollow] = await Promise.all([
       db.select().from(careerHistory).where(eq(careerHistory.userId, userId)).orderBy(asc(careerHistory.sortOrder)),

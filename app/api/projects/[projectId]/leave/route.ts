@@ -1,0 +1,9 @@
+import { and, eq, sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { getDb } from "@/db";
+import { projectMembers, projectRoles, projects } from "@/db/schema";
+import { ApiError, apiError, requireMember } from "@/lib/api";
+
+export async function DELETE(_:Request,{params}:{params:Promise<{projectId:string}>}){
+  try{const member=await requireMember(),{projectId}=await params,db=getDb();const [project]=await db.select({ownerId:projects.ownerId}).from(projects).where(eq(projects.id,projectId)).limit(1);if(!project)throw new ApiError(404,"Project not found");const [membership]=await db.select().from(projectMembers).where(and(eq(projectMembers.projectId,projectId),eq(projectMembers.userId,member.id))).limit(1);if(!membership)throw new ApiError(400,"You are not part of this project");if(project.ownerId===member.id||membership.membershipRole==="owner"||membership.membershipRole==="co_owner")throw new ApiError(400,"Owners must transfer ownership before leaving");await db.transaction(async tx=>{await tx.delete(projectMembers).where(and(eq(projectMembers.projectId,projectId),eq(projectMembers.userId,member.id)));if(membership.roleId)await tx.update(projectRoles).set({filled:sql`greatest(0,${projectRoles.filled}-1)`,status:"open"}).where(eq(projectRoles.id,membership.roleId))});return NextResponse.json({left:true})}catch(error){return apiError(error)}
+}

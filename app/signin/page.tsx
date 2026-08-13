@@ -26,6 +26,7 @@ function SignInContent() {
       if(result.onboarding){window.location.href="/onboarding";return}
       setPendingEmail(email);setMode("check-email");setBusy(false);return;
     }
+    const resumeResponse=await fetch("/api/auth/onboarding/resume",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})}),resume=await resumeResponse.json().catch(()=>({resume:false}));if(resume.resume){window.location.href="/onboarding?resume=1";return}
     const result=await signIn("credentials",{email,password,redirect:false});
     if(result?.error){setError("Check your email and password, and make sure verification is complete.");setBusy(false)}else{const next=new URLSearchParams(window.location.search).get("next");window.location.href=next?.startsWith("/")?next:"/"}
   }

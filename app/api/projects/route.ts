@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { getDb } from "@/db";
-import { adminAssignments, projectMembers, projectRecommendations, projectRoles, projects, recommendationEvents, savedItems, users } from "@/db/schema";
+import { adminAssignments, projectFollows, projectMembers, projectRecommendations, projectRoles, projects, recommendationEvents, savedItems, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
@@ -37,6 +37,8 @@ async function baseProjects(memberId: string, condition: ReturnType<typeof and> 
     isDemo: sql<boolean>`${users.role} = 'demo_member'`,
     ownerIsAdmin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`,
     isOwner: sql<boolean>`${projects.ownerId} = ${memberId} or exists (select 1 from project_members pm where pm.project_id = ${projects.id} and pm.user_id = ${memberId} and pm.membership_role = 'co_owner')`,
+    isMember: sql<boolean>`${projects.ownerId} = ${memberId} or exists (select 1 from project_members pm where pm.project_id = ${projects.id} and pm.user_id = ${memberId})`,
+    isFollowingProject: sql<boolean>`exists(select 1 from ${projectFollows} pf where pf.project_id=${projects.id} and pf.user_id=${memberId})`,
     isPinned: sql<boolean>`coalesce(${savedItems.pinned}, false)`, isBookmarked: sql<boolean>`coalesce(${savedItems.bookmarked}, false)`, eyeCount, commentCount,
     roles:sql<Array<{id:string;title:string;department:string;phase:string;status:string;criticality:string;capacity:number;filled:number}>>`coalesce((select json_agg(json_build_object('id',pr.id,'title',pr.title,'department',pr.department,'phase',pr.phase,'status',pr.status,'criticality',pr.criticality,'capacity',pr.capacity,'filled',pr.filled) order by pr.created_at) from project_roles pr where pr.project_id=${projects.id}),'[]'::json)`,
     team:sql<Array<{userId:string;roleId:string|null;name:string|null;image:string|null;profession:string|null;department:string|null;membershipRole:string}>>`coalesce((select json_agg(json_build_object('userId',pm.user_id,'roleId',pm.role_id,'name',tu.name,'image',tu.image,'profession',tu.profession,'department',pm.department,'membershipRole',pm.membership_role) order by pm.joined_at) from project_members pm join users tu on tu.id=pm.user_id where pm.project_id=${projects.id}),'[]'::json)`, createdAt: projects.createdAt,

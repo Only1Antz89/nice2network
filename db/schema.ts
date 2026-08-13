@@ -73,6 +73,23 @@ export const projectMembers = pgTable("project_members", {
   projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }), userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), roleId: uuid("role_id").references(() => projectRoles.id), membershipRole: text("membership_role").notNull().default("contributor"), department: text("department"), joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.projectId, table.userId] })]);
 
+export const projectFollows = pgTable("project_follows", {
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.projectId, table.userId] }), index("project_follows_user_idx").on(table.userId, table.createdAt)]);
+
+export const projectInvolvementRequests = pgTable("project_involvement_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  message: text("message").notNull(),
+  services: text("services").array().notNull().default(sql`ARRAY[]::text[]`),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("project_involvement_request_unique").on(table.projectId, table.userId), index("project_involvement_project_idx").on(table.projectId, table.status)]);
+
 export const applications = pgTable("applications", {
   id: uuid("id").defaultRandom().primaryKey(), projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }), roleId: uuid("role_id").notNull().references(() => projectRoles.id, { onDelete: "cascade" }), applicantId: uuid("applicant_id").notNull().references(() => users.id, { onDelete: "cascade" }), message: text("message"), status: text("status").notNull().default("pending"), decidedBy: uuid("decided_by").references(() => users.id), decidedAt: timestamp("decided_at", { withTimezone: true }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("application_unique").on(table.roleId, table.applicantId)]);
@@ -220,7 +237,7 @@ export const integrationAccounts = pgTable("integration_accounts", {
 }, (table) => [uniqueIndex("integration_user_provider_unique").on(table.userId, table.provider)]);
 
 export const meetings = pgTable("meetings", {
-  id: uuid("id").defaultRandom().primaryKey(), projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }), createdBy: uuid("created_by").notNull().references(() => users.id), provider: text("provider").notNull(), providerEventId: text("provider_event_id"), title: text("title").notNull(), description: text("description"), startsAt: timestamp("starts_at", { withTimezone: true }).notNull(), endsAt: timestamp("ends_at", { withTimezone: true }).notNull(), timezone: text("timezone").notNull().default("Europe/London"), joinUrl: text("join_url"), location: text("location"), attendees: jsonb("attendees").$type<Array<{ email: string; name?: string }>>().default([]), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  id: uuid("id").defaultRandom().primaryKey(), projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }), createdBy: uuid("created_by").notNull().references(() => users.id), provider: text("provider").notNull(), providerEventId: text("provider_event_id"), title: text("title").notNull(), description: text("description"), visibility: text("visibility").notNull().default("public"), startsAt: timestamp("starts_at", { withTimezone: true }).notNull(), endsAt: timestamp("ends_at", { withTimezone: true }).notNull(), timezone: text("timezone").notNull().default("Europe/London"), joinUrl: text("join_url"), location: text("location"), attendees: jsonb("attendees").$type<Array<{ email: string; name?: string }>>().default([]), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const meetingSignals = pgTable("meeting_signals", {
