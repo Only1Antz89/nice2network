@@ -76,7 +76,7 @@ const people = {
 const nav = [
   { id: "feed" as View, label: "Home", icon: Home },
   { id: "projects" as View, label: "Projects", icon: BriefcaseBusiness },
-  { id: "messages" as View, label: "Messages", icon: MessageCircle, count: 3 },
+  { id: "messages" as View, label: "Messages", icon: MessageCircle },
   { id: "meet" as View, label: "Meet", icon: CalendarDays },
 ];
 
@@ -437,7 +437,7 @@ function SearchOverlay({ onClose, onNavigate, onProfile }: { onClose: () => void
 function NotificationPanel({onClose,onUnread}:{onClose:()=>void;onUnread:(count:number)=>void}){
   const [items,setItems]=useState<NotificationRecord[]>([]),[unread,setUnread]=useState(0),[loading,setLoading]=useState(true);
   useEffect(()=>{fetch("/api/notifications").then(r=>r.ok?r.json():{notifications:[],unread:0}).then(data=>{setItems(data.notifications??[]);setUnread(data.unread??0);onUnread(data.unread??0)}).finally(()=>setLoading(false))},[onUnread]);
-  async function read(item?:NotificationRecord){await fetch("/api/notifications",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify(item?{action:"read",notificationId:item.id}:{action:"read_all"})});if(item){setItems(current=>current.map(row=>row.id===item.id?{...row,readAt:new Date().toISOString()}:row));if(!item.readAt){setUnread(value=>Math.max(0,value-1));onUnread(Math.max(0,unread-1))}}else{setItems(current=>current.map(row=>({...row,readAt:new Date().toISOString()})));setUnread(0);onUnread(0)}}
+  async function read(item?:NotificationRecord){const response=await fetch("/api/notifications",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify(item?{action:"read",notificationId:item.id}:{action:"read_all"})});if(!response.ok)return;if(item){setItems(current=>current.map(row=>row.id===item.id?{...row,readAt:new Date().toISOString()}:row));if(!item.readAt)setUnread(value=>{const next=Math.max(0,value-1);onUnread(next);return next})}else{setItems(current=>current.map(row=>({...row,readAt:new Date().toISOString()})));setUnread(0);onUnread(0)}}
   // eslint-disable-next-line jsx-a11y/no-static-element-interactions
   return <div className="panel-backdrop" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><aside className="notification-panel" role="dialog" aria-modal="true" aria-label="Notifications"><header><div><span className="eyebrow">YOUR NETWORK</span><h2>Notifications {unread>0&&<b>{unread}</b>}</h2></div><button className="icon-button" onClick={onClose}><X size={19}/></button></header>{unread>0&&<button className="mark-read" onClick={()=>read()}><CheckCheck size={15}/> Mark all as read</button>}<div className="notification-list">{loading?<p className="notification-empty">Loading notifications…</p>:items.length?items.map(item=><a key={item.id} className={item.readAt?"":"unread"} href={item.href??"#"} onClick={()=>read(item)}><Avatar person={{name:item.actorName??"nice 2 network",role:"",img:item.actorImage}} size="sm"/><span><strong>{item.title}</strong><p>{item.body}</p><small>{new Date(item.createdAt).toLocaleString()}</small></span>{!item.readAt&&<i/>}</a>):<div className="notification-empty"><Bell size={22}/><strong>You’re all caught up</strong><p>Project activity, messages, invitations and meets will appear here.</p></div>}</div></aside></div>
 }
@@ -510,7 +510,7 @@ export default function HomePage() {
   return (
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
-        <div><Logo onClick={()=>go("feed")} /><nav>{nav.map((item) => { const Icon=item.icon; return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={20}/><span>{item.label}</span>{item.count&&<b>{item.count}</b>}</button>})}</nav></div>
+        <div><Logo onClick={()=>go("feed")} /><nav>{nav.map((item) => { const Icon=item.icon; return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={20}/><span>{item.label}</span></button>})}</nav></div>
         <div className="sidebar-bottom">{currentMember.isN2Admin&&<a className="admin-nav-link" href="/admin"><ShieldCheck size={20}/><span>Admin console</span><N2AdminBadge/></a>}<button onClick={()=>{setEditProfileRequested(false);go("settings")}} className={view==="settings"?"active":""}><Settings size={20}/><span>Settings</span></button><button onClick={()=>setToast("Help centre is coming next.")}><CircleHelp size={20}/><span>Help</span></button><button onClick={()=>signOut({redirectTo:"/signin"})}><LogOut size={20}/><span>Log out</span></button><button className="profile-chip" onClick={openOwnProfile}><Avatar person={currentMember} size="sm"/><span><strong>{currentMember.name} {currentMember.isN2Admin&&<N2AdminBadge/>}</strong><small>View profile</small></span><ChevronDown size={16}/></button></div>
       </aside>
       <main className="main-content">
