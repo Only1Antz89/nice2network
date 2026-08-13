@@ -3381,6 +3381,16 @@ function Feed({
     setLoadingMore(false);
   }
   const filterCount = Object.values(projectFilters).filter(Boolean).length;
+  const mixedFeed: Array<
+    | { kind: "post"; item: TimelinePost }
+    | { kind: "project"; item: ProjectRecord }
+  > = [];
+  const mixedFeedLength = Math.max(posts.length, liveProjects.length);
+  for (let index = 0; index < mixedFeedLength; index += 1) {
+    if (posts[index]) mixedFeed.push({ kind: "post", item: posts[index] });
+    if (liveProjects[index])
+      mixedFeed.push({ kind: "project", item: liveProjects[index] });
+  }
   return (
     <>
       <div className="mobile-topbar">
@@ -3540,33 +3550,37 @@ function Feed({
           </span>
         </div>
       )}
-      {posts.map((post) => (
-        <TimelinePostCard
-          key={post.id}
-          post={post}
-          currentMemberId={currentMember.id}
-          onProfile={onProfile}
-          onProject={authenticated ? onProject : onRequireAuth}
-          onThread={() =>
-            authenticated ? onPostThread(post) : onRequireAuth()
-          }
-          onEngage={onRequireAuth}
-          canEngage={authenticated}
-          onShare={onShare}
-          onToast={onToast}
-          onChanged={(next) =>
-            setPosts((rows) =>
-              next
-                ? rows.map((row) => (row.id === next.id ? next : row))
-                : rows.filter((row) => row.id !== post.id),
-            )
-          }
-        />
-      ))}
-      {liveProjects.length ? (
-        liveProjects.map((project) => (
+      {mixedFeed.map((entry) => {
+        if (entry.kind === "post") {
+          const post = entry.item;
+          return (
+            <TimelinePostCard
+              key={`post-${post.id}`}
+              post={post}
+              currentMemberId={currentMember.id}
+              onProfile={onProfile}
+              onProject={authenticated ? onProject : onRequireAuth}
+              onThread={() =>
+                authenticated ? onPostThread(post) : onRequireAuth()
+              }
+              onEngage={onRequireAuth}
+              canEngage={authenticated}
+              onShare={onShare}
+              onToast={onToast}
+              onChanged={(next) =>
+                setPosts((rows) =>
+                  next
+                    ? rows.map((row) => (row.id === next.id ? next : row))
+                    : rows.filter((row) => row.id !== post.id),
+                )
+              }
+            />
+          );
+        }
+        const project = entry.item;
+        return (
           <ProjectCard
-            key={project.id}
+            key={`project-${project.id}`}
             project={project}
             onShare={onShare}
             onMatch={authenticated ? onMatch : onRequireAuth}
@@ -3583,8 +3597,9 @@ function Feed({
               )
             }
           />
-        ))
-      ) : (
+        );
+      })}
+      {!liveProjects.length && (
         <ProjectCard
           onShare={onShare}
           onMatch={authenticated ? onMatch : onRequireAuth}
