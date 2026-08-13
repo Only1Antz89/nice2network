@@ -1,13 +1,15 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowRight, Check, Mail } from "lucide-react";
 
-export default function SignInPage() {
-  const [mode,setMode]=useState<"signin"|"register"|"check-email">("signin");
+function SignInContent() {
+  const searchParams=useSearchParams();
+  const [mode,setMode]=useState<"signin"|"register"|"check-email">(searchParams.get("mode")==="register"?"register":"signin");
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
   const [photo,setPhoto]=useState("");
@@ -52,3 +54,5 @@ export default function SignInPage() {
     </section>
   </main>;
 }
+
+export default function SignInPage(){return <Suspense fallback={<main className="auth-page"/>}><SignInContent/></Suspense>}
