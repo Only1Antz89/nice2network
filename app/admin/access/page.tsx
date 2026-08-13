@@ -6,6 +6,6 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminAccessPage() {
   const identity = await getAdminIdentity();
-  if (!identity) redirect("/signin");
+  if (!identity) redirect("/signin?next=/admin/access");
   return <AdminAccess forcePasswordChange={identity.forcePasswordChange} mfaEnrolled={identity.mfaEnrolled} email={identity.user.email ?? "n2 admin"}/>;
 }

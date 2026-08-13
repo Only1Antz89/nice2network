@@ -24,7 +24,7 @@ export default function SignInPage() {
       setPendingEmail(email);setMode("check-email");setBusy(false);return;
     }
     const result=await signIn("credentials",{email,password,redirect:false});
-    if(result?.error){setError("Check your email and password, and make sure verification is complete.");setBusy(false)}else window.location.href="/";
+    if(result?.error){setError("Check your email and password, and make sure verification is complete.");setBusy(false)}else{const next=new URLSearchParams(window.location.search).get("next");window.location.href=next?.startsWith("/")?next:"/"}
   }
 
   return <main className="auth-page auth-shell">
