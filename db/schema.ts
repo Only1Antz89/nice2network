@@ -18,6 +18,9 @@ export const users = pgTable("users", {
   headline: text("headline"),
   bio: text("bio"),
   industry: text("industry"),
+  primarySkill: text("primary_skill"),
+  secondarySkill: text("secondary_skill"),
+  tertiarySkill: text("tertiary_skill"),
   skills: text("skills").array().notNull().default(sql`ARRAY[]::text[]`),
   interests: text("interests").array().notNull().default(sql`ARRAY[]::text[]`),
   location: text("location"),
@@ -86,6 +89,51 @@ export const projectEyes = pgTable("project_eyes", {
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.projectId, table.userId] }), index("project_eyes_user_idx").on(table.userId)]);
+
+export const projectComments = pgTable("project_comments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  authorId: uuid("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("visible"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("project_comments_project_time_idx").on(table.projectId, table.createdAt)]);
+
+export const projectBookmarks = pgTable("project_bookmarks", {
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  pinned: boolean("pinned").notNull().default(false),
+  starred: boolean("starred").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.projectId, table.userId] }), index("project_bookmarks_user_idx").on(table.userId)]);
+
+export const careerHistory = pgTable("career_history", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  company: text("company").notNull(),
+  location: text("location"),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  current: boolean("current").notNull().default(false),
+  description: text("description"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("career_history_user_idx").on(table.userId, table.sortOrder)]);
+
+export const educationHistory = pgTable("education_history", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  institution: text("institution").notNull(),
+  qualification: text("qualification").notNull(),
+  fieldOfStudy: text("field_of_study"),
+  startYear: integer("start_year"),
+  endYear: integer("end_year"),
+  description: text("description"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("education_history_user_idx").on(table.userId, table.sortOrder)]);
 
 export const notifications = pgTable("notifications", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -289,5 +337,5 @@ export const complianceAssessments = pgTable("compliance_assessments", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("assessment_type_version_unique").on(table.type, table.version)]);
 
-export const usersRelations = relations(users, ({ many, one }) => ({ ownedProjects: many(projects), memberships: many(projectMembers), privacy: one(privacySettings), notifications: many(notifications) }));
-export const projectsRelations = relations(projects, ({ one, many }) => ({ owner: one(users, { fields: [projects.ownerId], references: [users.id] }), roles: many(projectRoles), members: many(projectMembers), milestones: many(milestones), updates: many(projectUpdates) }));
+export const usersRelations = relations(users, ({ many, one }) => ({ ownedProjects: many(projects), memberships: many(projectMembers), privacy: one(privacySettings), notifications: many(notifications), careerHistory: many(careerHistory), educationHistory: many(educationHistory) }));
+export const projectsRelations = relations(projects, ({ one, many }) => ({ owner: one(users, { fields: [projects.ownerId], references: [users.id] }), roles: many(projectRoles), members: many(projectMembers), milestones: many(milestones), updates: many(projectUpdates), comments: many(projectComments) }));

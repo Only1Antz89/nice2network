@@ -7,7 +7,7 @@ import { getDb } from "@/db";
 import { users, verificationTokens } from "@/db/schema";
 import { trackProductEvent } from "@/lib/analytics";
 
-const schema = z.object({ profession: z.string().trim().min(2).max(100), skills: z.array(z.string().trim().min(1).max(50)).min(1).max(20), interests: z.array(z.string().trim().min(1).max(50)).min(1).max(20), location: z.string().trim().min(2).max(100) });
+const schema = z.object({ profession: z.string().trim().min(2).max(100), primarySkill: z.string().trim().min(1).max(80), secondarySkill: z.string().trim().min(1).max(80), tertiarySkill: z.string().trim().min(1).max(80), interests: z.array(z.string().trim().min(1).max(50)).min(1).max(20), location: z.string().trim().min(2).max(100) });
 
 export async function POST(request: Request) {
   try {
@@ -21,13 +21,14 @@ export async function POST(request: Request) {
     const email = record.identifier.slice("onboarding:".length);
     const [existing] = await db.select({ ageBand: users.ageBand }).from(users).where(eq(users.email, email)).limit(1);
     const teen = existing?.ageBand === "teen_16_17";
-    const [member] = await db.update(users).set({ profession: input.profession, headline: input.profession, skills: input.skills, interests: input.interests, location: teen ? null : input.location, status: "active", onboardingCompletedAt: new Date(), updatedAt: new Date() }).where(eq(users.email, email)).returning({ id: users.id, ageBand: users.ageBand });
+    const rankedSkills = [input.primarySkill, input.secondarySkill, input.tertiarySkill];
+    const [member] = await db.update(users).set({ profession: input.profession, headline: input.profession, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: rankedSkills, interests: input.interests, location: teen ? null : input.location, status: "active", onboardingCompletedAt: new Date(), updatedAt: new Date() }).where(eq(users.email, email)).returning({ id: users.id, ageBand: users.ageBand });
     if (!member) return NextResponse.json({ error: "Member not found." }, { status: 404 });
 
     await trackProductEvent({ actorId: member.id, ageBand: member.ageBand, event: "onboarding_completed", entityType: "user", entityId: member.id });
     const candidates = await db.select({ id: users.id, name: users.name, image: users.image, profession: users.profession, skills: users.skills, interests: users.interests, location: users.location, ageBand: users.ageBand }).from(users).where(and(ne(users.email, email), eq(users.status, "active"))).limit(30);
     const norm = (value: string) => value.trim().toLowerCase();
-    const skills = new Set(input.skills.map(norm));
+    const skills = new Set(rankedSkills.map(norm));
     const interests = new Set(input.interests.map(norm));
     const network = candidates.filter((candidate) => !teen || candidate.ageBand === "teen_16_17").map((candidate) => {
       const sharedSkills = candidate.skills.filter((value) => skills.has(norm(value)));

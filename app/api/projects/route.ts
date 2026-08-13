@@ -1,8 +1,8 @@
-import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, countDistinct, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { adminAssignments, projectEyes, projectMembers, projectRoles, projects, users } from "@/db/schema";
+import { adminAssignments, projectBookmarks, projectComments, projectEyes, projectMembers, projectRoles, projects, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
@@ -18,8 +18,9 @@ export async function GET(request: Request) {
     const condition = scope === "mine"
       ? or(eq(projects.ownerId, member.id), memberProjectIds.length ? inArray(projects.id, memberProjectIds) : eq(projects.ownerId, member.id))
       : and(eq(projects.status, "active"), eq(projects.visibility, "network"));
-    const rows = await db.select({ id: projects.id, title: projects.title, summary: projects.summary, description: projects.description, industry: projects.industry, stage: projects.stage, status: projects.status, accent: projects.accent, ownerId: projects.ownerId, ownerName: users.name, ownerImage: users.image, ownerIsAdmin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`, eyeCount: count(projectEyes.userId), createdAt: projects.createdAt })
-      .from(projects).innerJoin(users, eq(users.id, projects.ownerId)).leftJoin(adminAssignments, and(eq(adminAssignments.userId, projects.ownerId), eq(adminAssignments.status, "active"))).leftJoin(projectEyes, eq(projectEyes.projectId, projects.id)).where(condition).groupBy(projects.id, users.id, adminAssignments.status).orderBy(desc(projects.createdAt)).limit(50);
+    const eyeCount = countDistinct(projectEyes.userId), commentCount = countDistinct(projectComments.id);
+    const rows = await db.select({ id: projects.id, title: projects.title, summary: projects.summary, description: projects.description, industry: projects.industry, stage: projects.stage, status: projects.status, visibility: projects.visibility, accent: projects.accent, ownerId: projects.ownerId, ownerName: users.name, ownerImage: users.image, ownerIsAdmin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`, isOwner: sql<boolean>`${projects.ownerId} = ${member.id} or exists (select 1 from project_members pm where pm.project_id = ${projects.id} and pm.user_id = ${member.id} and pm.membership_role = 'co_owner')`, isPinned: sql<boolean>`coalesce(${projectBookmarks.pinned}, false)`, isStarred: sql<boolean>`coalesce(${projectBookmarks.starred}, false)`, eyeCount, commentCount, createdAt: projects.createdAt })
+      .from(projects).innerJoin(users, eq(users.id, projects.ownerId)).leftJoin(adminAssignments, and(eq(adminAssignments.userId, projects.ownerId), eq(adminAssignments.status, "active"))).leftJoin(projectEyes, eq(projectEyes.projectId, projects.id)).leftJoin(projectComments, and(eq(projectComments.projectId, projects.id), eq(projectComments.status, "visible"))).leftJoin(projectBookmarks, and(eq(projectBookmarks.projectId, projects.id), eq(projectBookmarks.userId, member.id))).where(condition).groupBy(projects.id, users.id, adminAssignments.status, projectBookmarks.pinned, projectBookmarks.starred).orderBy(desc(sql`coalesce(${projectBookmarks.pinned}, false)`), desc(sql`${eyeCount} * 12 + greatest(0, 120 - extract(epoch from (now() - ${projects.createdAt})) / 3600)`), desc(projects.createdAt)).limit(50);
     return NextResponse.json({ projects: rows });
   } catch (error) { return apiError(error); }
 }
