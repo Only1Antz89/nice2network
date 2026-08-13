@@ -11,7 +11,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ projectId
     const member = await requireMember(), { projectId } = await params, db = getDb();
     const [project] = await db.select({ ownerId: projects.ownerId, title: projects.title, status: projects.status }).from(projects).where(eq(projects.id, projectId)).limit(1);
     if (!project) throw new ApiError(404, "Project not found");
-    if (project.ownerId === member.id) throw new ApiError(400, "Project owners cannot place eyes on their own project");
+    if (project.ownerId === member.id) throw new ApiError(400, "Project owners cannot add a view to their own project");
     const [eligible] = await db.select({ status: users.status, verified: users.emailVerified }).from(users).where(eq(users.id, member.id)).limit(1);
     const [sanction] = await db.select({ id: sanctions.id }).from(sanctions).where(and(eq(sanctions.userId, member.id), eq(sanctions.status, "active"), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, new Date())))).limit(1);
     if (!eligible?.verified || eligible.status !== "active" || sanction) throw new ApiError(403, "This account cannot influence project popularity");
@@ -19,7 +19,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ projectId
     if (existing) await db.delete(projectEyes).where(and(eq(projectEyes.projectId, projectId), eq(projectEyes.userId, member.id)));
     else {
       await db.insert(projectEyes).values({ projectId, userId: member.id });
-      await createNotification({ userId: project.ownerId, actorId: member.id, type: "project", title: "Someone placed eyes on your project", body: project.title, entityType: "project", entityId: projectId, href: `/?project=${projectId}` });
+      await createNotification({ userId: project.ownerId, actorId: member.id, type: "project", title: "Someone viewed your project", body: project.title, entityType: "project", entityId: projectId, href: `/?project=${projectId}` });
       await trackProductEvent({ actorId: member.id, event: "project_eye_added", entityType: "project", entityId: projectId });
     }
     const [recommendation] = await db.select({ id: projectRecommendations.id }).from(projectRecommendations).where(and(eq(projectRecommendations.userId, member.id), eq(projectRecommendations.projectId, projectId))).orderBy(desc(projectRecommendations.score)).limit(1);

@@ -16,8 +16,8 @@ export async function GET() {
       ...projectSlides,
       { id: "connections", kind: "connections", label: "NEW CONNECTIONS", value: String(Number(connections?.value ?? 0)), title: "new project connections this week", detail: "People joining projects together", progress: 72 },
       ...(topComment ? [{ id: "top-comment", kind: "comment", label: "TOP COMMENT", value: "“", title: String(topComment.body), detail: `${topComment.author ?? "n2 member"} · ${topComment.project_title}`, progress: 58 }] : []),
-      ...(mostEyes ? [{ id: "most-eyes", kind: "eyes", label: "MOST EYES", value: String(mostEyes.value), title: String(mostEyes.title), detail: "Most watched active project", progress: 88, projectId: String(mostEyes.id) }] : []),
-      ...(mostEngaged ? [{ id: "most-engaged", kind: "engagement", label: "MOST ENGAGED", value: String(mostEngaged.value), title: String(mostEngaged.title), detail: "Eyes, comments and contributors", progress: 94, projectId: String(mostEngaged.id) }] : []),
+      ...(mostEyes ? [{ id: "most-views", kind: "views", label: "MOST VIEWS", value: String(mostEyes.value), title: String(mostEyes.title), detail: "Most viewed active project", progress: 88, projectId: String(mostEyes.id) }] : []),
+      ...(mostEngaged ? [{ id: "most-engaged", kind: "engagement", label: "MOST ENGAGED", value: String(mostEngaged.value), title: String(mostEngaged.title), detail: "Views, comments and contributors", progress: 94, projectId: String(mostEngaged.id) }] : []),
     ];
     return NextResponse.json({ slides });
   } catch (error) { return apiError(error); }
