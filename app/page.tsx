@@ -11448,6 +11448,7 @@ export default function HomePage() {
                     </span>
                   </button>
                   <button
+                    className="follow-person-button"
                     aria-label={`Follow ${item.name}`}
                     onClick={async () => {
                       const response = await fetch(
