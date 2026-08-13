@@ -73,6 +73,21 @@ test("protects administrator access and the public n2 identity", async () => {
   assert.match(profile, /nice-2-network-mark\.svg/);
 });
 
+test("enrols administrators with a private standards-based authenticator QR code", async () => {
+  const [access, route, packageJson] = await Promise.all([
+    read("app/admin/access/admin-access.tsx"),
+    read("app/api/admin/access/route.ts"),
+    read("package.json"),
+  ]);
+  assert.match(access, /QRCodeSVG/);
+  assert.match(access, /Reveal setup key/);
+  assert.match(access, /navigator\.clipboard\.writeText\(secret\)/);
+  assert.match(access, /Google Authenticator, Microsoft Authenticator/);
+  assert.match(route, /otpauth:\/\/totp/);
+  assert.match(route, /digits=6&period=30/);
+  assert.match(packageJson, /qrcode\.react/);
+});
+
 test("admin analytics and activity tolerate production data shapes", async () => {
   const [activity, analytics, projects] = await Promise.all([
     read("app/api/admin/activity/route.ts"),
