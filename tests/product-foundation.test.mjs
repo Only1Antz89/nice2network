@@ -172,6 +172,20 @@ test("ships editable profiles, durable chat controls and four-person n2 meets", 
   assert.match(page, /Create group chat/);
 });
 
+test("explains message eligibility before conversation creation", async () => {
+  const [search, conversations, page] = await Promise.all([
+    read("app/api/search/route.ts"),
+    read("app/api/conversations/route.ts"),
+    read("app/page.tsx"),
+  ]);
+  assert.match(search, /canMessage/);
+  assert.match(search, /Waiting for follow-back/);
+  assert.match(search, /sharesProject/);
+  assert.match(conversations, /Follow each other or join a shared project/);
+  assert.match(page, /person\.canMessage!==false/);
+  assert.match(page, /conversationError/);
+});
+
 test("keeps the server and browser timeline heading deterministic", async () => {
   const page = await read("app/page.tsx");
   assert.match(page, /new Intl\.DateTimeFormat\("en-GB"/);

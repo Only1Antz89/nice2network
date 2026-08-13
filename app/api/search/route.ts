@@ -1,7 +1,7 @@
 import { and, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "@/db";
-import { adminAssignments, privacySettings, projectRoles, projects, users } from "@/db/schema";
+import { adminAssignments, follows, privacySettings, projectMembers, projectRoles, projects, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
 import { trackProductEvent } from "@/lib/analytics";
 
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     const [viewer] = await db.select({ ageBand: users.ageBand }).from(users).where(eq(users.id, member.id)).limit(1);
     const discoverableAgeBands = viewer?.ageBand === "teen_16_17" ? ["teen_16_17"] : ["adult", "adult_18_24", "adult_25_plus"];
     const [people, projectRows, roles] = await Promise.all([
-      db.select({ id: users.id, name: users.name, image: users.image, profession: users.profession, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, isN2Admin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`, isDemo: sql<boolean>`${users.role} = 'demo_member'` })
+      db.select({ id: users.id, name: users.name, image: users.image, profession: users.profession, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, messagePermission: privacySettings.messagePermission, isFollowing: sql<boolean>`exists(select 1 from ${follows} mine where mine.follower_id=${member.id} and mine.following_id=${users.id})`, followsViewer: sql<boolean>`exists(select 1 from ${follows} back where back.follower_id=${users.id} and back.following_id=${member.id})`, sharesProject: sql<boolean>`exists(select 1 from ${projectMembers} mine join ${projectMembers} theirs on theirs.project_id=mine.project_id where mine.user_id=${member.id} and theirs.user_id=${users.id})`, isN2Admin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`, isDemo: sql<boolean>`${users.role} = 'demo_member'` })
         .from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).leftJoin(adminAssignments, eq(adminAssignments.userId, users.id))
         .where(and(ne(users.id, member.id), eq(users.status, "active"), inArray(users.ageBand, discoverableAgeBands), or(eq(privacySettings.profileVisibility, "network"), sql`${privacySettings.userId} is null`), or(ilike(users.name, term), ilike(users.profession, term), ilike(users.industry, term), ilike(users.primarySkill, term), ilike(users.secondarySkill, term), ilike(users.tertiarySkill, term), sql`array_to_string(${users.skills}, ' ') ilike ${term}`, sql`array_to_string(${users.interests}, ' ') ilike ${term}`))).limit(8),
       db.select({ id: projects.id, title: projects.title, summary: projects.summary, industry: projects.industry, stage: projects.stage, accent: projects.accent, ownerName: users.name, createdAt: projects.createdAt, isDemo: sql<boolean>`${users.role} = 'demo_member'` })
@@ -23,6 +23,6 @@ export async function GET(request: Request) {
         .from(projectRoles).innerJoin(projects, eq(projects.id, projectRoles.projectId)).where(and(eq(projectRoles.status, "open"), eq(projects.status, "active"), or(ilike(projectRoles.title, term), ilike(projectRoles.department, term), sql`array_to_string(${projectRoles.skills}, ' ') ilike ${term}`))).limit(8),
     ]);
     await trackProductEvent({ actorId: member.id, ageBand: viewer?.ageBand, event: "search_performed", properties: { result: people.length + projectRows.length + roles.length } });
-    return NextResponse.json({ people, projects: projectRows, roles });
+    return NextResponse.json({ people: people.map(person=>{const mutual=Boolean(person.isFollowing&&person.followsViewer),shared=Boolean(person.sharesProject),permission=person.messagePermission??"connections",canMessage=permission!=="nobody"&&(shared||(permission==="anyone")||mutual);return {...person,isMutual:mutual,canMessage,messageReason:canMessage?(shared?"Shared project":mutual?"Mutual connection":"Messages open"):permission==="nobody"?"Not accepting new messages":person.isFollowing?"Waiting for follow-back":"Connect with each other first"}}), projects: projectRows, roles });
   } catch (error) { return apiError(error); }
 }
