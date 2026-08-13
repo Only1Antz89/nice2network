@@ -250,6 +250,9 @@ test("ships a connected-member network map with profession and skill discovery",
   ]);
   assert.match(page, /label: "Networks"/);
   assert.match(page, /function NetworkView/);
+  assert.match(page, /function NetworkGraphIcon/);
+  assert.match(page, /view!=="network"&&<aside className="right-rail">/);
+  assert.match(page, /network-floating-tools/);
   assert.match(page, /All professions/);
   assert.match(page, /View full profile/);
   assert.match(page, /profile\?\.isMutual\?"Connected"/);
@@ -257,4 +260,5 @@ test("ships a connected-member network map with profession and skill discovery",
   assert.match(graph, /show_followers=true/);
   assert.match(styles, /\.network-canvas/);
   assert.match(styles, /\.network-node \.avatar/);
+  assert.match(styles, /\.app-shell\.network-shell/);
 });
