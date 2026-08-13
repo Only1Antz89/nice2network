@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { getDb } from "@/db";
-import { adminAssignments, projectFollows, projectMembers, projectRecommendations, projectRoles, projects, recommendationEvents, savedItems, users } from "@/db/schema";
+import { adminAssignments, follows, projectFollows, projectMembers, projectRecommendations, projectRoles, projects, recommendationEvents, savedItems, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
@@ -106,7 +106,8 @@ export async function GET(request: Request) {
       });
       if (filter === "following") {
         const sharedOwnerIds = memberProjectIds.length ? new Set((await db.select({ userId: projectMembers.userId }).from(projectMembers).where(inArray(projectMembers.projectId, memberProjectIds))).map(item => item.userId)) : new Set<string>();
-        rows = rows.filter(row => sharedOwnerIds.has(row.ownerId)).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id));
+        const followedOwnerIds = new Set((await db.select({ userId:follows.followingId }).from(follows).where(eq(follows.followerId,member.id))).map(item=>item.userId));
+        rows = rows.filter(row => sharedOwnerIds.has(row.ownerId)||followedOwnerIds.has(row.ownerId)||row.isFollowingProject).sort((a, b) => Number(followedOwnerIds.has(b.ownerId))-Number(followedOwnerIds.has(a.ownerId))||Number(b.isFollowingProject)-Number(a.isFollowingProject)||b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id));
       } else if (filter === "newest") rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id));
       else if (settings.rolloutStage >= 2 && profile?.ageBand !== "teen_16_17") {
         rows = rows.filter(row => row.isPinned || (row.matchScore ?? 0) >= 45).sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || (b.feedScore ?? 0) - (a.feedScore ?? 0) || b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id));

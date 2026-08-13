@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { adminAssignments, postLikes, postReplies, postReposts, projects, timelinePosts, users } from "@/db/schema";
+import { adminAssignments, follows, postLikes, postReplies, postReposts, projects, timelinePosts, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
@@ -20,10 +20,11 @@ const postSchema = z.object({
   visibility: z.enum(["network", "connections"]).default("network"),
 }).refine(input => !input.attachmentType || Boolean(input.attachmentUrl), "Attachment data is missing");
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const db = getDb(), session = await auth(), viewerId = session?.user?.id;
-    const rows = await db.select({
+    const db = getDb(), session = await auth(), viewerId = session?.user?.id, scope = new URL(request.url).searchParams.get("scope") ?? "for_you";
+    const followedIds = viewerId ? (await db.select({ id: follows.followingId }).from(follows).where(eq(follows.followerId, viewerId))).map(row=>row.id) : [];
+    let rows = await db.select({
       id: timelinePosts.id, body: timelinePosts.body, linkedProjectIds: timelinePosts.linkedProjectIds,
       attachmentType: timelinePosts.attachmentType, attachmentUrl: timelinePosts.attachmentUrl, videoUrl: timelinePosts.videoUrl,
       visibility: timelinePosts.visibility, createdAt: timelinePosts.createdAt, authorId: users.id, authorName: users.name,
@@ -39,6 +40,8 @@ export async function GET() {
       .leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active")))
       .where(and(eq(timelinePosts.status, "visible"), eq(timelinePosts.visibility, "network"), eq(users.status, "active")))
       .orderBy(desc(timelinePosts.createdAt)).limit(60);
+    if(scope==="following") rows=rows.filter(row=>followedIds.includes(row.authorId));
+    else if(scope==="for_you"&&followedIds.length) rows.sort((a,b)=>Number(followedIds.includes(b.authorId))-Number(followedIds.includes(a.authorId))||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
     const ids = [...new Set(rows.flatMap(row => row.linkedProjectIds))];
     const linked = ids.length ? await db.select({ id: projects.id, title: projects.title, status: projects.status }).from(projects).where(inArray(projects.id, ids)) : [];
     const byId = new Map(linked.map(project => [project.id, project]));
