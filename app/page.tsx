@@ -115,7 +115,7 @@ const people = {
 };
 
 function NetworkGraphIcon({size=20}:{size?:number}) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"><g stroke="currentColor" strokeWidth="1.5"><path d="M12 12 5.2 5.2M12 12l6.8-6.8M12 12 4 13.7M12 12l8 1.7M12 12v7.6"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><circle cx="4.7" cy="4.7" r="2.1" fill="currentColor" stroke="none"/><circle cx="19.3" cy="4.7" r="2.1" fill="currentColor" stroke="none"/><circle cx="3.5" cy="13.8" r="2.1" fill="currentColor" stroke="none"/><circle cx="20.5" cy="13.8" r="2.1" fill="currentColor" stroke="none"/><circle cx="12" cy="20.2" r="2.1" fill="currentColor" stroke="none"/></g></svg>;
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true"><g transform="rotate(180 12 12)" stroke="currentColor" strokeWidth="1.5"><path d="M12 12 5.2 5.2M12 12l6.8-6.8M12 12 4 13.7M12 12l8 1.7M12 12v7.6"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><circle cx="4.7" cy="4.7" r="2.1" fill="currentColor" stroke="none"/><circle cx="19.3" cy="4.7" r="2.1" fill="currentColor" stroke="none"/><circle cx="3.5" cy="13.8" r="2.1" fill="currentColor" stroke="none"/><circle cx="20.5" cy="13.8" r="2.1" fill="currentColor" stroke="none"/><circle cx="12" cy="20.2" r="2.1" fill="currentColor" stroke="none"/></g></svg>;
 }
 
 function FreeChoiceInput({value,onChange,options,placeholder,id}:{value:string;onChange:(value:string)=>void;options:readonly string[];placeholder?:string;id:string}){
