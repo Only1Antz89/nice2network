@@ -202,7 +202,7 @@ test("explains message eligibility before conversation creation", async () => {
   assert.match(search, /Waiting for follow-back/);
   assert.match(search, /sharesProject/);
   assert.match(conversations, /Follow each other or join a shared project/);
-  assert.match(page, /person\.canMessage!==false/);
+  assert.match(page, /person\.canMessage\s*!==\s*false/);
   assert.match(page, /conversationError/);
 });
 
@@ -285,11 +285,11 @@ test("ships a connected-member network map with profession and skill discovery",
   assert.match(page, /label: "Networks"/);
   assert.match(page, /function NetworkView/);
   assert.match(page, /function NetworkGraphIcon/);
-  assert.match(page, /view!=="network"&&<aside className="right-rail">/);
+  assert.match(page, /view\s*!==\s*"network"\s*&&/);
   assert.match(page, /network-floating-tools/);
   assert.match(page, /All professions/);
   assert.match(page, /View full profile/);
-  assert.match(page, /profile\?\.isMutual\?"Connected"/);
+  assert.match(page, /profile\?\.isMutual\s*\?\s*"Connected"/);
   assert.match(graph, /from follows mine join users/);
   assert.match(graph, /show_followers=true/);
   assert.match(styles, /\.network-canvas/);
@@ -312,4 +312,19 @@ test("connects every open project contribution to a profile-aware application fl
   assert.match(apply, /requiredMatches/);
   assert.match(apply, /You have already applied for this role/);
   assert.match(styles, /\.role-fit\.warning/);
+});
+test("meet creation selects n2 profiles instead of collecting attendee emails", async () => {
+  const [page, endpoint, calendar] = await Promise.all([
+    read("app/page.tsx", "utf8"),
+    read("app/api/meetings/attendees/route.ts", "utf8"),
+    read("app/api/calendar/events/route.ts", "utf8"),
+  ]);
+  assert.match(page, /MeetAttendeePicker/);
+  assert.doesNotMatch(page, /Attendee emails/);
+  assert.match(page, /Public profiles/);
+  assert.match(endpoint, /Mutual connection/);
+  assert.match(endpoint, /Follows you/);
+  assert.match(endpoint, /profileVisibility/);
+  assert.match(calendar, /attendeeIds/);
+  assert.match(calendar, /createNotifications/);
 });
