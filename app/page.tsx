@@ -57,7 +57,7 @@ import EmojiPicker from "@/components/emoji-picker";
 
 type View = "feed" | "projects" | "messages" | "meet" | "profile" | "settings";
 type MemberPerson = { id?: string; name: string; role: string; img?: string | null; isN2Admin?: boolean };
-type ProjectRecord = { id:string; title:string; summary:string; description?:string|null; industry:string; stage:string; status?:string; visibility?:string; accent:string; workMode?:string; city?:string|null; country?:string|null; ownerId?:string; ownerName:string|null; ownerImage:string|null; ownerIsAdmin?:boolean; isDemo?:boolean; isOwner?:boolean; isPinned?:boolean; isBookmarked?:boolean; eyeCount:number; commentCount?:number; matchScore?:number; recommendationId?:string; recommendationTier?:string; recommendationReasons?:string[]; matchedRole?:string; eyeMomentum?:number; createdAt:string };
+type ProjectRecord = { id:string; title:string; summary:string; description?:string|null; imageUrl?:string|null; industry:string; stage:string; status?:string; visibility?:string; accent:string; workMode?:string; city?:string|null; country?:string|null; ownerId?:string; ownerName:string|null; ownerImage:string|null; ownerIsAdmin?:boolean; isDemo?:boolean; isOwner?:boolean; isPinned?:boolean; isBookmarked?:boolean; eyeCount:number; commentCount?:number; matchScore?:number; recommendationId?:string; recommendationTier?:string; recommendationReasons?:string[]; matchedRole?:string; eyeMomentum?:number; roles?:Array<{id:string;title:string;department:string;phase:string;status:string;criticality:string;capacity:number;filled:number}>; team?:Array<{userId:string;name:string|null;image:string|null;profession:string|null;department:string|null;membershipRole:string}>; createdAt:string };
 
 const PROJECT_INDUSTRIES = [
   "Agriculture & food", "Arts & culture", "Automotive & mobility", "Beauty & wellness",
@@ -137,7 +137,8 @@ function N2Mark({ inverse = false }: { inverse?: boolean }) {
   return <span className={`n2-ai-mark ${inverse ? "inverse" : ""}`} aria-label="n2 intelligence">n2</span>;
 }
 
-function TeamTrail({ second = false }: { second?: boolean }) {
+function TeamTrail({ second = false, project }: { second?: boolean; project?:ProjectRecord }) {
+  if(project){const owner={id:project.ownerId,name:project.ownerName??"n2 member",role:"Project owner",img:project.ownerImage};const contributors=(project.team??[]).filter(member=>member.userId!==project.ownerId);const openRoles=(project.roles??[]).filter(role=>role.phase==="now");return <div className="team-map" aria-label="Project owner, team and open roles"><div className="map-line"/><button className="team-person owner" onClick={()=>project.ownerId&&window.dispatchEvent(new CustomEvent("n2:open-profile",{detail:project.ownerId}))}><Avatar person={owner} size="lg" ring/><span className="team-role">Owner</span></button>{contributors.slice(0,3).map(member=><button className="team-person" key={member.userId} onClick={()=>window.dispatchEvent(new CustomEvent("n2:open-profile",{detail:member.userId}))}><Avatar person={{name:member.name??"n2 member",role:member.department??"Contributor",img:member.image}} size="md"/><span className="dept">{member.department??"Team"}</span></button>)}{openRoles.slice(0,Math.max(1,4-contributors.length)).map(role=><div className="open-person" key={`${role.department}-${role.title}`} title={role.title}><Plus size={16}/><span>{role.title}</span></div>)}</div>}
   const team = second
     ? [people.sofia, people.jordan, people.lena]
     : [people.marcus, people.maya, people.dev, people.ali];
@@ -219,11 +220,12 @@ function ProjectCard({ second = false, onMatch, onComments, onProfile, project, 
         <div className="project-kicker"><span>PROJECT</span><span>{project?.industry.toUpperCase()??(second ? "COMMUNITY" : "CLIMATE")}</span></div>
         <button className="project-title-link" disabled={!project} onClick={()=>project&&window.dispatchEvent(new CustomEvent("n2:open-project",{detail:project.id}))}><h2>{title}</h2></button>
         <p className="project-copy">{summary}</p>
+        {project?.imageUrl&&<button className="project-card-image" onClick={()=>window.dispatchEvent(new CustomEvent("n2:open-project",{detail:project.id}))}><img src={project.imageUrl} alt={`${project.title} project`}/></button>}
         <div className="project-meta">
           <span><Clock3 size={15} /> {second ? "Early concept" : "Pilot in 6 weeks"}</span>
           <span><UsersRound size={15} /> {second ? "3 involved" : "4 involved"}</span>
         </div>
-        <TeamTrail second={second} />
+        <TeamTrail second={second} project={project} />
         <div className="ai-gap">
           <div className="ai-icon"><N2Mark inverse /></div>
           <div>
@@ -243,13 +245,14 @@ function ProjectCard({ second = false, onMatch, onComments, onProfile, project, 
   );
 }
 
-function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish: (project:ProjectRecord)=>void }) {
+function CreateProject({ onClose, onPublish, currentMember }: { onClose: () => void; onPublish: (project:ProjectRecord)=>void; currentMember:MemberPerson }) {
   const [step, setStep] = useState(0);
-  const [form,setForm]=useState({title:"",summary:"",description:"",industry:"Community & local services",stage:"idea",workMode:"remote",city:"",country:"United Kingdom",timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"Europe/London",allowRemoteFallback:true});
+  const [form,setForm]=useState({title:"",summary:"",description:"",imageUrl:null as string|null,accent:"#ff6b35",industry:"Community & local services",stage:"idea",workMode:"remote",city:"",country:"United Kingdom",timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"Europe/London",allowRemoteFallback:true});
   const [projectId,setProjectId]=useState(""),[blueprint,setBlueprint]=useState<BlueprintRecord|null>(null),[roles,setRoles]=useState<BlueprintRole[]>([]);
   const [busy,setBusy]=useState(false),[error,setError]=useState("");
   async function mapTeam(){setBusy(true);setError("");const draftResponse=await fetch("/api/projects/drafts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(form)});const draft=await draftResponse.json();if(!draftResponse.ok){setError(draft.error??"Could not save the private project draft.");setBusy(false);return}setProjectId(draft.project.id);const response=await fetch(`/api/projects/${draft.project.id}/blueprint`,{method:"POST"});const result=await response.json();if(!response.ok){setError(result.error??"Could not prepare the project team.");setBusy(false);return}setBlueprint(result.blueprint);setRoles(result.blueprint.roles);setStep(1);setBusy(false)}
-  async function publish(){if(!blueprint||!projectId)return;setBusy(true);setError("");const response=await fetch(`/api/projects/${projectId}/blueprint/${blueprint.id}/approve`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({roles,visibility:"network"})});const result=await response.json();if(!response.ok){setError(result.error??"Could not publish this project.");setBusy(false);return}onPublish({id:projectId,title:form.title,summary:form.summary,description:form.description,industry:form.industry,stage:form.stage,status:"active",visibility:"network",accent:"#ff6b35",workMode:form.workMode,city:form.city,country:form.country,ownerName:"You",ownerImage:null,isOwner:true,eyeCount:0,commentCount:0,createdAt:new Date().toISOString()});onClose()}
+  async function publish(){if(!blueprint||!projectId)return;setBusy(true);setError("");const response=await fetch(`/api/projects/${projectId}/blueprint/${blueprint.id}/approve`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({roles,visibility:"network"})});const result=await response.json();if(!response.ok){setError(result.error??"Could not publish this project.");setBusy(false);return}onPublish({id:projectId,title:form.title,summary:form.summary,description:form.description,imageUrl:form.imageUrl,industry:form.industry,stage:form.stage,status:"active",visibility:"network",accent:form.accent,workMode:form.workMode,city:form.city,country:form.country,ownerId:currentMember.id,ownerName:currentMember.name,ownerImage:currentMember.img??null,ownerIsAdmin:currentMember.isN2Admin,isOwner:true,roles:roles.map((role,index)=>({id:`new-${index}`,title:role.title,department:role.department,phase:role.phase,status:"open",criticality:role.criticality,capacity:role.headcount,filled:0})),team:[{userId:currentMember.id??"owner",name:currentMember.name,image:currentMember.img??null,profession:currentMember.role,department:"Leadership",membershipRole:"owner"}],eyeCount:0,commentCount:0,createdAt:new Date().toISOString()});onClose()}
+  function chooseProjectImage(file?:File){if(!file)return;if(!["image/jpeg","image/png","image/webp"].includes(file.type)){setError("Choose a JPG, PNG or WebP image.");return}if(file.size>1_500_000){setError("Project images must be under 1.5 MB.");return}const reader=new FileReader();reader.onload=()=>{setForm(value=>({...value,imageUrl:String(reader.result)}));setError("")};reader.readAsDataURL(file)}
   function updateRole(index:number,patch:Partial<BlueprintRole>){setRoles(rows=>rows.map((role,i)=>i===index?{...role,...patch}:role))}
   function addRole(){setRoles(rows=>[...rows,{phase:"now",department:"New department",title:"New role",headcount:1,professions:["Relevant professional"],requiredSkills:["Relevant skill"],usefulSkills:[],criticality:"important",reason:"This contribution helps the project reach its next milestone.",workMode:form.workMode as BlueprintRole["workMode"]}])}
   return (
@@ -277,6 +280,7 @@ function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish:
               <fieldset className="location-fields"><legend>Location</legend><div><input aria-label="City" value={form.city} onChange={e=>setForm({...form,city:e.target.value})} placeholder="City"/><input aria-label="Country" value={form.country} onChange={e=>setForm({...form,country:e.target.value})} placeholder="Country"/></div></fieldset>
               <label>Timezone<input list="n2-timezones" value={form.timezone} onChange={e=>setForm({...form,timezone:e.target.value})} placeholder="Europe/London"/><datalist id="n2-timezones">{COMMON_TIMEZONES.map(timezone=><option key={timezone} value={timezone}/>)}</datalist></label>
             </div>
+            <section className="project-visual-fields"><div><span>Timeline accent</span><div className="project-colour-options">{["#ff6b35","#4169e1","#7c3aed","#0f9d72","#e54885","#111111"].map(colour=><button type="button" key={colour} className={form.accent===colour?"active":""} style={{background:colour}} aria-label={`Use ${colour} accent`} aria-pressed={form.accent===colour} onClick={()=>setForm({...form,accent:colour})}/>)}</div></div><label className="project-image-input"><ImageIcon size={16}/><span><strong>{form.imageUrl?"Change project image":"Add a project image"}</strong><small>Optional · JPG, PNG or WebP · 1.5 MB maximum</small></span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>chooseProjectImage(event.target.files?.[0])}/></label>{form.imageUrl&&<div className="project-image-preview"><img src={form.imageUrl} alt="Project preview"/><button type="button" onClick={()=>setForm({...form,imageUrl:null})}><X size={14}/> Remove</button></div>}</section>
             <div className="remote-fallback"><input id="remote-fallback" type="checkbox" checked={form.allowRemoteFallback} onChange={e=>setForm({...form,allowRemoteFallback:e.target.checked})}/><label htmlFor="remote-fallback"><strong>Use remote fallback</strong><small>Widen the search only when suitable local people are scarce.</small></label></div>
             {error&&<p className="form-error">{error}</p>}
             <button className="primary-button wide" disabled={busy||form.title.trim().length<4||form.summary.trim().length<20} onClick={mapTeam}>{busy?"Mapping the project…":<>Find the gaps <N2Mark inverse /></>}</button>
@@ -658,7 +662,7 @@ export default function HomePage() {
         <footer><Logo/><p>Useful people, brought together.</p><div><button>About</button><button>Privacy</button><button>Community</button></div><small>© 2026 nice 2 network</small></footer>
       </aside>
       <nav className="mobile-nav">{nav.slice(0,4).map((item)=>{const Icon=item.icon;return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}<button onClick={openOwnProfile} className={view==="profile"?"active":""}><UserRound size={21}/><span>Me</span></button></nav>
-      {authenticated&&createOpen&&<CreateProject onClose={()=>setCreateOpen(false)} onPublish={project=>{setLatestProject(project);setToast("Project published — useful matches are being notified.");go("projects")}}/>}
+      {authenticated&&createOpen&&<CreateProject currentMember={currentMember} onClose={()=>setCreateOpen(false)} onPublish={project=>{setLatestProject(project);setToast("Project published — useful matches are being notified.");go("projects")}}/>}
       {authenticated&&postComposerOpen&&<PostComposer currentMember={currentMember} onClose={()=>setPostComposerOpen(false)} onPosted={setLatestPost} onToast={setToast}/>}
       {authenticated&&matchOpen&&<MatchPanel onClose={()=>setMatchOpen(false)} onMessage={()=>{setMatchOpen(false);go("messages")}}/>}
       {authenticated&&searchOpen&&<SearchOverlay onClose={()=>setSearchOpen(false)} onNavigate={go} onProfile={openProfile}/>}

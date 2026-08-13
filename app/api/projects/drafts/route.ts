@@ -11,7 +11,8 @@ const schema = z.object({
   title: z.string().trim().min(4).max(120), summary: z.string().trim().min(20).max(300), description: z.string().trim().max(5000).nullable().optional(),
   industry: z.string().trim().min(2).max(80), stage: z.enum(["idea", "planning", "building", "launching"]).default("idea"),
   workMode: workModeSchema.default("remote"), city: z.string().trim().max(100).nullable().optional(), country: z.string().trim().max(100).nullable().optional(),
-  timezone: z.string().trim().min(3).max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true),
+  timezone: z.string().trim().min(3).max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true), accent: z.string().regex(/^#[0-9a-f]{6}$/i).default("#ff6b35"),
+  imageUrl: z.string().max(1_500_000).refine(value=>!value||/^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
 });
 
 export async function POST(request: Request) {

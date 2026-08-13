@@ -20,7 +20,8 @@ const roleSchema = z.object({
 const inputSchema = z.object({
   title: z.string().trim().min(4).max(120), summary: z.string().trim().min(20).max(300), description: z.string().max(5000).optional(), industry: z.string().min(2).max(80),
   stage: z.enum(["idea", "planning", "building", "launching"]).default("idea"), visibility: z.enum(["network", "connections", "private"]).default("network"),
-  workMode: z.enum(["remote", "hybrid", "in_person"]).default("remote"), city: z.string().max(100).nullable().optional(), country: z.string().max(100).nullable().optional(), timezone: z.string().max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true),
+  workMode: z.enum(["remote", "hybrid", "in_person"]).default("remote"), city: z.string().max(100).nullable().optional(), country: z.string().max(100).nullable().optional(), timezone: z.string().max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true), accent: z.string().regex(/^#[0-9a-f]{6}$/i).default("#ff6b35"),
+  imageUrl: z.string().max(1_500_000).refine(value=>!value||/^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
   roles: z.array(roleSchema).max(18).default([]),
 });
 
@@ -31,12 +32,14 @@ async function baseProjects(memberId: string, condition: ReturnType<typeof and> 
   const commentCount = sql<number>`(select count(*)::int from project_comments pc where pc.project_id = ${projects.id} and pc.status = 'visible')`;
   return getDb().select({
     id: projects.id, title: projects.title, summary: projects.summary, description: projects.description, industry: projects.industry, stage: projects.stage,
-    status: projects.status, visibility: projects.visibility, accent: projects.accent, workMode: projects.workMode, city: projects.city, country: projects.country,
+    status: projects.status, visibility: projects.visibility, accent: projects.accent, imageUrl:projects.imageUrl, workMode: projects.workMode, city: projects.city, country: projects.country,
     ownerId: projects.ownerId, ownerName: users.name, ownerImage: users.image,
     isDemo: sql<boolean>`${users.role} = 'demo_member'`,
     ownerIsAdmin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`,
     isOwner: sql<boolean>`${projects.ownerId} = ${memberId} or exists (select 1 from project_members pm where pm.project_id = ${projects.id} and pm.user_id = ${memberId} and pm.membership_role = 'co_owner')`,
-    isPinned: sql<boolean>`coalesce(${savedItems.pinned}, false)`, isBookmarked: sql<boolean>`coalesce(${savedItems.bookmarked}, false)`, eyeCount, commentCount, createdAt: projects.createdAt,
+    isPinned: sql<boolean>`coalesce(${savedItems.pinned}, false)`, isBookmarked: sql<boolean>`coalesce(${savedItems.bookmarked}, false)`, eyeCount, commentCount,
+    roles:sql<Array<{id:string;title:string;department:string;phase:string;status:string;criticality:string;capacity:number;filled:number}>>`coalesce((select json_agg(json_build_object('id',pr.id,'title',pr.title,'department',pr.department,'phase',pr.phase,'status',pr.status,'criticality',pr.criticality,'capacity',pr.capacity,'filled',pr.filled) order by pr.created_at) from project_roles pr where pr.project_id=${projects.id} and pr.status='open'),'[]'::json)`,
+    team:sql<Array<{userId:string;name:string|null;image:string|null;profession:string|null;department:string|null;membershipRole:string}>>`coalesce((select json_agg(json_build_object('userId',pm.user_id,'name',tu.name,'image',tu.image,'profession',tu.profession,'department',pm.department,'membershipRole',pm.membership_role) order by pm.joined_at) from project_members pm join users tu on tu.id=pm.user_id where pm.project_id=${projects.id}),'[]'::json)`, createdAt: projects.createdAt,
   }).from(projects).innerJoin(users, eq(users.id, projects.ownerId))
     .leftJoin(adminAssignments, and(eq(adminAssignments.userId, projects.ownerId), eq(adminAssignments.status, "active")))
     .leftJoin(savedItems, and(eq(savedItems.entityId, projects.id), eq(savedItems.entityType, "project"), eq(savedItems.userId, memberId)))

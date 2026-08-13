@@ -17,9 +17,9 @@ export async function getSharedContent(kind:string,id:string):Promise<SharedCont
     return {id:row.id,kind:"post",title:`Post by ${author}`,description:row.body,authorName:author,authorProfession:row.authorProfession,image:row.attachmentType==="image"?row.attachmentUrl:null,accent:"#111111",createdAt:row.createdAt};
   }
   if(kind==="project"){
-    const [row]=await db.select({id:projects.id,title:projects.title,summary:projects.summary,accent:projects.accent,createdAt:projects.createdAt,ownerName:users.name,ownerProfession:users.profession}).from(projects).innerJoin(users,eq(users.id,projects.ownerId)).where(and(eq(projects.id,id),eq(projects.status,"active"),eq(projects.visibility,"network"),eq(users.status,"active"))).limit(1);
+    const [row]=await db.select({id:projects.id,title:projects.title,summary:projects.summary,imageUrl:projects.imageUrl,accent:projects.accent,createdAt:projects.createdAt,ownerName:users.name,ownerProfession:users.profession}).from(projects).innerJoin(users,eq(users.id,projects.ownerId)).where(and(eq(projects.id,id),eq(projects.status,"active"),eq(projects.visibility,"network"),eq(users.status,"active"))).limit(1);
     if(!row)return null;
-    return {id:row.id,kind:"project",title:row.title,description:row.summary,authorName:row.ownerName??"an n2 member",authorProfession:row.ownerProfession,image:null,accent:row.accent,createdAt:row.createdAt};
+    return {id:row.id,kind:"project",title:row.title,description:row.summary,authorName:row.ownerName??"an n2 member",authorProfession:row.ownerProfession,image:row.imageUrl,accent:row.accent,createdAt:row.createdAt};
   }
   return null;
 }
