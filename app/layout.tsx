@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Noto_Color_Emoji } from "next/font/google";
 import "./globals.css";
 import SiteAnalytics from "./site-analytics";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const notoColorEmoji = Noto_Color_Emoji({ variable: "--font-noto-color-emoji", subsets: ["emoji"], weight: "400", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://nice2network.vercel.app"),
@@ -20,5 +21,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable}`}>{children}<SiteAnalytics/></body></html>;
+  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable} ${notoColorEmoji.variable}`}>{children}<SiteAnalytics/></body></html>;
 }

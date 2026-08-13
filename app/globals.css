@@ -25,6 +25,24 @@
 @media(max-width:820px){.auth-shell{display:block}.auth-story{display:none}.auth-side{padding:85px 20px 35px;position:relative}.mobile-auth-logo{display:flex;position:absolute;top:25px;left:24px;align-items:center;gap:8px;color:var(--ink);text-decoration:none;font-size:12px;font-weight:700}.mobile-auth-logo span{width:29px;height:29px;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:#fff;font:9px var(--font-geist-mono)}}
 @media(max-width:560px){.auth-side>.auth-card{padding:25px 20px}.signup-grid{grid-template-columns:1fr 1fr}.onboarding-page>header{padding:0 18px}.onboarding-page>header>a{font-size:0}.onboarding-page>header>a span{font-size:9px}.onboarding-card{margin-top:35px}.onboarding-card h1{font-size:28px}}
 
+/* Google Noto Color Emoji keeps member expression consistent across platforms. */
+body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-serif}
+.emoji-glyph{font-family:var(--font-noto-color-emoji),"Apple Color Emoji","Segoe UI Emoji",sans-serif}
+.emoji-picker{position:relative;display:grid;place-items:center;flex:none}
+.emoji-trigger{width:34px;height:34px;border:1px solid var(--line)!important;border-radius:50%!important;background:#fff!important;color:var(--ink)!important;padding:0!important;display:grid!important;place-items:center!important}
+.emoji-trigger:hover,.emoji-trigger[aria-expanded="true"]{background:var(--soft)!important;border-color:#aaa!important}
+.emoji-popover{position:absolute;z-index:90;left:0;bottom:calc(100% + 9px);width:252px;border:1px solid var(--line);border-radius:13px;background:#fff;padding:12px;box-shadow:0 18px 55px rgba(0,0,0,.18)}
+.emoji-picker.right .emoji-popover{left:auto;right:0}
+.emoji-popover>span{display:block;margin:0 0 9px;font:7px var(--font-geist-mono);letter-spacing:.14em;color:var(--muted)}
+.emoji-popover>div{display:grid;grid-template-columns:repeat(8,1fr);gap:2px}
+.emoji-popover .emoji-glyph{width:28px;height:28px;border:0;border-radius:7px;background:none;padding:0;font-size:19px;line-height:1}
+.emoji-popover .emoji-glyph:hover,.emoji-popover .emoji-glyph:focus-visible{background:var(--soft);outline:0}
+.post-tools>.emoji-picker{margin-left:auto}
+.chat-composer{grid-template-columns:34px 34px 1fr 38px}
+.comment-composer{grid-template-columns:34px 1fr 38px}
+.chat-composer>.emoji-picker .emoji-trigger,.comment-composer>.emoji-picker .emoji-trigger{border:0!important}
+@media(max-width:400px){.emoji-popover{position:fixed;left:14px!important;right:14px!important;bottom:78px;width:auto}.emoji-popover>div{grid-template-columns:repeat(8,1fr);justify-items:center}}
+
 /* Responsive email-first authentication */
 .auth-side>.auth-card{width:clamp(500px,36vw,620px);padding:clamp(38px,3.25vw,58px);border-radius:22px}.auth-side>.register-card{width:clamp(560px,41vw,700px)}.auth-side>.auth-card h1{font-size:clamp(32px,2.35vw,42px);line-height:1.08;margin:12px 0 14px}.auth-side>.auth-card>p{font-size:clamp(12px,.85vw,15px);max-width:46ch;margin-bottom:25px}.auth-side>.auth-card form{gap:16px}.auth-side>.auth-card label{font-size:11px}.auth-side>.auth-card input,.auth-side>.auth-card select{height:50px;font-size:13px;padding-inline:14px}.auth-side>.auth-card .primary-button{min-height:50px;font-size:13px}.auth-side>.auth-card .forgot-link,.auth-side>.auth-card .auth-switch{font-size:10px}.auth-side>.auth-card .auth-switch{margin-top:20px}
 @media(max-width:1200px){.auth-side>.auth-card{width:min(520px,100%);padding:40px}.auth-side>.register-card{width:min(600px,100%)}}
