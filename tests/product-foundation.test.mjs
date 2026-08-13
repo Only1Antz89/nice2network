@@ -175,3 +175,10 @@ test("makes post and project three-dot menus functional", async () => {
   assert.match(saved, /"post"/);
   assert.match(reports, /"post"/);
 });
+
+test("uses the n2 share box for internal and external destinations", async () => {
+  const page = await read("app/page.tsx");
+  for (const option of ["Send in messages", "Share to a project", "Copy link", "External sharing options"]) assert.match(page, new RegExp(option));
+  assert.match(page, /api\/conversations\/\$\{conversation\.id\}\/messages/);
+  assert.match(page, /api\/projects\/\$\{project\.id\}\/updates/);
+});
