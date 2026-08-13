@@ -1,4 +1,4 @@
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
@@ -34,15 +34,17 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
     if (!row) throw new ApiError(404, "Profile not found");
     const isCurrent = viewer.id === userId;
     if (!isCurrent && row.visibility && row.visibility !== "network") throw new ApiError(403, "This profile is not visible to the wider network");
-    const [career, education, [owned], [involved]] = await Promise.all([
+    const projectVisibility = isCurrent ? undefined : eq(projects.visibility, "network");
+    const [career, education, ownedProjects, joinedProjects] = await Promise.all([
       db.select().from(careerHistory).where(eq(careerHistory.userId, userId)).orderBy(asc(careerHistory.sortOrder)),
       db.select().from(educationHistory).where(eq(educationHistory.userId, userId)).orderBy(asc(educationHistory.sortOrder)),
-      db.select({ value: count() }).from(projects).where(eq(projects.ownerId, userId)),
-      db.select({ value: count() }).from(projectMembers).where(eq(projectMembers.userId, userId)),
+      db.select({ id:projects.id,title:projects.title,summary:projects.summary,industry:projects.industry,stage:projects.stage,status:projects.status,accent:projects.accent,createdAt:projects.createdAt }).from(projects).where(projectVisibility?and(eq(projects.ownerId,userId),projectVisibility):eq(projects.ownerId,userId)).orderBy(asc(projects.title)),
+      db.select({ id:projects.id,title:projects.title,summary:projects.summary,industry:projects.industry,stage:projects.stage,status:projects.status,accent:projects.accent,createdAt:projects.createdAt,membershipRole:projectMembers.membershipRole,department:projectMembers.department }).from(projectMembers).innerJoin(projects,eq(projects.id,projectMembers.projectId)).where(projectVisibility?and(eq(projectMembers.userId,userId),ne(projects.ownerId,userId),projectVisibility):and(eq(projectMembers.userId,userId),ne(projects.ownerId,userId))).orderBy(asc(projects.title)),
     ]);
     const rankedSkills = [row.primarySkill, row.secondarySkill, row.tertiarySkill].filter(Boolean);
     const fallbackSkills = rankedSkills.length ? rankedSkills : row.skills.slice(0, 3);
-    return NextResponse.json({ profile: { ...row, location: isCurrent || row.showLocation ? row.location : null, isN2Admin: Boolean(row.isN2Admin), rankedSkills: fallbackSkills, career, education, projectCount: Number(owned?.value ?? 0), involvedCount: Number(involved?.value ?? 0), isCurrent } });
+    const projectHistory=[...ownedProjects.map(project=>({...project,isOwner:true,membershipRole:"owner",department:"Leadership"})),...joinedProjects.map(project=>({...project,isOwner:false}))];
+    return NextResponse.json({ profile: { ...row, location: isCurrent || row.showLocation ? row.location : null, isN2Admin: Boolean(row.isN2Admin), rankedSkills: fallbackSkills, career, education, projects:projectHistory, projectCount:ownedProjects.length, involvedCount:joinedProjects.length, isCurrent } });
   } catch (error) { return apiError(error); }
 }
 
