@@ -76,6 +76,11 @@ async function seed() {
       ('da000000-0000-4000-8000-000000000001',${projects[0].id},${people[1][0]},'microsoft','Clean energy pilot: first working session','Agree the street pilot and immediate owner actions',now()+interval '2 days',now()+interval '2 days 45 minutes','Europe/London','https://teams.microsoft.com/','Online',${JSON.stringify([])}::jsonb),
       ('da000000-0000-4000-8000-000000000002',${projects[1].id},${people[5][0]},'in_person','Creative collisions · Shoreditch','A small cross-industry networking room',now()+interval '5 days',now()+interval '5 days 90 minutes','Europe/London',null,'Shoreditch, London',${JSON.stringify([])}::jsonb)
       on conflict (id) do nothing`;
+    await tx`insert into timeline_posts (id,author_id,body,linked_project_ids,video_url,visibility,status,created_at) values
+      ('db000000-0000-4000-8000-000000000001',${people[2][0]},'A useful brand is a shared promise, not just a logo. I am collecting examples of communities that made a complex climate idea feel genuinely joinable. #neighbourhood-energy-shared-fairly',${[projects[0].id]}::uuid[],null,'network','visible',now()-interval '3 hours'),
+      ('db000000-0000-4000-8000-000000000002',${people[3][0]},'What would a weather app look like if calm was one of its product requirements? I have been prototyping an accessibility-first forecast card. #weather-without-the-noise',${[projects[2].id]}::uuid[],'https://vimeo.com/76979871','network','visible',now()-interval '7 hours'),
+      ('db000000-0000-4000-8000-000000000003',${people[4][0]},'Small pilots become real when somebody names the awkward operational questions early. Happy to compare launch checklists with anyone working on local food systems. #surplus-supper-network',${[projects[3].id]}::uuid[],null,'network','visible',now()-interval '11 hours')
+      on conflict (id) do nothing`;
   });
 }
 
@@ -94,7 +99,7 @@ async function purge() {
 }
 
 async function status() {
-  const [row]=await sql`select (select count(*)::int from users where role=${DEMO_ROLE} and email like ${`%@${DEMO_DOMAIN}`}) as members,(select count(*)::int from projects where description like 'Demonstration project · n2 demo batch 2026-08%') as projects,(select count(*)::int from project_comments where id::text like 'd9000000-%') as comments,(select count(*)::int from meetings where id::text like 'da000000-%') as meetings`;
+  const [row]=await sql`select (select count(*)::int from users where role=${DEMO_ROLE} and email like ${`%@${DEMO_DOMAIN}`}) as members,(select count(*)::int from projects where description like 'Demonstration project · n2 demo batch 2026-08%') as projects,(select count(*)::int from project_comments where id::text like 'd9000000-%') as comments,(select count(*)::int from meetings where id::text like 'da000000-%') as meetings,(select count(*)::int from timeline_posts where id::text like 'db000000-%') as posts`;
   console.log(JSON.stringify(row));
 }
 

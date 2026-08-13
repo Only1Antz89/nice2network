@@ -50,6 +50,13 @@
       "when": 1786614738977,
       "tag": "0006_dear_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786617177741,
+      "tag": "0007_green_quicksilver",
+      "breakpoints": true
     }
   ]
 }

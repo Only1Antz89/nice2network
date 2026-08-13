@@ -15,6 +15,7 @@ import {
   Clock3,
   Ellipsis,
   Eye,
+  Image as ImageIcon,
   GraduationCap,
   Globe2,
   Home,
@@ -40,6 +41,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  Video,
   Star,
   X,
 } from "lucide-react";
@@ -53,6 +55,7 @@ type BlueprintRole = { phase:"now"|"next"|"later";department:string;title:string
 type BlueprintRecord = { id:string;outcome:string;assumptions:string[];coveredContributions:Array<{area:string;evidence:string}>;milestones:Array<{title:string;phase:string}>;gaps:string[];risks:string[];roles:BlueprintRole[];provider:string;usedFallback?:boolean;failureStatus?:string|null };
 type ProfileRecord = { id:string;name:string|null;image:string|null;profession:string|null;headline:string|null;bio:string|null;industry:string|null;rankedSkills:string[];interests:string[];location:string|null;isN2Admin:boolean;isDemo?:boolean;isCurrent:boolean;projectCount:number;involvedCount:number;career:Array<{id:string;title:string;company:string;location:string|null;startDate:string|null;endDate:string|null;current:boolean;description:string|null}>;education:Array<{id:string;institution:string;qualification:string;fieldOfStudy:string|null;startYear:number|null;endYear:number|null;description:string|null}> };
 type NotificationRecord = { id:string; type:string; title:string; body:string; href?:string|null; readAt?:string|null; createdAt:string; actorName?:string|null; actorImage?:string|null };
+type TimelinePost = { id:string;body:string;attachmentType?:"image"|"video"|null;attachmentUrl?:string|null;videoUrl?:string|null;createdAt:string;authorId:string;authorName:string|null;authorImage:string|null;authorProfession?:string|null;authorIsAdmin?:boolean;isDemo?:boolean;linkedProjects:Array<{id:string;title:string}> };
 
 const people = {
   maya: { name: "Maya Chen", role: "Product Designer", img: "https://i.pravatar.cc/160?img=47" },
@@ -252,12 +255,31 @@ function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish:
   );
 }
 
-function Feed({ onCreate, onMatch, onComments, onProfile, onShare, onNotifications, onToast, unread, currentMember }: { onCreate: () => void; onMatch: () => void; onComments:(project:ProjectRecord)=>void; onProfile:(userId:string)=>void; onShare:(project:{id:string;title:string;summary:string})=>void; onNotifications:()=>void; onToast:(message:string)=>void; unread:number; currentMember: MemberPerson }) {
+function videoEmbed(url:string){try{const parsed=new URL(url);if(parsed.hostname.includes("youtube.com")){const id=parsed.searchParams.get("v");return id?`https://www.youtube-nocookie.com/embed/${id}`:null}if(parsed.hostname==="youtu.be")return `https://www.youtube-nocookie.com/embed/${parsed.pathname.slice(1)}`;if(parsed.hostname.includes("vimeo.com")){const id=parsed.pathname.split("/").filter(Boolean).pop();return id?`https://player.vimeo.com/video/${id}`:null}}catch{}return null}
+
+function TimelinePostCard({post,onProfile,onProject}:{post:TimelinePost;onProfile:(id:string)=>void;onProject:()=>void}){
+  const embed=post.videoUrl?videoEmbed(post.videoUrl):null;
+  return <article className="timeline-post"><header><Avatar person={{name:post.authorName??"n2 member",role:post.authorProfession??"n2 member",img:post.authorImage,isN2Admin:post.authorIsAdmin}} size="md"/><div><button className="profile-name" onClick={()=>onProfile(post.authorId)}>{post.authorName??"n2 member"} {post.authorIsAdmin&&<N2AdminBadge/>} {post.isDemo&&<DemoBadge/>}</button><span>{post.authorProfession??"n2 member"} · {new Date(post.createdAt).toLocaleDateString(undefined,{day:"numeric",month:"short"})}</span></div><button className="icon-button" aria-label="Post options"><Ellipsis size={18}/></button></header><p>{post.body}</p>{post.linkedProjects.length>0&&<div className="post-project-links">{post.linkedProjects.map(project=><button key={project.id} onClick={onProject}>#{project.title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}</button>)}</div>}{post.attachmentType==="image"&&post.attachmentUrl&&<img className="post-media" src={post.attachmentUrl} alt="Post attachment"/>}{post.attachmentType==="video"&&post.attachmentUrl&&<video className="post-media" src={post.attachmentUrl} controls preload="metadata"/>}{embed&&<div className="post-video-embed"><iframe src={embed} title="Video shared in post" allow="accelerometer; autoplay; encrypted-media; picture-in-picture" allowFullScreen/></div>}{post.videoUrl&&!embed&&<a className="post-video-link" href={post.videoUrl} target="_blank" rel="noreferrer"><Video size={16}/> Watch shared video <ArrowUpRight size={14}/></a>}<footer><button><MessageCircle size={16}/> Comment</button><button><Share2 size={16}/> Share</button></footer></article>
+}
+
+function PostComposer({currentMember,onClose,onPosted,onToast}:{currentMember:MemberPerson;onClose:()=>void;onPosted:(post:TimelinePost)=>void;onToast:(message:string)=>void}){
+  const [body,setBody]=useState(""),[videoUrl,setVideoUrl]=useState(""),[attachment,setAttachment]=useState<{type:"image"|"video";url:string;name:string}|null>(null),[projectsList,setProjectsList]=useState<ProjectRecord[]>([]),[linked,setLinked]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  useEffect(()=>{fetch("/api/projects?scope=discover&filter=newest&limit=30").then(r=>r.ok?r.json():{projects:[]}).then(data=>setProjectsList(data.projects??[])).catch(()=>undefined)},[]);
+  function chooseFile(file?:File){if(!file)return;const isImage=file.type.startsWith("image/"),isVideo=file.type.startsWith("video/");if(!isImage&&!isVideo){setError("Choose an image or video file.");return}const max=isImage?2_000_000:2_500_000;if(file.size>max){setError(`${isImage?"Images":"Videos"} must be under ${isImage?"2 MB":"2.5 MB"}.`);return}const reader=new FileReader();reader.onload=()=>{setAttachment({type:isImage?"image":"video",url:String(reader.result),name:file.name});setError("")};reader.readAsDataURL(file)}
+  function toggleProject(project:ProjectRecord){setLinked(ids=>{if(ids.includes(project.id)){setBody(value=>value.replace(new RegExp(`\\s*#${project.title.toLowerCase().replace(/[^a-z0-9]+/g,"-")}\\b`,"i"),""));return ids.filter(id=>id!==project.id)}if(ids.length>=8)return ids;const tag=`#${project.title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}`;setBody(value=>`${value.trim()}${value.trim()?" ":""}${tag}`);return [...ids,project.id]})}
+  async function submit(event:FormEvent){event.preventDefault();setBusy(true);setError("");const response=await fetch("/api/posts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({body,linkedProjectIds:linked,attachmentType:attachment?.type??null,attachmentUrl:attachment?.url??null,videoUrl:videoUrl.trim()||null})});const data=await response.json();if(!response.ok){setError(data.error??"Could not publish your post.");setBusy(false);return}onPosted({...data.post,linkedProjects:projectsList.filter(project=>linked.includes(project.id)).map(project=>({id:project.id,title:project.title}))});onToast("Your idea is now on the timeline.");onClose()}
+  return <div className="modal-backdrop" role="presentation" onMouseDown={event=>event.target===event.currentTarget&&onClose()}><form className="post-composer-modal" onSubmit={submit}><header><div><span className="eyebrow">SHARE WITH THE NETWORK</span><h2>Share an idea</h2></div><button type="button" className="icon-button" onClick={onClose}><X size={19}/></button></header><div className="post-author"><Avatar person={currentMember} size="md"/><span><strong>{currentMember.name}</strong><small>Visible to the n2 network</small></span></div><textarea autoFocus value={body} onChange={event=>setBody(event.target.value)} placeholder="What are you thinking about, building or looking to explore?" maxLength={3000}/>{attachment&&<div className="attachment-preview"><button type="button" onClick={()=>setAttachment(null)}><X size={14}/></button>{attachment.type==="image"?<img src={attachment.url} alt="Selected attachment"/>:<video src={attachment.url} controls/>}<small>{attachment.name}</small></div>}<div className="post-tools"><label><ImageIcon size={17}/> Image<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event=>chooseFile(event.target.files?.[0])}/></label><label><Video size={17}/> Video<input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={event=>chooseFile(event.target.files?.[0])}/></label><label className="video-url"><Link2 size={17}/><input value={videoUrl} onChange={event=>setVideoUrl(event.target.value)} placeholder="YouTube or Vimeo link"/></label></div><section className="project-hashtags"><div><strong>Link existing projects</strong><small>Selecting one adds a clickable hashtag.</small></div><div>{projectsList.map(project=><button type="button" key={project.id} className={linked.includes(project.id)?"selected":""} onClick={()=>toggleProject(project)}>#{project.title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}</button>)}</div></section>{error&&<p className="form-error">{error}</p>}<footer><small>{body.length}/3000</small><button className="primary-button" disabled={busy||!body.trim()}>{busy?"Posting…":"Post idea"}</button></footer></form></div>
+}
+
+function Feed({ onCreate, onShareIdea, onMatch, onComments, onProfile, onProject, onShare, onNotifications, onToast, unread, currentMember, newPost }: { onCreate: () => void; onShareIdea:()=>void; onMatch: () => void; onComments:(project:ProjectRecord)=>void; onProfile:(userId:string)=>void; onProject:()=>void; onShare:(project:{id:string;title:string;summary:string})=>void; onNotifications:()=>void; onToast:(message:string)=>void; unread:number; currentMember: MemberPerson; newPost:TimelinePost|null }) {
   const [filter, setFilter] = useState("For you");
   const [notices,setNotices]=useState<Array<{id:string;title:string;body:string;authorName:string|null}>>([]);
   const [liveProjects,setLiveProjects]=useState<ProjectRecord[]>([]);
+  const [posts,setPosts]=useState<TimelinePost[]>([]);
   const [nextCursor,setNextCursor]=useState<string|null>(null),[loadingMore,setLoadingMore]=useState(false),[algorithmMode,setAlgorithmMode]=useState("shadow");
   useEffect(()=>{fetch("/api/notices").then(r=>r.ok?r.json():{notices:[]}).then(data=>setNotices(data.notices??[])).catch(()=>undefined)},[]);
+  useEffect(()=>{fetch("/api/posts").then(r=>r.ok?r.json():{posts:[]}).then(data=>setPosts(data.posts??[])).catch(()=>undefined)},[]);
+  useEffect(()=>{if(newPost)setPosts(rows=>[newPost,...rows.filter(row=>row.id!==newPost.id)])},[newPost]);
   useEffect(()=>{const controller=new AbortController();fetch(`/api/projects?scope=discover&filter=${encodeURIComponent(filter.toLowerCase().replaceAll(" ","_"))}`,{signal:controller.signal}).then(r=>r.ok?r.json():{projects:[]}).then(data=>{setLiveProjects(data.projects??[]);setNextCursor(data.nextCursor??null);setAlgorithmMode(data.algorithmMode??"shadow")}).catch(()=>undefined);return()=>controller.abort()},[filter]);
   async function loadMore(){if(!nextCursor)return;setLoadingMore(true);const response=await fetch(`/api/projects?scope=discover&filter=${encodeURIComponent(filter.toLowerCase().replaceAll(" ","_"))}&cursor=${encodeURIComponent(nextCursor)}`);const data=await response.json();if(response.ok){setLiveProjects(rows=>[...rows,...(data.projects??[])]);setNextCursor(data.nextCursor??null)}setLoadingMore(false)}
   return (
@@ -273,7 +295,7 @@ function Feed({ onCreate, onMatch, onComments, onProfile, onShare, onNotificatio
       </header>
       <section className="composer">
         <Avatar person={currentMember} size="md" />
-        <button onClick={onCreate}>Share an idea that needs good people…</button>
+        <button onClick={onShareIdea}>Share an idea that needs good people…</button>
         <span><Lightbulb size={18} /></span>
       </section>
       <div className="feed-filter">
@@ -284,6 +306,7 @@ function Feed({ onCreate, onMatch, onComments, onProfile, onShare, onNotificatio
       {filter === "Following" && <div className="feed-context"><UsersRound size={16}/><span>Projects from people you know, with open roles that fit your network.</span></div>}
       {filter === "Newest" && <div className="feed-context"><Clock3 size={16}/><span>Fresh ideas from the last 24 hours.</span></div>}
       {filter === "For you"&&algorithmMode==="shadow"&&<div className="feed-context"><N2Mark/><span>n2 is validating team recommendations in shadow mode. Your feed stays stable while quality is measured.</span></div>}
+      {posts.map(post=><TimelinePostCard key={post.id} post={post} onProfile={onProfile} onProject={onProject}/>)}
       {liveProjects.length?liveProjects.map(project=><ProjectCard key={project.id} project={project} onShare={onShare} onMatch={onMatch} onComments={onComments} onProfile={onProfile} onToast={onToast} onChanged={next=>setLiveProjects(rows=>next?rows.map(row=>row.id===next.id?next:row):rows.filter(row=>row.id!==project.id))}/>):<ProjectCard onShare={onShare} onMatch={onMatch} />}
       {nextCursor&&<button className="feed-load-more" disabled={loadingMore} onClick={loadMore}>{loadingMore?"Loading useful projects…":"Load more projects"}</button>}
       <article className="connection-card">
@@ -456,6 +479,8 @@ function SettingsView() {
 export default function HomePage() {
   const [view, setView] = useState<View>("feed");
   const [createOpen, setCreateOpen] = useState(false);
+  const [postComposerOpen,setPostComposerOpen]=useState(false);
+  const [latestPost,setLatestPost]=useState<TimelinePost|null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [matchOpen, setMatchOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -485,7 +510,7 @@ export default function HomePage() {
       <main className="main-content">
         <button className="mobile-menu" onClick={()=>setMenuOpen(!menuOpen)} aria-label="Open navigation">{menuOpen?<ArrowLeft/>:<Menu/>}</button>
         <div className="content-column">
-          {view==="feed"&&<Feed currentMember={currentMember} onCreate={()=>setCreateOpen(true)} onMatch={()=>setMatchOpen(true)} onComments={setCommentProject} onProfile={openProfile} onShare={setShareProject} onToast={setToast} onNotifications={()=>setNotificationsOpen(true)} unread={unreadNotifications}/>}
+          {view==="feed"&&<Feed currentMember={currentMember} newPost={latestPost} onCreate={()=>setCreateOpen(true)} onShareIdea={()=>setPostComposerOpen(true)} onMatch={()=>setMatchOpen(true)} onComments={setCommentProject} onProfile={openProfile} onProject={()=>go("projects")} onShare={setShareProject} onToast={setToast} onNotifications={()=>setNotificationsOpen(true)} unread={unreadNotifications}/>}
           {view==="projects"&&<ProjectsView onCreate={()=>setCreateOpen(true)} latestProject={latestProject} onComments={setCommentProject} onProfile={openProfile} onShare={setShareProject} onToast={setToast} onShortlist={setShortlistProjectId}/>}
           {view==="messages"&&<MessagesView/>} 
           {view==="meet"&&<MeetView/>} 
@@ -501,6 +526,7 @@ export default function HomePage() {
       </aside>
       <nav className="mobile-nav">{nav.slice(0,4).map((item)=>{const Icon=item.icon;return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}<button onClick={openOwnProfile} className={view==="profile"?"active":""}><UserRound size={21}/><span>Me</span></button></nav>
       {createOpen&&<CreateProject onClose={()=>setCreateOpen(false)} onPublish={project=>{setLatestProject(project);setToast("Project published — useful matches are being notified.");go("projects")}}/>}
+      {postComposerOpen&&<PostComposer currentMember={currentMember} onClose={()=>setPostComposerOpen(false)} onPosted={setLatestPost} onToast={setToast}/>}
       {matchOpen&&<MatchPanel onClose={()=>setMatchOpen(false)} onMessage={()=>{setMatchOpen(false);go("messages")}}/>}
       {searchOpen&&<SearchOverlay onClose={()=>setSearchOpen(false)} onNavigate={go} onProfile={openProfile}/>}
       {notificationsOpen&&<NotificationPanel onClose={()=>setNotificationsOpen(false)} onUnread={setUnreadNotifications}/>}

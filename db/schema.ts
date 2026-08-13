@@ -104,6 +104,20 @@ export const projectComments = pgTable("project_comments", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("project_comments_project_time_idx").on(table.projectId, table.createdAt)]);
 
+export const timelinePosts = pgTable("timeline_posts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  authorId: uuid("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  linkedProjectIds: uuid("linked_project_ids").array().notNull().default(sql`ARRAY[]::uuid[]`),
+  attachmentType: text("attachment_type"),
+  attachmentUrl: text("attachment_url"),
+  videoUrl: text("video_url"),
+  visibility: text("visibility").notNull().default("network"),
+  status: text("status").notNull().default("visible"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("timeline_posts_time_idx").on(table.createdAt), index("timeline_posts_author_idx").on(table.authorId, table.createdAt)]);
+
 export const projectBookmarks = pgTable("project_bookmarks", {
   projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
