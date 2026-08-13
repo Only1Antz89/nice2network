@@ -163,3 +163,15 @@ test("keeps the server and browser timeline heading deterministic", async () => 
   assert.match(page, /timeZone: "Europe\/London"/);
   assert.doesNotMatch(page, /new Date\(\)\.toLocaleDateString\(undefined/);
 });
+
+test("makes post and project three-dot menus functional", async () => {
+  const [page, posts, saved, reports] = await Promise.all([
+    read("app/page.tsx"), read("app/api/posts/[postId]/route.ts"),
+    read("app/api/saved-items/route.ts"), read("app/api/moderation/reports/route.ts"),
+  ]);
+  for (const action of ["Pin", "Bookmark", "Edit post", "Delete post", "Report post"]) assert.match(page, new RegExp(action));
+  assert.match(page, /FallbackProjectMenu/);
+  assert.match(posts, /Only the post owner can change this post/);
+  assert.match(saved, /"post"/);
+  assert.match(reports, /"post"/);
+});

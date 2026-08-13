@@ -6,7 +6,7 @@ import { apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 
 const schema = z.object({
-  targetType: z.enum(["user", "project", "message", "update"]), targetId: z.uuid(),
+  targetType: z.enum(["user", "project", "post", "message", "update"]), targetId: z.uuid(),
   reason: z.enum(["harassment", "fraud", "impersonation", "exploitation", "sexual_content", "self_harm", "credible_threat", "spam", "misinformation", "unsafe_project", "privacy", "other"]),
   details: z.string().trim().max(2000).optional(),
 });

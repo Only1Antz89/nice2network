@@ -2,13 +2,13 @@ import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { meetings, projectComments, projectMembers, projects, savedItems, users } from "@/db/schema";
+import { meetings, projectComments, projectMembers, projects, savedItems, timelinePosts, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { trackProductEvent } from "@/lib/analytics";
 
-const inputSchema=z.object({entityType:z.enum(["project","comment","meeting"]),entityId:z.uuid(),action:z.enum(["pin","bookmark"])});
+const inputSchema=z.object({entityType:z.enum(["project","comment","meeting","post"]),entityId:z.uuid(),action:z.enum(["pin","bookmark"])});
 
-async function assertVisible(userId:string,entityType:"project"|"comment"|"meeting",entityId:string){
+async function assertVisible(userId:string,entityType:"project"|"comment"|"meeting"|"post",entityId:string){
   const db=getDb();
   if(entityType==="project"){
     const [project]=await db.select({id:projects.id,ownerId:projects.ownerId,visibility:projects.visibility}).from(projects).where(eq(projects.id,entityId)).limit(1);
@@ -22,6 +22,11 @@ async function assertVisible(userId:string,entityType:"project"|"comment"|"meeti
     if(comment.visibility==="private"&&comment.ownerId!==userId){const [membership]=await db.select({userId:projectMembers.userId}).from(projectMembers).where(and(eq(projectMembers.projectId,comment.projectId),eq(projectMembers.userId,userId))).limit(1);if(!membership)throw new ApiError(404,"Comment not found")}
     return;
   }
+  if(entityType==="post"){
+    const [post]=await db.select({id:timelinePosts.id,authorId:timelinePosts.authorId,visibility:timelinePosts.visibility}).from(timelinePosts).where(and(eq(timelinePosts.id,entityId),eq(timelinePosts.status,"visible"))).limit(1);
+    if(!post||post.visibility==="connections"&&post.authorId!==userId)throw new ApiError(404,"Post not found");
+    return;
+  }
   const [meeting]=await db.select({id:meetings.id}).from(meetings).where(eq(meetings.id,entityId)).limit(1);
   if(!meeting)throw new ApiError(404,"Meet not found");
 }
@@ -30,13 +35,14 @@ export async function GET(){
   try{
     const member=await requireMember(),db=getDb();
     const saved=await db.select().from(savedItems).where(and(eq(savedItems.userId,member.id),or(eq(savedItems.bookmarked,true),eq(savedItems.pinned,true)))).orderBy(desc(savedItems.pinned),desc(savedItems.updatedAt)).limit(200);
-    const projectIds=saved.filter(item=>item.entityType==="project").map(item=>item.entityId),commentIds=saved.filter(item=>item.entityType==="comment").map(item=>item.entityId),meetingIds=saved.filter(item=>item.entityType==="meeting").map(item=>item.entityId);
-    const [projectRows,commentRows,meetingRows]=await Promise.all([
+    const projectIds=saved.filter(item=>item.entityType==="project").map(item=>item.entityId),commentIds=saved.filter(item=>item.entityType==="comment").map(item=>item.entityId),meetingIds=saved.filter(item=>item.entityType==="meeting").map(item=>item.entityId),postIds=saved.filter(item=>item.entityType==="post").map(item=>item.entityId);
+    const [projectRows,commentRows,meetingRows,postRows]=await Promise.all([
       projectIds.length?db.select({id:projects.id,title:projects.title,summary:projects.summary,accent:projects.accent}).from(projects).where(inArray(projects.id,projectIds)):[],
       commentIds.length?db.select({id:projectComments.id,body:projectComments.body,projectTitle:projects.title,authorName:users.name}).from(projectComments).innerJoin(projects,eq(projects.id,projectComments.projectId)).innerJoin(users,eq(users.id,projectComments.authorId)).where(inArray(projectComments.id,commentIds)):[],
       meetingIds.length?db.select({id:meetings.id,title:meetings.title,startsAt:meetings.startsAt,provider:meetings.provider}).from(meetings).where(inArray(meetings.id,meetingIds)):[],
+      postIds.length?db.select({id:timelinePosts.id,body:timelinePosts.body,attachmentType:timelinePosts.attachmentType,attachmentUrl:timelinePosts.attachmentUrl}).from(timelinePosts).where(and(inArray(timelinePosts.id,postIds),eq(timelinePosts.status,"visible"))):[],
     ]);
-    const details=new Map<string,Record<string,unknown>>([...projectRows.map(row=>[`project:${row.id}`,row] as const),...commentRows.map(row=>[`comment:${row.id}`,row] as const),...meetingRows.map(row=>[`meeting:${row.id}`,row] as const)]);
+    const details=new Map<string,Record<string,unknown>>([...projectRows.map(row=>[`project:${row.id}`,row] as const),...commentRows.map(row=>[`comment:${row.id}`,row] as const),...meetingRows.map(row=>[`meeting:${row.id}`,row] as const),...postRows.map(row=>[`post:${row.id}`,row] as const)]);
     return NextResponse.json({items:saved.map(item=>({...item,details:details.get(`${item.entityType}:${item.entityId}`)??null})).filter(item=>item.details),pinCount:saved.filter(item=>item.pinned).length});
   }catch(error){return apiError(error)}
 }
