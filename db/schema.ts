@@ -119,6 +119,31 @@ export const timelinePosts = pgTable("timeline_posts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("timeline_posts_time_idx").on(table.createdAt), index("timeline_posts_author_idx").on(table.authorId, table.createdAt)]);
 
+export const postReplies = pgTable("post_replies", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  postId: uuid("post_id").notNull().references(() => timelinePosts.id, { onDelete: "cascade" }),
+  authorId: uuid("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("visible"),
+  isDemo: boolean("is_demo").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("post_replies_post_time_idx").on(table.postId, table.createdAt), index("post_replies_author_idx").on(table.authorId, table.createdAt)]);
+
+export const postLikes = pgTable("post_likes", {
+  postId: uuid("post_id").notNull().references(() => timelinePosts.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  isDemo: boolean("is_demo").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.postId, table.userId] }), index("post_likes_post_idx").on(table.postId)]);
+
+export const postReposts = pgTable("post_reposts", {
+  postId: uuid("post_id").notNull().references(() => timelinePosts.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  isDemo: boolean("is_demo").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.postId, table.userId] }), index("post_reposts_post_idx").on(table.postId)]);
+
 export const projectBookmarks = pgTable("project_bookmarks", {
   projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

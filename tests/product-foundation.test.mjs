@@ -182,3 +182,19 @@ test("uses the n2 share box for internal and external destinations", async () =>
   assert.match(page, /api\/conversations\/\$\{conversation\.id\}\/messages/);
   assert.match(page, /api\/projects\/\$\{project\.id\}\/updates/);
 });
+
+test("ships durable post threads, likes, reposts and purgeable demo activity", async () => {
+  const [schema, thread, reactions, page, demo] = await Promise.all([
+    read("db/schema.ts"), read("app/api/posts/[postId]/thread/route.ts"),
+    read("app/api/posts/[postId]/reactions/route.ts"), read("app/page.tsx"), read("scripts/demo-content.mjs"),
+  ]);
+  for (const table of ["postReplies", "postLikes", "postReposts"]) assert.match(schema, new RegExp(`export const ${table} = pgTable`));
+  assert.match(thread, /requireMember\(\)/);
+  assert.match(thread, /timeline_post_reply/);
+  assert.match(reactions, /z\.enum\(\["like","repost"\]\)/);
+  assert.match(page, /function PostThread/);
+  for (const action of ["Reply", "Like", "Repost"]) assert.match(page, new RegExp(action));
+  assert.match(demo, /is_demo,created_at\) values/);
+  assert.match(demo, /,'visible',true,/);
+  assert.match(demo, /delete from post_replies where is_demo = true/);
+});

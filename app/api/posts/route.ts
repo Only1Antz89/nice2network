@@ -2,10 +2,11 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { adminAssignments, projects, timelinePosts, users } from "@/db/schema";
+import { adminAssignments, postLikes, postReplies, postReposts, projects, timelinePosts, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
+import { auth } from "@/auth";
 
 const imageData = z.string().max(2_900_000).refine(value => /^data:image\/(jpeg|png|webp|gif);base64,/i.test(value), "Choose a JPEG, PNG, WebP or GIF image");
 const videoData = z.string().max(3_500_000).refine(value => /^data:video\/(mp4|webm|quicktime);base64,/i.test(value), "Choose an MP4, WebM or QuickTime video");
@@ -21,7 +22,7 @@ const postSchema = z.object({
 
 export async function GET() {
   try {
-    const db = getDb();
+    const db = getDb(), session = await auth(), viewerId = session?.user?.id;
     const rows = await db.select({
       id: timelinePosts.id, body: timelinePosts.body, linkedProjectIds: timelinePosts.linkedProjectIds,
       attachmentType: timelinePosts.attachmentType, attachmentUrl: timelinePosts.attachmentUrl, videoUrl: timelinePosts.videoUrl,
@@ -29,6 +30,11 @@ export async function GET() {
       authorImage: users.image, authorProfession: users.profession,
       authorIsAdmin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`,
       isDemo: sql<boolean>`${users.role} = 'demo_member'`,
+      replyCount: sql<number>`(select count(*)::int from ${postReplies} where ${postReplies.postId} = ${timelinePosts.id} and ${postReplies.status} = 'visible')`,
+      likeCount: sql<number>`(select count(*)::int from ${postLikes} where ${postLikes.postId} = ${timelinePosts.id})`,
+      repostCount: sql<number>`(select count(*)::int from ${postReposts} where ${postReposts.postId} = ${timelinePosts.id})`,
+      liked: viewerId ? sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId} = ${timelinePosts.id} and ${postLikes.userId} = ${viewerId})` : sql<boolean>`false`,
+      reposted: viewerId ? sql<boolean>`exists(select 1 from ${postReposts} where ${postReposts.postId} = ${timelinePosts.id} and ${postReposts.userId} = ${viewerId})` : sql<boolean>`false`,
     }).from(timelinePosts).innerJoin(users, eq(users.id, timelinePosts.authorId))
       .leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active")))
       .where(and(eq(timelinePosts.status, "visible"), eq(timelinePosts.visibility, "network"), eq(users.status, "active")))
@@ -50,6 +56,6 @@ export async function POST(request: Request) {
     const [post] = await db.insert(timelinePosts).values({ authorId: member.id, body: input.body, linkedProjectIds: input.linkedProjectIds, attachmentType: input.attachmentType ?? null, attachmentUrl: input.attachmentUrl ?? null, videoUrl: input.videoUrl ?? null, visibility: input.visibility }).returning();
     await audit(member.id, "timeline.post_created", "post", post.id, { linkedProjectCount: input.linkedProjectIds.length, hasMedia: Boolean(input.attachmentUrl || input.videoUrl) });
     await trackProductEvent({ actorId: member.id, event: "timeline_post_created", properties: { linkedProjects: input.linkedProjectIds.length, media: input.attachmentType ?? (input.videoUrl ? "video_link" : "none") } });
-    return NextResponse.json({ post: { ...post, authorId: member.id, authorName: member.name, authorImage: member.image, authorProfession: null, authorIsAdmin: member.isN2Admin, linkedProjects: [] } }, { status: 201 });
+    return NextResponse.json({ post: { ...post, authorId: member.id, authorName: member.name, authorImage: member.image, authorProfession: null, authorIsAdmin: member.isN2Admin, linkedProjects: [], replyCount:0, likeCount:0, repostCount:0, liked:false, reposted:false } }, { status: 201 });
   } catch (error) { return apiError(error); }
 }

@@ -92,12 +92,39 @@ async function seed() {
       ('db000000-0000-4000-8000-000000000006',${people[11][0]},'Today a shopkeeper showed me a hand-painted price board used by three generations of the same family. These ordinary artefacts hold extraordinary local memory. #the-living-high-street-archive',${[projects[8].id]}::uuid[],null,'network','visible',now()-interval '22 hours'),
       ('db000000-0000-4000-8000-000000000007',${people[9][0]},'Community food support is often hard to discover precisely when somebody needs it. We are testing whether one calm neighbourhood map can change that. #neighbourhood-pantry-map',${[projects[9].id]}::uuid[],null,'network','visible',now()-interval '26 hours')
       on conflict (id) do nothing`;
+    const demoReplyPairs=[
+      ['That framing is useful. I would test it with one street before trying to explain the whole model.','I can share a community launch checklist that worked well for a similar pilot.'],
+      ['Calm is a real product requirement. Could the card lead with the decision someone needs to make?','I would be happy to test the React Native version with screen-reader users.'],
+      ['The awkward questions are usually where the useful work begins. Do you already have a food-safety partner?','I can introduce a community kitchen in Birmingham that may be open to a small trial.'],
+      ['Would the library include a simple repairability score for each joining method?','This could be genuinely useful to small makers if sourcing lead times are visible too.'],
+      ['Could applicants show evidence through a short practical task instead of a written statement?','I like the skills-first approach. Employer guidance will matter just as much as the candidate experience.'],
+      ['That price board sounds like a perfect first story. Is the archive collecting audio alongside film?','I can help shape a consent process that still feels human and welcoming.'],
+      ['A postcode-level search could make the map immediately useful without exposing precise household locations.','Happy to compare food-support datasets and flag where the gaps are.'],
+    ];
+    for(let i=0;i<7;i++){
+      const postId=`db000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`;
+      for(let c=0;c<2;c++){
+        const author=people[(i+c+4)%people.length][0];
+        await tx`insert into post_replies (id,post_id,author_id,body,status,is_demo,created_at) values (${`dc000000-${String(i+1).padStart(4,'0')}-4000-8000-${String(c+1).padStart(12,'0')}`},${postId},${author},${demoReplyPairs[i][c]},'visible',true,now()-(${i*3+c+1} || ' hours')::interval) on conflict (id) do update set body=excluded.body,status='visible',is_demo=true`;
+      }
+      for(let l=0;l<Math.min(6,3+i);l++){
+        const member=people[(i+l+2)%people.length][0];
+        await tx`insert into post_likes (post_id,user_id,is_demo,created_at) values (${postId},${member},true,now()-(${i+l+1} || ' hours')::interval) on conflict (post_id,user_id) do update set is_demo=true`;
+      }
+      for(let r=0;r<(i%3);r++){
+        const member=people[(i+r+7)%people.length][0];
+        await tx`insert into post_reposts (post_id,user_id,is_demo,created_at) values (${postId},${member},true,now()-(${i+r+2} || ' hours')::interval) on conflict (post_id,user_id) do update set is_demo=true`;
+      }
+    }
   });
 }
 
 async function purge() {
   const ids=people.map(p=>p[0]), projectIds=projects.map(p=>p.id);
   await sql.begin(async tx => {
+    await tx`delete from post_reposts where is_demo = true`;
+    await tx`delete from post_likes where is_demo = true`;
+    await tx`delete from post_replies where is_demo = true`;
     await tx`delete from audit_log where actor_id = any(${ids}::uuid[]) or target_id = any(${[...ids,...projectIds]}::text[])`;
     await tx`delete from meetings where created_by = any(${ids}::uuid[]) or project_id = any(${projectIds}::uuid[])`;
     await tx`delete from official_notices where author_id = any(${ids}::uuid[])`;
@@ -110,7 +137,7 @@ async function purge() {
 }
 
 async function status() {
-  const [row]=await sql`select (select count(*)::int from users where role=${DEMO_ROLE} and email like ${`%@${DEMO_DOMAIN}`}) as members,(select count(*)::int from projects where description like 'Demonstration project · n2 demo batch 2026-08%') as projects,(select count(*)::int from project_comments where id::text like 'd9000000-%') as comments,(select count(*)::int from meetings where id::text like 'da000000-%') as meetings,(select count(*)::int from timeline_posts where id::text like 'db000000-%') as posts`;
+  const [row]=await sql`select (select count(*)::int from users where role=${DEMO_ROLE} and email like ${`%@${DEMO_DOMAIN}`}) as members,(select count(*)::int from projects where description like 'Demonstration project · n2 demo batch 2026-08%') as projects,(select count(*)::int from project_comments where id::text like 'd9000000-%') as comments,(select count(*)::int from meetings where id::text like 'da000000-%') as meetings,(select count(*)::int from timeline_posts where id::text like 'db000000-%') as posts,(select count(*)::int from post_replies where is_demo=true) as post_replies,(select count(*)::int from post_likes where is_demo=true) as post_likes,(select count(*)::int from post_reposts where is_demo=true) as post_reposts`;
   console.log(JSON.stringify(row));
 }
 
