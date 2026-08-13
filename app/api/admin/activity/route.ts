@@ -28,7 +28,7 @@ export async function GET() {
       db.select({value:sql<number>`count(distinct ${careerHistory.userId})::int`}).from(careerHistory),
       db.select({value:sql<number>`count(distinct ${educationHistory.userId})::int`}).from(educationHistory),
       db.execute(sql`select count(*)::int as value from (select conversation_id from ${conversationMembers} group by conversation_id having count(*) > 2) groups`),
-      db.select({id:meetings.id,title:meetings.title,provider:meetings.provider,startsAt:meetings.startsAt,creator:users.name,attendeeCount:sql<number>`jsonb_array_length(coalesce(${meetings.attendees}, '[]'::jsonb))::int`}).from(meetings).innerJoin(users,eq(users.id,meetings.createdBy)).where(gt(meetings.startsAt,now)).orderBy(meetings.startsAt).limit(8),
+      db.select({id:meetings.id,title:meetings.title,provider:meetings.provider,startsAt:meetings.startsAt,creator:users.name,attendeeCount:sql<number>`case when jsonb_typeof(${meetings.attendees}) = 'array' then jsonb_array_length(${meetings.attendees}) else 0 end::int`}).from(meetings).innerJoin(users,eq(users.id,meetings.createdBy)).where(gt(meetings.startsAt,now)).orderBy(meetings.startsAt).limit(8),
       db.execute(sql`select c.id,c.name,c.updated_at,count(distinct cm.user_id)::int as member_count,count(distinct m.id)::int as message_count from ${conversations} c left join ${conversationMembers} cm on cm.conversation_id=c.id left join ${messages} m on m.conversation_id=c.id where c.status='active' group by c.id order by c.updated_at desc limit 8`),
     ]);
     await audit(admin.user.id,"admin.network_activity_viewed","analytics",undefined,{}, {permission:"admin.view"});

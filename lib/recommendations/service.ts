@@ -136,7 +136,7 @@ async function roleSemanticSimilarities(role: typeof projectRoles.$inferSelect, 
       [stored] = await getDb().insert(roleEmbeddings).values({ roleId: role.id, provider: settings.provider, model: settings.embeddingModel, contentHash, embedding }).onConflictDoUpdate({ target: [roleEmbeddings.roleId, roleEmbeddings.provider, roleEmbeddings.model], set: { contentHash, embedding, status: "ready", updatedAt: new Date() } }).returning();
     }
     const vectorLiteral = `[${stored.embedding.join(",")}]`;
-    const rows = await getDb().execute(sql`select user_id, greatest(0, 1 - (embedding <=> ${vectorLiteral}::vector))::float as similarity from member_embeddings where provider = ${settings.provider} and model = ${settings.embeddingModel} and status = 'ready' and user_id = any(${candidateIds}::uuid[]) order by embedding <=> ${vectorLiteral}::vector limit 200`);
+    const rows = await getDb().execute(sql`select user_id, greatest(0, 1 - (embedding <=> ${vectorLiteral}::vector))::float as similarity from member_embeddings where provider = ${settings.provider} and model = ${settings.embeddingModel} and status = 'ready' and user_id in (${sql.join(candidateIds.map(id=>sql`${id}::uuid`),sql`, `)}) order by embedding <=> ${vectorLiteral}::vector limit 200`);
     for (const row of rows as unknown as Array<{ user_id: string; similarity: number }>) result.set(row.user_id, Number(row.similarity));
   } catch {
     // Exact and alias matching remains available while embeddings are absent or rebuilding.

@@ -73,6 +73,18 @@ test("protects administrator access and the public n2 identity", async () => {
   assert.match(profile, /nice-2-network-mark\.svg/);
 });
 
+test("admin analytics and activity tolerate production data shapes", async () => {
+  const [activity, analytics, projects] = await Promise.all([
+    read("app/api/admin/activity/route.ts"),
+    read("app/api/admin/analytics/route.ts"),
+    read("app/api/projects/route.ts"),
+  ]);
+  assert.match(activity, /jsonb_typeof/);
+  assert.match(analytics, /projects\.id}::text/);
+  assert.match(projects, /sql\.join\(projectIds/);
+  assert.doesNotMatch(projects, /any\(\$\{projectIds\}::uuid\[\]\)/);
+});
+
 test("enforces protected teen contact and privacy-aware matching", async () => {
   const [registration, conversation, invitations, meetings, matching] = await Promise.all([
     read("app/api/auth/register/route.ts"), read("app/api/conversations/route.ts"),

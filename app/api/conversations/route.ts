@@ -17,7 +17,7 @@ export async function GET() {
     const ids=rows.map(row=>row.id);if(!ids.length)return NextResponse.json({conversations:[]});
     const [members,lastMessages]=await Promise.all([
       db.select({conversationId:conversationMembers.conversationId,userId:users.id,name:users.name,image:users.image,profession:users.profession}).from(conversationMembers).innerJoin(users,eq(users.id,conversationMembers.userId)).where(inArray(conversationMembers.conversationId,ids)),
-      db.execute(sql`select distinct on (conversation_id) conversation_id,id,body,created_at from messages where conversation_id = any(${ids}::uuid[]) and status='visible' order by conversation_id,created_at desc`),
+      db.execute(sql`select distinct on (conversation_id) conversation_id,id,body,created_at from messages where conversation_id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}) and status='visible' order by conversation_id,created_at desc`),
     ]);
     return NextResponse.json({conversations:rows.map(row=>({ ...row,members:members.filter(item=>item.conversationId===row.id),lastMessage:lastMessages.find(item=>item.conversation_id===row.id)??null }))});
   } catch(error){return apiError(error)}
