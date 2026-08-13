@@ -112,6 +112,12 @@ test("admin actions use branded dialogs and explain protected member conflicts",
   assert.match(memberList, /emailVerified/);
   assert.match(memberAction, /Use password recovery for sign-in problems/);
   assert.match(memberAction, /Activate another super administrator first/);
+  assert.match(memberAction, /set_temporary_password/);
+  assert.match(memberAction, /forcePasswordChange: true/);
+  assert.match(memberAction, /delete\(sessions\)/);
+  assert.match(consoleUi, /Set temporary password/);
+  assert.match(consoleUi, /Confirm temporary password/);
+  assert.match(memberList, /onboardingCompletedAt/);
 });
 
 test("enforces protected teen contact and privacy-aware matching", async () => {

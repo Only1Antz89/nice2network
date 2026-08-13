@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     const email = rawEmail.trim().toLowerCase();
     const db = getDb();
     const [member] = await db.select({ firstName: users.firstName, name: users.name, email: users.email, passwordHash: users.passwordHash, status: users.status }).from(users).where(eq(users.email, email)).limit(1);
-    if (!member?.passwordHash || member.status !== "active") return generic;
+    if (!member?.passwordHash || !["active", "pending_onboarding", "onboarding"].includes(member.status)) return generic;
     const token = randomBytes(32).toString("base64url");
     const identifier = `reset:${email}`;
     await db.delete(verificationTokens).where(eq(verificationTokens.identifier, identifier));

@@ -28,7 +28,7 @@ function SignInContent() {
     }
     const resumeResponse=await fetch("/api/auth/onboarding/resume",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})}),resume=await resumeResponse.json().catch(()=>({resume:false}));if(resume.resume){window.location.href="/onboarding?resume=1";return}
     const result=await signIn("credentials",{email,password,redirect:false});
-    if(result?.error){setError("Check your email and password, and make sure verification is complete.");setBusy(false)}else{const next=new URLSearchParams(window.location.search).get("next");window.location.href=next?.startsWith("/")?next:"/"}
+    if(result?.error){setError("Check your email and password. If registration is unfinished, use the password you created to resume your profile setup.");setBusy(false)}else{const session=await fetch("/api/auth/session").then(response=>response.json()).catch(()=>null);if(session?.user?.forcePasswordChange){window.location.href="/change-password";return}const next=new URLSearchParams(window.location.search).get("next");window.location.href=next?.startsWith("/")?next:"/"}
   }
 
   return <main className="auth-page auth-shell">

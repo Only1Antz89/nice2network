@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { hash } from "bcryptjs";
 import { and, count, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -9,7 +10,7 @@ import { ApiError, apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { sendPasswordResetEmail, sendVerificationEmail } from "@/lib/email";
 
-const schema = z.object({ action: z.enum(["resend_verification", "trigger_recovery", "warn", "restrict_messaging", "restrict_invitations", "restrict_meetings", "suspend", "ban", "reactivate", "expire_sessions"]), reason: z.string().trim().min(10).max(1000), policyCode: z.string().trim().min(2).max(80).default("community_standards"), expiresAt: z.iso.datetime().optional() });
+const schema = z.object({ action: z.enum(["resend_verification", "trigger_recovery", "set_temporary_password", "warn", "restrict_messaging", "restrict_invitations", "restrict_meetings", "suspend", "ban", "reactivate", "expire_sessions"]), reason: z.string().trim().min(10).max(1000), policyCode: z.string().trim().min(2).max(80).default("community_standards"), expiresAt: z.iso.datetime().optional(), temporaryPassword: z.string().min(12).max(128).optional() });
 
 export async function POST(request: Request, { params }: { params: Promise<{ userId: string }> }) {
   try {
@@ -33,10 +34,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ use
       await db.insert(verificationTokens).values({ identifier, token: createHash("sha256").update(token).digest("hex"), expires: new Date(Date.now() + 60 * 60 * 1000) });
       await sendVerificationEmail({ email: target.email, firstName: target.firstName ?? target.name?.split(" ")[0] ?? "there", verificationUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/verify?email=${encodeURIComponent(target.email)}&token=${encodeURIComponent(token)}` });
     } else if (input.action === "trigger_recovery") {
-      const token = randomBytes(32).toString("base64url"), identifier = `password-reset:${target.email}`;
+      const token = randomBytes(32).toString("base64url"), identifier = `reset:${target.email}`;
       await db.delete(verificationTokens).where(eq(verificationTokens.identifier, identifier));
       await db.insert(verificationTokens).values({ identifier, token: createHash("sha256").update(token).digest("hex"), expires: new Date(Date.now() + 30 * 60 * 1000) });
-      await sendPasswordResetEmail({ email: target.email, firstName: target.firstName ?? target.name?.split(" ")[0] ?? "there", resetUrl: `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?email=${encodeURIComponent(target.email)}&token=${encodeURIComponent(token)}` });
+      try {
+        await sendPasswordResetEmail({ email: target.email, firstName: target.firstName ?? target.name?.split(" ")[0] ?? "there", resetUrl: `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?email=${encodeURIComponent(target.email)}&token=${encodeURIComponent(token)}` });
+      } catch {
+        await db.delete(verificationTokens).where(eq(verificationTokens.identifier, identifier));
+        throw new ApiError(503, "Password recovery email is not configured. Use Set temporary password, or configure production email delivery first");
+      }
+    } else if (input.action === "set_temporary_password") {
+      if (!input.temporaryPassword) throw new ApiError(400, "Enter a temporary password of at least 12 characters");
+      await db.update(users).set({ passwordHash: await hash(input.temporaryPassword, 12), forcePasswordChange: true, updatedAt: new Date() }).where(eq(users.id, userId));
+      await db.delete(sessions).where(eq(sessions.userId, userId));
+      await db.delete(verificationTokens).where(eq(verificationTokens.identifier, `reset:${target.email}`));
     } else if (input.action === "expire_sessions") await db.delete(sessions).where(eq(sessions.userId, userId));
     else if (input.action === "reactivate") {
       await db.update(users).set({ status: "active", updatedAt: new Date() }).where(eq(users.id, userId));
