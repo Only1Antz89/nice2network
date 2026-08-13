@@ -23,11 +23,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ use
       const [assignment] = await db.select().from(adminAssignments).where(and(eq(adminAssignments.userId, userId), eq(adminAssignments.status, "active"))).limit(1);
       if (assignment?.role === "super_admin") {
         const [active] = await db.select({ value: count() }).from(adminAssignments).where(and(eq(adminAssignments.role, "super_admin"), eq(adminAssignments.status, "active")));
-        if (active.value <= 1) throw new ApiError(409, "The final super administrator cannot be suspended or banned");
+        if (active.value <= 1) throw new ApiError(409, "The final super administrator cannot be suspended or banned. Activate another super administrator first");
       }
     }
     if (input.action === "resend_verification") {
-      if (target.emailVerified) throw new ApiError(409, "This email is already verified");
+      if (target.emailVerified) throw new ApiError(409, "This email is already verified. Use password recovery for sign-in problems");
       const token = randomBytes(32).toString("base64url"), identifier = `verify:${target.email}`;
       await db.delete(verificationTokens).where(eq(verificationTokens.identifier, identifier));
       await db.insert(verificationTokens).values({ identifier, token: createHash("sha256").update(token).digest("hex"), expires: new Date(Date.now() + 60 * 60 * 1000) });

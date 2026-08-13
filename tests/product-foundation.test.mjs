@@ -100,6 +100,20 @@ test("admin analytics and activity tolerate production data shapes", async () =>
   assert.doesNotMatch(projects, /any\(\$\{projectIds\}::uuid\[\]\)/);
 });
 
+test("admin actions use branded dialogs and explain protected member conflicts", async () => {
+  const [consoleUi, memberList, memberAction] = await Promise.all([
+    read("app/admin/admin-console.tsx"),
+    read("app/api/admin/members/route.ts"),
+    read("app/api/admin/members/[userId]/action/route.ts"),
+  ]);
+  assert.doesNotMatch(consoleUi, /window\.prompt|window\.confirm/);
+  assert.match(consoleUi, /AdminActionDialog/);
+  assert.match(consoleUi, /admin-dialog-error/);
+  assert.match(memberList, /emailVerified/);
+  assert.match(memberAction, /Use password recovery for sign-in problems/);
+  assert.match(memberAction, /Activate another super administrator first/);
+});
+
 test("enforces protected teen contact and privacy-aware matching", async () => {
   const [registration, conversation, invitations, meetings, matching] = await Promise.all([
     read("app/api/auth/register/route.ts"), read("app/api/conversations/route.ts"),
