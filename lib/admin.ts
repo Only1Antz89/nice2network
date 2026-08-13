@@ -9,10 +9,10 @@ import { verifyAdminCookie } from "@/lib/admin-mfa";
 
 export const adminRoles = ["super_admin", "safety_admin", "support_admin", "analyst"] as const;
 export type AdminRole = typeof adminRoles[number];
-export type AdminPermission = "admin.view" | "members.read" | "members.manage" | "projects.manage" | "reports.manage" | "sanctions.manage" | "appeals.manage" | "safety.manage" | "analytics.view" | "audit.view" | "admins.manage" | "system.view" | "notices.manage";
+export type AdminPermission = "admin.view" | "members.read" | "members.manage" | "projects.manage" | "reports.manage" | "sanctions.manage" | "appeals.manage" | "safety.manage" | "analytics.view" | "audit.view" | "admins.manage" | "system.view" | "system.manage" | "notices.manage";
 
 const permissions: Record<AdminRole, AdminPermission[]> = {
-  super_admin: ["admin.view", "members.read", "members.manage", "projects.manage", "reports.manage", "sanctions.manage", "appeals.manage", "safety.manage", "analytics.view", "audit.view", "admins.manage", "system.view", "notices.manage"],
+  super_admin: ["admin.view", "members.read", "members.manage", "projects.manage", "reports.manage", "sanctions.manage", "appeals.manage", "safety.manage", "analytics.view", "audit.view", "admins.manage", "system.view", "system.manage", "notices.manage"],
   safety_admin: ["admin.view", "members.read", "projects.manage", "reports.manage", "sanctions.manage", "appeals.manage", "safety.manage", "audit.view", "notices.manage"],
   support_admin: ["admin.view", "members.read", "members.manage", "system.view"],
   analyst: ["admin.view", "analytics.view"],

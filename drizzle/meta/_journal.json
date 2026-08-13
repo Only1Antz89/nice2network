@@ -43,6 +43,13 @@
       "when": 1786610918698,
       "tag": "0005_regular_cassandra_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786614738977,
+      "tag": "0006_dear_gargoyle",
+      "breakpoints": true
     }
   ]
 }

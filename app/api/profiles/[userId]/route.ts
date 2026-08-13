@@ -5,6 +5,8 @@ import { getDb } from "@/db";
 import { adminAssignments, careerHistory, educationHistory, privacySettings, projectMembers, projects, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
+import { after } from "next/server";
+import { recomputeMemberRecommendations } from "@/lib/recommendations/service";
 
 const profileSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -16,6 +18,8 @@ const profileSchema = z.object({
   secondarySkill: z.string().trim().min(1).max(80),
   tertiarySkill: z.string().trim().min(1).max(80),
   interests: z.array(z.string().trim().min(1).max(80)).max(12).default([]),
+  city: z.string().trim().max(100).nullable().optional(), country: z.string().trim().max(100).nullable().optional(),
+  timezone: z.string().trim().min(3).max(80).default("Europe/London"), workMode: z.enum(["remote", "hybrid", "in_person"]).default("remote"),
   career: z.array(z.object({ id: z.uuid().optional(), title: z.string().trim().min(1).max(120), company: z.string().trim().min(1).max(120), location: z.string().trim().max(120).nullable().optional(), startDate: z.string().date().nullable().optional(), endDate: z.string().date().nullable().optional(), current: z.boolean().default(false), description: z.string().trim().max(1000).nullable().optional() })).max(20).default([]),
   education: z.array(z.object({ id: z.uuid().optional(), institution: z.string().trim().min(1).max(160), qualification: z.string().trim().min(1).max(160), fieldOfStudy: z.string().trim().max(160).nullable().optional(), startYear: z.number().int().min(1940).max(2100).nullable().optional(), endYear: z.number().int().min(1940).max(2100).nullable().optional(), description: z.string().trim().max(1000).nullable().optional() })).max(20).default([]),
 });
@@ -23,7 +27,7 @@ const profileSchema = z.object({
 export async function GET(_: Request, { params }: { params: Promise<{ userId: string }> }) {
   try {
     const viewer = await requireMember(), { userId } = await params, db = getDb();
-    const [row] = await db.select({ id: users.id, name: users.name, image: users.image, profession: users.profession, headline: users.headline, bio: users.bio, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, location: users.location, ageBand: users.ageBand, visibility: privacySettings.profileVisibility, showLocation: privacySettings.showLocation, isN2Admin: adminAssignments.id })
+    const [row] = await db.select({ id: users.id, name: users.name, image: users.image, profession: users.profession, headline: users.headline, bio: users.bio, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, location: users.location, city: users.city, country: users.country, timezone: users.timezone, workMode: users.workMode, ageBand: users.ageBand, visibility: privacySettings.profileVisibility, showLocation: privacySettings.showLocation, isN2Admin: adminAssignments.id })
       .from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active"))).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     if (!row) throw new ApiError(404, "Profile not found");
     const isCurrent = viewer.id === userId;
@@ -46,13 +50,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ user
     if (viewer.id !== userId) throw new ApiError(403, "You can only edit your own profile");
     const input = profileSchema.parse(await request.json()), db = getDb();
     await db.transaction(async tx => {
-      await tx.update(users).set({ name: input.name, headline: input.headline, profession: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: [input.primarySkill, input.secondarySkill, input.tertiarySkill], interests: input.interests, updatedAt: new Date() }).where(eq(users.id, userId));
+      await tx.update(users).set({ name: input.name, headline: input.headline, profession: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: [input.primarySkill, input.secondarySkill, input.tertiarySkill], interests: input.interests, city: input.city, country: input.country, timezone: input.timezone, workMode: input.workMode, location: [input.city, input.country].filter(Boolean).join(", ") || null, updatedAt: new Date() }).where(eq(users.id, userId));
       await tx.delete(careerHistory).where(eq(careerHistory.userId, userId));
       if (input.career.length) await tx.insert(careerHistory).values(input.career.map((item, sortOrder) => ({ ...item, id: undefined, userId, startDate: item.startDate ?? null, endDate: item.current ? null : item.endDate ?? null, sortOrder })));
       await tx.delete(educationHistory).where(eq(educationHistory.userId, userId));
       if (input.education.length) await tx.insert(educationHistory).values(input.education.map((item, sortOrder) => ({ ...item, id: undefined, userId, sortOrder })));
     });
     await audit(viewer.id, "profile.updated", "user", userId);
+    after(() => recomputeMemberRecommendations(userId));
     return NextResponse.json({ success: true });
   } catch (error) { return apiError(error); }
 }

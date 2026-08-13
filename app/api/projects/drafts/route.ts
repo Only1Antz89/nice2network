@@ -1,0 +1,29 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getDb } from "@/db";
+import { projectMembers, projects } from "@/db/schema";
+import { apiError, requireMember } from "@/lib/api";
+import { audit } from "@/lib/audit";
+import { trackProductEvent } from "@/lib/analytics";
+import { workModeSchema } from "@/lib/recommendations/blueprint-schema";
+
+const schema = z.object({
+  title: z.string().trim().min(4).max(120), summary: z.string().trim().min(20).max(300), description: z.string().trim().max(5000).nullable().optional(),
+  industry: z.string().trim().min(2).max(80), stage: z.enum(["idea", "planning", "building", "launching"]).default("idea"),
+  workMode: workModeSchema.default("remote"), city: z.string().trim().max(100).nullable().optional(), country: z.string().trim().max(100).nullable().optional(),
+  timezone: z.string().trim().min(3).max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true),
+});
+
+export async function POST(request: Request) {
+  try {
+    const member = await requireMember(), input = schema.parse(await request.json()), db = getDb();
+    const project = await db.transaction(async tx => {
+      const [created] = await tx.insert(projects).values({ ...input, ownerId: member.id, status: "draft", visibility: "private", location: [input.city, input.country].filter(Boolean).join(", ") || null }).returning();
+      await tx.insert(projectMembers).values({ projectId: created.id, userId: member.id, membershipRole: "owner", department: "Leadership" });
+      return created;
+    });
+    await audit(member.id, "project.draft_created", "project", project.id);
+    await trackProductEvent({ actorId: member.id, event: "project_draft_created", entityType: "project", entityId: project.id, properties: { industry: input.industry, stage: input.stage } });
+    return NextResponse.json({ project }, { status: 201 });
+  } catch (error) { return apiError(error); }
+}

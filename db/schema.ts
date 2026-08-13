@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, vector } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -24,6 +24,10 @@ export const users = pgTable("users", {
   skills: text("skills").array().notNull().default(sql`ARRAY[]::text[]`),
   interests: text("interests").array().notNull().default(sql`ARRAY[]::text[]`),
   location: text("location"),
+  city: text("city"),
+  country: text("country"),
+  timezone: text("timezone").notNull().default("Europe/London"),
+  workMode: text("work_mode").notNull().default("remote"),
   availability: text("availability").notNull().default("open"),
   role: text("role").notNull().default("member"),
   status: text("status").notNull().default("active"),
@@ -57,11 +61,11 @@ export const authenticators = pgTable("authenticators", {
 }, (table) => [primaryKey({ columns: [table.userId, table.credentialID] })]);
 
 export const projects = pgTable("projects", {
-  id: uuid("id").defaultRandom().primaryKey(), ownerId: uuid("owner_id").notNull().references(() => users.id), title: text("title").notNull(), summary: text("summary").notNull(), description: text("description"), industry: text("industry").notNull(), stage: text("stage").notNull().default("idea"), status: text("status").notNull().default("active"), visibility: text("visibility").notNull().default("network"), location: text("location"), accent: text("accent").notNull().default("#ff6b35"), completedAt: timestamp("completed_at", { withTimezone: true }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  id: uuid("id").defaultRandom().primaryKey(), ownerId: uuid("owner_id").notNull().references(() => users.id), title: text("title").notNull(), summary: text("summary").notNull(), description: text("description"), industry: text("industry").notNull(), stage: text("stage").notNull().default("idea"), status: text("status").notNull().default("active"), visibility: text("visibility").notNull().default("network"), location: text("location"), city: text("city"), country: text("country"), timezone: text("timezone").notNull().default("Europe/London"), workMode: text("work_mode").notNull().default("remote"), allowRemoteFallback: boolean("allow_remote_fallback").notNull().default(true), accent: text("accent").notNull().default("#ff6b35"), completedAt: timestamp("completed_at", { withTimezone: true }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("projects_owner_idx").on(table.ownerId), index("projects_status_idx").on(table.status)]);
 
 export const projectRoles = pgTable("project_roles", {
-  id: uuid("id").defaultRandom().primaryKey(), projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }), title: text("title").notNull(), department: text("department").notNull(), description: text("description"), skills: text("skills").array().notNull().default(sql`ARRAY[]::text[]`), capacity: integer("capacity").notNull().default(1), filled: integer("filled").notNull().default(0), status: text("status").notNull().default("open"), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  id: uuid("id").defaultRandom().primaryKey(), projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }), title: text("title").notNull(), department: text("department").notNull(), description: text("description"), skills: text("skills").array().notNull().default(sql`ARRAY[]::text[]`), professions: text("professions").array().notNull().default(sql`ARRAY[]::text[]`), requiredSkills: text("required_skills").array().notNull().default(sql`ARRAY[]::text[]`), usefulSkills: text("useful_skills").array().notNull().default(sql`ARRAY[]::text[]`), phase: text("phase").notNull().default("now"), criticality: text("criticality").notNull().default("important"), workMode: text("work_mode"), reason: text("reason"), blueprintId: uuid("blueprint_id"), capacity: integer("capacity").notNull().default(1), filled: integer("filled").notNull().default(0), status: text("status").notNull().default("open"), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("project_roles_project_idx").on(table.projectId)]);
 
 export const projectMembers = pgTable("project_members", {
@@ -337,5 +341,116 @@ export const complianceAssessments = pgTable("compliance_assessments", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("assessment_type_version_unique").on(table.type, table.version)]);
 
-export const usersRelations = relations(users, ({ many, one }) => ({ ownedProjects: many(projects), memberships: many(projectMembers), privacy: one(privacySettings), notifications: many(notifications), careerHistory: many(careerHistory), educationHistory: many(educationHistory) }));
-export const projectsRelations = relations(projects, ({ one, many }) => ({ owner: one(users, { fields: [projects.ownerId], references: [users.id] }), roles: many(projectRoles), members: many(projectMembers), milestones: many(milestones), updates: many(projectUpdates), comments: many(projectComments) }));
+export const algorithmSettings = pgTable("algorithm_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  version: integer("version").notNull(),
+  status: text("status").notNull().default("draft"),
+  provider: text("provider").notNull().default("openai"),
+  blueprintModel: text("blueprint_model").notNull(),
+  embeddingModel: text("embedding_model").notNull(),
+  embeddingDimensions: integer("embedding_dimensions").notNull().default(768),
+  rolloutStage: integer("rollout_stage").notNull().default(1),
+  weights: jsonb("weights").$type<Record<string, number>>().notNull(),
+  createdBy: uuid("created_by").references(() => users.id),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("algorithm_settings_version_unique").on(table.version), index("algorithm_settings_status_idx").on(table.status)]);
+
+export const projectBlueprints = pgTable("project_blueprints", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  status: text("status").notNull().default("draft"),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  schemaVersion: text("schema_version").notNull().default("1.0"),
+  inputHash: text("input_hash").notNull(),
+  outcome: text("outcome").notNull(),
+  assumptions: text("assumptions").array().notNull().default(sql`ARRAY[]::text[]`),
+  coveredContributions: jsonb("covered_contributions").$type<Array<{ area: string; evidence: string }>>().notNull().default([]),
+  milestones: jsonb("milestones").$type<Array<{ title: string; phase: string }>>().notNull().default([]),
+  gaps: text("gaps").array().notNull().default(sql`ARRAY[]::text[]`),
+  risks: text("risks").array().notNull().default(sql`ARRAY[]::text[]`),
+  roles: jsonb("roles").$type<Array<{ phase: string; department: string; title: string; headcount: number; professions: string[]; requiredSkills: string[]; usefulSkills: string[]; criticality: string; reason: string; workMode: string }>>().notNull().default([]),
+  failureStatus: text("failure_status"),
+  generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  approvedBy: uuid("approved_by").references(() => users.id),
+}, (table) => [uniqueIndex("project_blueprint_version_unique").on(table.projectId, table.version), index("project_blueprints_status_idx").on(table.projectId, table.status)]);
+
+export const memberEmbeddings = pgTable("member_embeddings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  contentHash: text("content_hash").notNull(),
+  dimensions: integer("dimensions").notNull().default(768),
+  embedding: vector("embedding", { dimensions: 768 }).notNull(),
+  status: text("status").notNull().default("ready"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("member_embedding_provider_unique").on(table.userId, table.provider, table.model), index("member_embeddings_provider_idx").on(table.provider, table.status)]);
+
+export const roleEmbeddings = pgTable("role_embeddings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  roleId: uuid("role_id").notNull().references(() => projectRoles.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  contentHash: text("content_hash").notNull(),
+  dimensions: integer("dimensions").notNull().default(768),
+  embedding: vector("embedding", { dimensions: 768 }).notNull(),
+  status: text("status").notNull().default("ready"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("role_embedding_provider_unique").on(table.roleId, table.provider, table.model), index("role_embeddings_provider_idx").on(table.provider, table.status)]);
+
+export const projectRecommendations = pgTable("project_recommendations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  roleId: uuid("role_id").notNull().references(() => projectRoles.id, { onDelete: "cascade" }),
+  algorithmVersion: integer("algorithm_version").notNull(),
+  score: integer("score").notNull(),
+  tier: text("tier").notNull(),
+  status: text("status").notNull().default("active"),
+  componentScores: jsonb("component_scores").$type<Record<string, number>>().notNull(),
+  reasons: text("reasons").array().notNull().default(sql`ARRAY[]::text[]`),
+  alertedAt: timestamp("alerted_at", { withTimezone: true }),
+  snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
+  generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+}, (table) => [uniqueIndex("project_recommendation_unique").on(table.userId, table.roleId, table.algorithmVersion), index("project_recommendations_feed_idx").on(table.userId, table.status, table.score), index("project_recommendations_project_idx").on(table.projectId, table.roleId, table.score)]);
+
+export const recommendationEvents = pgTable("recommendation_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  recommendationId: uuid("recommendation_id").notNull().references(() => projectRecommendations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  event: text("event").notNull(),
+  signalWeight: integer("signal_weight").notNull().default(0),
+  metadata: jsonb("metadata").$type<Record<string, string | number | boolean | null>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("recommendation_events_rec_idx").on(table.recommendationId, table.createdAt), index("recommendation_events_user_idx").on(table.userId, table.createdAt)]);
+
+export const memberAffinities = pgTable("member_affinities", {
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  dimensionType: text("dimension_type").notNull(),
+  dimensionKey: text("dimension_key").notNull(),
+  score: integer("score").notNull().default(0),
+  evidenceCount: integer("evidence_count").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.dimensionType, table.dimensionKey] }), index("member_affinities_lookup_idx").on(table.dimensionType, table.dimensionKey)]);
+
+export const recommendationJobs = pgTable("recommendation_jobs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  type: text("type").notNull(),
+  provider: text("provider"),
+  status: text("status").notNull().default("queued"),
+  processed: integer("processed").notNull().default(0),
+  total: integer("total").notNull().default(0),
+  error: text("error"),
+  requestedBy: uuid("requested_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (table) => [index("recommendation_jobs_status_idx").on(table.status, table.createdAt)]);
+
+export const usersRelations = relations(users, ({ many, one }) => ({ ownedProjects: many(projects), memberships: many(projectMembers), privacy: one(privacySettings), notifications: many(notifications), careerHistory: many(careerHistory), educationHistory: many(educationHistory), recommendations: many(projectRecommendations) }));
+export const projectsRelations = relations(projects, ({ one, many }) => ({ owner: one(users, { fields: [projects.ownerId], references: [users.id] }), roles: many(projectRoles), members: many(projectMembers), milestones: many(milestones), updates: many(projectUpdates), comments: many(projectComments), blueprints: many(projectBlueprints), recommendations: many(projectRecommendations) }));

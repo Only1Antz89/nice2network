@@ -83,7 +83,8 @@ test("enforces protected teen contact and privacy-aware matching", async () => {
   assert.match(conversation, /adult_teen_contact_blocked/);
   assert.match(invitations, /adult_teen_invitation_blocked/);
   assert.match(meetings, /group.*at least three/i);
-  assert.match(matching, /feedbackAffinity:undefined/);
+  assert.match(matching, /projectRecommendations/);
+  assert.doesNotMatch(matching, /feedbackAffinity|distanceKm|memberSkills/);
 });
 
 test("limits raw analytics retention and excludes direct identifiers", async () => {
@@ -109,4 +110,18 @@ test("ships durable notifications, search, projects and sharing", async () => {
   assert.match(page, /ShareSheet/);
   assert.match(page, /WhatsApp/);
   assert.match(page, /LinkedIn/);
+});
+
+test("ships durable project-team recommendations and owner approval", async () => {
+  const [schema, draft, blueprint, approve, shortlist, feed, admin] = await Promise.all([
+    read("db/schema.ts"), read("app/api/projects/drafts/route.ts"), read("app/api/projects/[projectId]/blueprint/route.ts"),
+    read("app/api/projects/[projectId]/blueprint/[blueprintId]/approve/route.ts"), read("app/api/projects/[projectId]/shortlist/route.ts"),
+    read("app/api/projects/route.ts"), read("app/api/admin/recommendations/settings/route.ts"),
+  ]);
+  for (const table of ["algorithmSettings", "projectBlueprints", "memberEmbeddings", "roleEmbeddings", "projectRecommendations", "recommendationEvents", "memberAffinities", "recommendationJobs"]) assert.match(schema, new RegExp(`export const ${table} = pgTable`));
+  for (const route of [draft, blueprint, approve, shortlist, feed]) assert.match(route, /requireMember\(\)/);
+  assert.match(approve, /blueprintRoleSchema/);
+  assert.match(shortlist, /current\.length < 5/);
+  assert.match(feed, /rolloutStage >= 2/);
+  assert.match(admin, /system\.manage/);
 });
