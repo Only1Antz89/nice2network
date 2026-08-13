@@ -562,7 +562,7 @@ function GuestAuthPrompt({onClose,initialMode="register"}:{onClose:()=>void;init
 function ShareSheet({item,authenticated,onRequireAuth,onClose,onToast}:{item:{id:string;title:string;summary:string;kind?:"project"|"post"};authenticated:boolean;onRequireAuth:()=>void;onClose:()=>void;onToast:(message:string)=>void}){
   const kind=item.kind??"project",url=typeof window!=="undefined"?`${window.location.origin}/share/${kind}/${item.id}`:"";
   const encoded=encodeURIComponent(url);
-  const [panel,setPanel]=useState<"main"|"messages"|"projects">("main"),[more,setMore]=useState(false),[busy,setBusy]=useState(""),[conversations,setConversations]=useState<ConversationRecord[]>([]),[projects,setProjects]=useState<ProjectRecord[]>([]);
+  const [panel,setPanel]=useState<"main"|"messages"|"projects">("main"),[more,setMore]=useState(true),[busy,setBusy]=useState(""),[conversations,setConversations]=useState<ConversationRecord[]>([]),[projects,setProjects]=useState<ProjectRecord[]>([]);
   useEffect(()=>{if(!authenticated)return;Promise.all([fetch("/api/conversations").then(r=>r.ok?r.json():{conversations:[]}),fetch("/api/projects?scope=mine&limit=50").then(r=>r.ok?r.json():{projects:[]})]).then(([chats,work])=>{setConversations(chats.conversations??[]);setProjects((work.projects??[]).filter((project:ProjectRecord)=>project.status==="active"&&project.id!==item.id))}).catch(()=>undefined)},[authenticated,item.id]);
   function track(channel:string){if(kind==="project")fetch(`/api/projects/${item.id}/share`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({channel})}).catch(()=>undefined)}
   function requireAccess(next:"messages"|"projects"){if(!authenticated){onClose();onRequireAuth();return}setPanel(next)}
