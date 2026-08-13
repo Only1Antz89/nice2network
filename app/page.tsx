@@ -58,6 +58,25 @@ import EmojiPicker from "@/components/emoji-picker";
 type View = "feed" | "projects" | "messages" | "meet" | "profile" | "settings";
 type MemberPerson = { id?: string; name: string; role: string; img?: string | null; isN2Admin?: boolean };
 type ProjectRecord = { id:string; title:string; summary:string; description?:string|null; industry:string; stage:string; status?:string; visibility?:string; accent:string; workMode?:string; city?:string|null; country?:string|null; ownerId?:string; ownerName:string|null; ownerImage:string|null; ownerIsAdmin?:boolean; isDemo?:boolean; isOwner?:boolean; isPinned?:boolean; isBookmarked?:boolean; eyeCount:number; commentCount?:number; matchScore?:number; recommendationId?:string; recommendationTier?:string; recommendationReasons?:string[]; matchedRole?:string; eyeMomentum?:number; createdAt:string };
+
+const PROJECT_INDUSTRIES = [
+  "Agriculture & food", "Arts & culture", "Automotive & mobility", "Beauty & wellness",
+  "Charity & social impact", "Climate & energy", "Community & local services",
+  "Construction & built environment", "Consumer products & retail", "Creative industries",
+  "Education & training", "Entertainment & media", "Fashion & textiles", "Finance & fintech",
+  "Gaming & interactive", "Government & public services", "Healthcare & life sciences",
+  "Hospitality & tourism", "Legal & professional services", "Manufacturing & engineering",
+  "Marketing & communications", "Property & real estate", "Science & research",
+  "Sport & fitness", "Sustainability & circular economy", "Technology & software",
+  "Transport & logistics", "Other",
+] as const;
+
+const COMMON_TIMEZONES = [
+  "Europe/London", "Europe/Dublin", "Europe/Paris", "Europe/Berlin", "Europe/Madrid",
+  "Africa/Accra", "Africa/Lagos", "Africa/Johannesburg", "Asia/Dubai", "Asia/Kolkata",
+  "Asia/Singapore", "Asia/Tokyo", "Australia/Sydney", "America/New_York", "America/Chicago",
+  "America/Denver", "America/Los_Angeles", "America/Toronto", "America/Sao_Paulo", "UTC",
+] as const;
 type BlueprintRole = { phase:"now"|"next"|"later";department:string;title:string;headcount:number;professions:string[];requiredSkills:string[];usefulSkills:string[];criticality:"critical"|"important"|"useful";reason:string;workMode:"remote"|"hybrid"|"in_person" };
 type BlueprintRecord = { id:string;outcome:string;assumptions:string[];coveredContributions:Array<{area:string;evidence:string}>;milestones:Array<{title:string;phase:string}>;gaps:string[];risks:string[];roles:BlueprintRole[];provider:string;usedFallback?:boolean;failureStatus?:string|null };
 type ProfileRecord = { id:string;name:string|null;image:string|null;coverImage?:string|null;profession:string|null;headline:string|null;bio:string|null;industry:string|null;rankedSkills:string[];interests:string[];location:string|null;isN2Admin:boolean;isDemo?:boolean;isCurrent:boolean;projectCount:number;involvedCount:number;projects:Array<{id:string;title:string;summary:string;industry:string;stage:string;status:string;accent:string;createdAt:string;isOwner:boolean;membershipRole:string;department:string|null}>;career:Array<{id:string;title:string;company:string;location:string|null;startDate:string|null;endDate:string|null;current:boolean;description:string|null}>;education:Array<{id:string;institution:string;qualification:string;fieldOfStudy:string|null;startYear:number|null;endYear:number|null;description:string|null}> };
@@ -226,7 +245,7 @@ function ProjectCard({ second = false, onMatch, onComments, onProfile, project, 
 
 function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish: (project:ProjectRecord)=>void }) {
   const [step, setStep] = useState(0);
-  const [form,setForm]=useState({title:"",summary:"",description:"",industry:"Community",stage:"idea",workMode:"remote",city:"",country:"United Kingdom",timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"Europe/London",allowRemoteFallback:true});
+  const [form,setForm]=useState({title:"",summary:"",description:"",industry:"Community & local services",stage:"idea",workMode:"remote",city:"",country:"United Kingdom",timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||"Europe/London",allowRemoteFallback:true});
   const [projectId,setProjectId]=useState(""),[blueprint,setBlueprint]=useState<BlueprintRecord|null>(null),[roles,setRoles]=useState<BlueprintRole[]>([]);
   const [busy,setBusy]=useState(false),[error,setError]=useState("");
   async function mapTeam(){setBusy(true);setError("");const draftResponse=await fetch("/api/projects/drafts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(form)});const draft=await draftResponse.json();if(!draftResponse.ok){setError(draft.error??"Could not save the private project draft.");setBusy(false);return}setProjectId(draft.project.id);const response=await fetch(`/api/projects/${draft.project.id}/blueprint`,{method:"POST"});const result=await response.json();if(!response.ok){setError(result.error??"Could not prepare the project team.");setBusy(false);return}setBlueprint(result.blueprint);setRoles(result.blueprint.roles);setStep(1);setBusy(false)}
@@ -249,13 +268,15 @@ function CreateProject({ onClose, onPublish }: { onClose: () => void; onPublish:
             <textarea placeholder="Describe the idea, why it matters, and where you'd like help…" value={form.summary} onChange={e=>setForm({...form,summary:e.target.value})}/>
             <div className="field-row">
               <label>Stage<select value={form.stage} onChange={e=>setForm({...form,stage:e.target.value})}><option value="idea">Idea</option><option value="planning">Planning</option><option value="building">Building</option><option value="launching">Launching</option></select></label>
-              <label>Industry<select value={form.industry} onChange={e=>setForm({...form,industry:e.target.value})}><option>Community</option><option>Technology</option><option>Climate</option><option>Creative</option></select></label>
+              <label>Industry<select value={form.industry} onChange={e=>setForm({...form,industry:e.target.value})}>{PROJECT_INDUSTRIES.map(industry=><option key={industry}>{industry}</option>)}</select></label>
             </div>
-            <div className="field-row">
+            <div className="field-row single-field">
               <label>Working style<select value={form.workMode} onChange={e=>setForm({...form,workMode:e.target.value})}><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="in_person">In person</option></select></label>
-              <label>City<input value={form.city} onChange={e=>setForm({...form,city:e.target.value})} placeholder="London"/></label>
             </div>
-            <div className="field-row"><label>Country<input value={form.country} onChange={e=>setForm({...form,country:e.target.value})}/></label><label>Timezone<input value={form.timezone} onChange={e=>setForm({...form,timezone:e.target.value})}/></label></div>
+            <div className="field-row location-time-row">
+              <fieldset className="location-fields"><legend>Location</legend><div><input aria-label="City" value={form.city} onChange={e=>setForm({...form,city:e.target.value})} placeholder="City"/><input aria-label="Country" value={form.country} onChange={e=>setForm({...form,country:e.target.value})} placeholder="Country"/></div></fieldset>
+              <label>Timezone<input list="n2-timezones" value={form.timezone} onChange={e=>setForm({...form,timezone:e.target.value})} placeholder="Europe/London"/><datalist id="n2-timezones">{COMMON_TIMEZONES.map(timezone=><option key={timezone} value={timezone}/>)}</datalist></label>
+            </div>
             <div className="remote-fallback"><input id="remote-fallback" type="checkbox" checked={form.allowRemoteFallback} onChange={e=>setForm({...form,allowRemoteFallback:e.target.checked})}/><label htmlFor="remote-fallback"><strong>Use remote fallback</strong><small>Widen the search only when suitable local people are scarce.</small></label></div>
             {error&&<p className="form-error">{error}</p>}
             <button className="primary-button wide" disabled={busy||form.title.trim().length<4||form.summary.trim().length<20} onClick={mapTeam}>{busy?"Mapping the project…":<>Find the gaps <N2Mark inverse /></>}</button>
