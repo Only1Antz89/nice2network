@@ -313,7 +313,7 @@ function Feed({ onCreate, onShareIdea, onMatch, onComments, onProfile, onProject
   const filterCount=Object.values(projectFilters).filter(Boolean).length;
   return (
     <>
-      <div className="mobile-topbar"><Logo />{authenticated?<button className="icon-button notification-button" onClick={onNotifications}><Bell size={20} />{unread>0&&<b>{unread>9?"9+":unread}</b>}</button>:<a className="public-mobile-signin" href="/signin?mode=register">Join n2</a>}</div>
+      <div className="mobile-topbar"><Logo /><div className="public-mobile-actions"><button className="icon-button notification-button" onClick={authenticated?onNotifications:onRequireAuth}><Bell size={20} />{authenticated&&unread>0&&<b>{unread>9?"9+":unread}</b>}</button>{!authenticated&&<a className="public-mobile-signin" href="/signin?mode=register">Join n2</a>}</div></div>
       <header className="feed-intro">
         <div>
           <span className="eyebrow">{new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"}).toUpperCase()}</span>
@@ -327,10 +327,11 @@ function Feed({ onCreate, onShareIdea, onMatch, onComments, onProfile, onProject
         <button onClick={authenticated?onShareIdea:onRequireAuth}>{authenticated?"Share a post or idea…":"Join n2 to share a post or idea…"}</button>
         <span><Lightbulb size={18} /></span>
       </section>
-      {authenticated?<div className="feed-filter">
-        {["For you","Following","Newest"].map(item => <button key={item} className={filter===item?"active":""} onClick={()=>setFilter(item)}>{item}</button>)}
-        <button className={`filter-control ${filterCount?"active":""}`} onClick={()=>setFiltersOpen(true)}><SlidersHorizontal size={14}/> Filters{filterCount>0&&<b>{filterCount}</b>}</button>
-      </div>:<div className="public-feed-label"><span>PUBLIC NETWORK</span><p>Ideas and projects from across nice 2 network</p></div>}
+      <div className="feed-filter">
+        {["For you","Following","Newest"].map(item => <button key={item} className={filter===item?"active":""} onClick={()=>authenticated?setFilter(item):onRequireAuth()}>{item}</button>)}
+        <button className={`filter-control ${filterCount?"active":""}`} onClick={()=>authenticated?setFiltersOpen(true):onRequireAuth()}><SlidersHorizontal size={14}/> Filters{filterCount>0&&<b>{filterCount}</b>}</button>
+      </div>
+      {!authenticated&&<div className="public-feed-note"><span>PUBLIC PREVIEW</span><p>Join n2 to personalise these views.</p></div>}
       {notices.map(notice=><article className="official-notice" key={notice.id}><span className="official-badge"><b>n2</b> OFFICIAL NOTICE</span><h2>{notice.title}</h2><p>{notice.body}</p><small>{notice.authorName??"n2 team"} <N2AdminBadge/></small></article>)}
       {authenticated&&filter === "Following" && <div className="feed-context"><UsersRound size={16}/><span>Projects from people you know, with open roles that fit your network.</span></div>}
       {authenticated&&filter === "Newest" && <div className="feed-context"><Clock3 size={16}/><span>Fresh ideas from the last 24 hours.</span></div>}
@@ -548,7 +549,7 @@ export default function HomePage() {
   return (
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
-        <div><Logo onClick={()=>go("feed")} /><nav>{nav.filter(item=>authenticated||item.id==="feed").map((item) => { const Icon=item.icon; return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={20}/><span>{item.label}</span></button>})}</nav></div>
+        <div><Logo onClick={()=>go("feed")} /><nav>{nav.map((item) => { const Icon=item.icon; return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={20}/><span>{item.label}</span>{!authenticated&&item.id!=="feed"&&<i className="preview-lock" aria-label="Sign in required"/>}</button>})}</nav></div>
         <div className="sidebar-bottom">{authenticated?<>{currentMember.isN2Admin&&<a className="admin-nav-link" href="/admin"><ShieldCheck size={20}/><span>Admin console</span><N2AdminBadge/></a>}<button onClick={()=>{setEditProfileRequested(false);go("settings")}} className={view==="settings"?"active":""}><Settings size={20}/><span>Settings</span></button><button onClick={()=>setHelpOpen(true)}><CircleHelp size={20}/><span>Help</span></button><button onClick={()=>signOut({redirectTo:"/signin"})}><LogOut size={20}/><span>Log out</span></button><button className="profile-chip" onClick={openOwnProfile}><Avatar person={currentMember} size="sm"/><span><strong>{currentMember.name} {currentMember.isN2Admin&&<N2AdminBadge/>}</strong><small>View profile</small></span><ChevronDown size={16}/></button></>:<div className="public-sidebar-auth"><p>Have a skill, idea or useful introduction?</p><a href="/signin">Sign in</a><a className="join" href="/signin?mode=register">Join n2</a></div>}</div>
       </aside>
       <main className="main-content">
@@ -563,12 +564,13 @@ export default function HomePage() {
         </div>
       </main>
       <aside className="right-rail">
-        {authenticated?<div className="rail-top"><button className="search-button" onClick={()=>setSearchOpen(true)}><Search size={18}/><span>Search people & projects</span><kbd>⌘K</kbd></button><button className="icon-button border notification-button" onClick={()=>setNotificationsOpen(true)}><Bell size={19}/>{unreadNotifications>0&&<b>{unreadNotifications>9?"9+":unreadNotifications}</b>}</button></div>:<div className="public-rail-auth"><a href="/signin">Sign in</a><a href="/signin?mode=register">Join n2</a></div>}
+        <div className="rail-top"><button className="search-button" onClick={()=>authenticated?setSearchOpen(true):requireSignIn()}><Search size={18}/><span>Search people & projects</span><kbd>⌘K</kbd></button><button className="icon-button border notification-button" onClick={()=>authenticated?setNotificationsOpen(true):requireSignIn()}><Bell size={19}/>{authenticated&&unreadNotifications>0&&<b>{unreadNotifications>9?"9+":unreadNotifications}</b>}</button></div>
+        {!authenticated&&<div className="public-rail-auth"><a href="/signin">Sign in</a><a href="/signin?mode=register">Join n2</a></div>}
         {authenticated&&<section className="rail-card"><div className="rail-title"><span>PEOPLE TO KNOW</span><button onClick={()=>setSearchOpen(true)}>See all</button></div>{[people.lena,people.dev,people.sofia].map((p,i)=><div className="person-suggest" key={p.name}><Avatar person={p} size="md"/><div><strong>{p.name}</strong><span>{p.role}</span><small>{i===0?"3 shared interests":i===1?"2 mutual projects":"Near you"}</small></div><button className={connections.includes(p.name)?"connected":""} aria-label={`Connect with ${p.name}`} onClick={()=>{setConnections(c=>c.includes(p.name)?c.filter(n=>n!==p.name):[...c,p.name]);setToast(connections.includes(p.name)?`Removed ${p.name}`:`Connection request sent to ${p.name}`)}}>{connections.includes(p.name)?<Check size={17}/>:<Plus size={17}/>}</button></div>)}</section>}
         <NetworkPulse onProjects={()=>go("projects")}/>
         <footer><Logo/><p>Useful people, brought together.</p><div><button>About</button><button>Privacy</button><button>Community</button></div><small>© 2026 nice 2 network</small></footer>
       </aside>
-      {authenticated&&<nav className="mobile-nav">{nav.slice(0,4).map((item)=>{const Icon=item.icon;return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}<button onClick={openOwnProfile} className={view==="profile"?"active":""}><UserRound size={21}/><span>Me</span></button></nav>}
+      <nav className="mobile-nav">{nav.slice(0,4).map((item)=>{const Icon=item.icon;return <button key={item.id} className={view===item.id?"active":""} onClick={()=>go(item.id)}><Icon size={21}/><span>{item.label}</span></button>})}<button onClick={openOwnProfile} className={view==="profile"?"active":""}><UserRound size={21}/><span>Me</span></button></nav>
       {authenticated&&createOpen&&<CreateProject onClose={()=>setCreateOpen(false)} onPublish={project=>{setLatestProject(project);setToast("Project published — useful matches are being notified.");go("projects")}}/>}
       {authenticated&&postComposerOpen&&<PostComposer currentMember={currentMember} onClose={()=>setPostComposerOpen(false)} onPosted={setLatestPost} onToast={setToast}/>}
       {authenticated&&matchOpen&&<MatchPanel onClose={()=>setMatchOpen(false)} onMessage={()=>{setMatchOpen(false);go("messages")}}/>}
