@@ -79,7 +79,7 @@ test("provider input is privacy-filtered and matching stays deterministic", asyn
   assert.doesNotMatch(provider, /owner\.name|owner\.email|dateOfBirth|profile photo|member directory/i);
   assert.match(feedback, /recommendationId/);
   assert.doesNotMatch(feedback, /features:z\./);
-  assert.match(eyes, /owners cannot place eyes/i);
+  assert.match(eyes, /owners cannot add a view/i);
   assert.match(migration, /CREATE EXTENSION IF NOT EXISTS vector/);
   assert.match(migration, /rollout_stage/);
 });

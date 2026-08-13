@@ -214,3 +214,15 @@ test("shares clean public URLs with rich social preview metadata", async () => {
   assert.match(image, /content\.image/);
   assert.match(content, /timelinePosts\.visibility,"network"/);
 });
+
+test("ships durable project-first people discovery and mutual following", async () => {
+  const [schema,engine,suggestions,follow,feedback,conversations,page,migration]=await Promise.all([
+    read("db/schema.ts"),read("lib/people-recommendations.ts"),read("app/api/people/suggestions/route.ts"),read("app/api/users/[userId]/follow/route.ts"),read("app/api/people/suggestions/feedback/route.ts"),read("app/api/conversations/route.ts"),read("app/page.tsx"),read("drizzle/0014_unusual_old_lace.sql"),
+  ]);
+  for(const table of ["follows","memberRecommendations","memberRecommendationFeedback"])assert.match(schema,new RegExp(`export const ${table} = pgTable`));
+  for(const component of ["projectFit","professional","relationship","relevance","location","availability"])assert.match(engine,new RegExp(component));
+  assert.match(engine,/teen_16_17/);assert.match(engine,/profileVisibility/);assert.match(engine,/sanctions/);assert.match(engine,/blocks/);
+  assert.match(suggestions,/recommendPeople/);assert.match(follow,/mutual/);assert.match(follow,/60/);assert.match(feedback,/not_relevant/);
+  assert.match(conversations,/Follow each other or join a shared project/);assert.match(page,/PeopleDiscoveryPanel/);assert.match(page,/api\/people\/suggestions\?limit=3/);
+  assert.match(migration,/CREATE TABLE "follows"/);assert.match(migration,/member_recommendations_feed_idx/);
+});

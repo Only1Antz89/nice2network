@@ -1,0 +1,5 @@
+import { NextResponse } from "next/server";
+import { apiError,requireMember } from "@/lib/api";
+import { recommendPeople } from "@/lib/people-recommendations";
+
+export async function GET(request:Request){try{const member=await requireMember(),url=new URL(request.url),limit=Math.min(40,Math.max(3,Number(url.searchParams.get("limit")??20))),offset=Math.max(0,Number(url.searchParams.get("offset")??0)),query=(url.searchParams.get("q")??"").trim().toLowerCase(),filter=url.searchParams.get("filter")??"all";let suggestions=await recommendPeople(member.id,Math.min(50,limit+offset+20));if(query)suggestions=suggestions.filter(item=>`${item.name} ${item.profession} ${item.location} ${item.reasons.join(" ")}`.toLowerCase().includes(query));if(filter==="project")suggestions=suggestions.filter(item=>item.reasons.some(reason=>/project|needs/i.test(reason)));if(filter==="local")suggestions=suggestions.filter(item=>item.reasons.includes("Near you"));const page=suggestions.slice(offset,offset+limit);return NextResponse.json({suggestions:page,nextOffset:offset+limit<suggestions.length?offset+limit:null})}catch(error){return apiError(error)}}

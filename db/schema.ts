@@ -241,8 +241,38 @@ export const blocks = pgTable("blocks", {
   blockerId: uuid("blocker_id").notNull().references(() => users.id, { onDelete: "cascade" }), blockedId: uuid("blocked_id").notNull().references(() => users.id, { onDelete: "cascade" }), reason: text("reason"), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.blockerId, table.blockedId] })]);
 
+export const follows = pgTable("follows", {
+  followerId: uuid("follower_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  followingId: uuid("following_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.followerId, table.followingId] }), index("follows_following_idx").on(table.followingId, table.createdAt)]);
+
+export const memberRecommendations = pgTable("member_recommendations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  suggestedUserId: uuid("suggested_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  algorithmVersion: integer("algorithm_version").notNull().default(1),
+  score: integer("score").notNull(),
+  componentScores: jsonb("component_scores").$type<Record<string, number>>().notNull(),
+  reasons: text("reasons").array().notNull().default(sql`ARRAY[]::text[]`),
+  status: text("status").notNull().default("active"),
+  impressionCount: integer("impression_count").notNull().default(0),
+  lastImpressedAt: timestamp("last_impressed_at", { withTimezone: true }),
+  generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+}, (table) => [uniqueIndex("member_recommendation_unique").on(table.userId, table.suggestedUserId, table.algorithmVersion), index("member_recommendations_feed_idx").on(table.userId, table.status, table.score)]);
+
+export const memberRecommendationFeedback = pgTable("member_recommendation_feedback", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  recommendationId: uuid("recommendation_id").notNull().references(() => memberRecommendations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  signal: text("signal").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("member_recommendation_feedback_idx").on(table.userId, table.createdAt)]);
+
 export const privacySettings = pgTable("privacy_settings", {
-  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }), profileVisibility: text("profile_visibility").notNull().default("network"), messagePermission: text("message_permission").notNull().default("connections"), showLocation: boolean("show_location").notNull().default(true), showAvailability: boolean("show_availability").notNull().default(true), useActivityForMatching: boolean("use_activity_for_matching").notNull().default(true), allowIntroductions: boolean("allow_introductions").notNull().default(true), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }), profileVisibility: text("profile_visibility").notNull().default("network"), messagePermission: text("message_permission").notNull().default("connections"), showLocation: boolean("show_location").notNull().default(true), showAvailability: boolean("show_availability").notNull().default(true), showFollowers: boolean("show_followers").notNull().default(true), showFollowing: boolean("show_following").notNull().default(true), muteFollowNotifications: boolean("mute_follow_notifications").notNull().default(false), useActivityForMatching: boolean("use_activity_for_matching").notNull().default(true), allowIntroductions: boolean("allow_introductions").notNull().default(true), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const matchFeedback = pgTable("match_feedback", {

@@ -1,8 +1,8 @@
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { conversationMembers, conversations, projectMembers, safetyRisks, users } from "@/db/schema";
+import { conversationMembers, conversations, follows, privacySettings, projectMembers, safetyRisks, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { trackProductEvent } from "@/lib/analytics";
 
@@ -25,7 +25,9 @@ export async function GET() {
 
 export async function POST(request:Request){
   try{const member=await requireMember(),input=createSchema.parse(await request.json()),db=getDb(),recipientIds=[...new Set(input.recipientIds)].filter(id=>id!==member.id);if(!recipientIds.length)throw new ApiError(400,"Choose another member");
-    const profiles=await db.select({id:users.id,ageBand:users.ageBand}).from(users).where(and(inArray(users.id,recipientIds),eq(users.status,"active")));if(profiles.length!==recipientIds.length)throw new ApiError(404,"One or more members are unavailable");
+    const profiles=await db.select({id:users.id,ageBand:users.ageBand,messagePermission:privacySettings.messagePermission}).from(users).leftJoin(privacySettings,eq(privacySettings.userId,users.id)).where(and(inArray(users.id,recipientIds),eq(users.status,"active")));if(profiles.length!==recipientIds.length)throw new ApiError(404,"One or more members are unavailable");
+    const senderProjects=await db.select({projectId:projectMembers.projectId}).from(projectMembers).where(eq(projectMembers.userId,member.id)),sharedRows=senderProjects.length?await db.select({userId:projectMembers.userId,projectId:projectMembers.projectId}).from(projectMembers).where(and(inArray(projectMembers.userId,recipientIds),inArray(projectMembers.projectId,senderProjects.map(row=>row.projectId)))):[],mutualRows=await db.select({followerId:follows.followerId,followingId:follows.followingId}).from(follows).where(or(and(eq(follows.followerId,member.id),inArray(follows.followingId,recipientIds)),and(inArray(follows.followerId,recipientIds),eq(follows.followingId,member.id))));
+    for(const profile of profiles){const shared=sharedRows.some(row=>row.userId===profile.id),outbound=mutualRows.some(row=>row.followerId===member.id&&row.followingId===profile.id),inbound=mutualRows.some(row=>row.followerId===profile.id&&row.followingId===member.id),mutual=outbound&&inbound;if(profile.messagePermission==="nobody")throw new ApiError(403,"One or more members are not accepting new messages");if((profile.messagePermission??"connections")==="connections"&&!mutual&&!shared)throw new ApiError(403,"Follow each other or join a shared project before starting a conversation")}
     const [sender]=await db.select({ageBand:users.ageBand}).from(users).where(eq(users.id,member.id)).limit(1);const mixed=profiles.some(p=>p.ageBand!==sender?.ageBand&&[p.ageBand,sender?.ageBand].includes("teen_16_17"));if(mixed&&!input.projectId){await db.insert(safetyRisks).values({subjectUserId:sender?.ageBand==="teen_16_17"?member.id:null,type:"adult_teen_contact_blocked",severity:"high",details:{attemptedBy:member.id}});throw new ApiError(403,"Adult and teen contact requires a shared project")}
     if(mixed&&input.projectId){const shared=await db.select({userId:projectMembers.userId}).from(projectMembers).where(and(eq(projectMembers.projectId,input.projectId),inArray(projectMembers.userId,[member.id,...recipientIds])));if(shared.length!==recipientIds.length+1)throw new ApiError(403,"All members need the shared project")}
     const [conversation]=await db.transaction(async tx=>{const created=await tx.insert(conversations).values({initiatedBy:member.id,projectId:input.projectId,name:input.name||null}).returning();await tx.insert(conversationMembers).values([member.id,...recipientIds].map(userId=>({conversationId:created[0].id,userId})));return created});
