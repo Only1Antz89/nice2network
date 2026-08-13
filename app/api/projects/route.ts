@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { getDb } from "@/db";
-import { adminAssignments, projectBookmarks, projectMembers, projectRecommendations, projectRoles, projects, recommendationEvents, users } from "@/db/schema";
+import { adminAssignments, projectMembers, projectRecommendations, projectRoles, projects, recommendationEvents, savedItems, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
@@ -36,10 +36,10 @@ async function baseProjects(memberId: string, condition: ReturnType<typeof and> 
     isDemo: sql<boolean>`${users.role} = 'demo_member'`,
     ownerIsAdmin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`,
     isOwner: sql<boolean>`${projects.ownerId} = ${memberId} or exists (select 1 from project_members pm where pm.project_id = ${projects.id} and pm.user_id = ${memberId} and pm.membership_role = 'co_owner')`,
-    isPinned: sql<boolean>`coalesce(${projectBookmarks.pinned}, false)`, isStarred: sql<boolean>`coalesce(${projectBookmarks.starred}, false)`, eyeCount, commentCount, createdAt: projects.createdAt,
+    isPinned: sql<boolean>`coalesce(${savedItems.pinned}, false)`, isBookmarked: sql<boolean>`coalesce(${savedItems.bookmarked}, false)`, eyeCount, commentCount, createdAt: projects.createdAt,
   }).from(projects).innerJoin(users, eq(users.id, projects.ownerId))
     .leftJoin(adminAssignments, and(eq(adminAssignments.userId, projects.ownerId), eq(adminAssignments.status, "active")))
-    .leftJoin(projectBookmarks, and(eq(projectBookmarks.projectId, projects.id), eq(projectBookmarks.userId, memberId)))
+    .leftJoin(savedItems, and(eq(savedItems.entityId, projects.id), eq(savedItems.entityType, "project"), eq(savedItems.userId, memberId)))
     .where(condition).orderBy(desc(projects.createdAt), asc(projects.id)).limit(200);
 }
 

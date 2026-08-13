@@ -127,6 +127,17 @@ export const projectBookmarks = pgTable("project_bookmarks", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.projectId, table.userId] }), index("project_bookmarks_user_idx").on(table.userId)]);
 
+export const savedItems = pgTable("saved_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  entityType: text("entity_type").notNull(),
+  entityId: uuid("entity_id").notNull(),
+  pinned: boolean("pinned").notNull().default(false),
+  bookmarked: boolean("bookmarked").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("saved_items_user_entity_unique").on(table.userId, table.entityType, table.entityId), index("saved_items_user_idx").on(table.userId, table.updatedAt)]);
+
 export const careerHistory = pgTable("career_history", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
