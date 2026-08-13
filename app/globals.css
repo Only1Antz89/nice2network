@@ -31,17 +31,16 @@ body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-
 .emoji-picker{position:relative;display:grid;place-items:center;flex:none}
 .emoji-trigger{width:34px;height:34px;border:1px solid var(--line)!important;border-radius:50%!important;background:#fff!important;color:var(--ink)!important;padding:0!important;display:grid!important;place-items:center!important}
 .emoji-trigger:hover,.emoji-trigger[aria-expanded="true"]{background:var(--soft)!important;border-color:#aaa!important}
-.emoji-popover{position:absolute;z-index:90;left:0;bottom:calc(100% + 9px);width:252px;border:1px solid var(--line);border-radius:13px;background:#fff;padding:12px;box-shadow:0 18px 55px rgba(0,0,0,.18)}
+.emoji-popover{position:absolute;z-index:90;left:0;bottom:calc(100% + 9px);width:350px;max-width:calc(100vw - 28px);border:1px solid var(--line);border-radius:15px;background:#fff;padding:7px;box-shadow:0 18px 55px rgba(0,0,0,.18);overflow:hidden}
 .emoji-picker.right .emoji-popover{left:auto;right:0}
-.emoji-popover>span{display:block;margin:0 0 9px;font:7px var(--font-geist-mono);letter-spacing:.14em;color:var(--muted)}
-.emoji-popover>div{display:grid;grid-template-columns:repeat(8,1fr);gap:2px}
-.emoji-popover .emoji-glyph{width:28px;height:28px;border:0;border-radius:7px;background:none;padding:0;font-size:19px;line-height:1}
-.emoji-popover .emoji-glyph:hover,.emoji-popover .emoji-glyph:focus-visible{background:var(--soft);outline:0}
+.emoji-popover .EmojiPickerReact{--epr-bg-color:#fff;--epr-category-label-bg-color:#fff;--epr-search-input-bg-color:#f5f5f1;--epr-search-input-border-color:var(--line);--epr-hover-bg-color:var(--soft);--epr-focus-bg-color:var(--soft);--epr-highlight-color:#111;border:0!important;font-family:var(--font-geist-sans),Arial,sans-serif!important}
+.emoji-popover .epr-search-container input{font-size:11px!important}
+.emoji-popover .epr-emoji-category-label{font:8px var(--font-geist-mono)!important;letter-spacing:.08em;color:var(--muted)!important}
 .post-tools>.emoji-picker{margin-left:auto}
 .chat-composer{grid-template-columns:34px 34px 1fr 38px}
 .comment-composer{grid-template-columns:34px 1fr 38px}
 .chat-composer>.emoji-picker .emoji-trigger,.comment-composer>.emoji-picker .emoji-trigger{border:0!important}
-@media(max-width:400px){.emoji-popover{position:fixed;left:14px!important;right:14px!important;bottom:78px;width:auto}.emoji-popover>div{grid-template-columns:repeat(8,1fr);justify-items:center}}
+@media(max-width:400px){.emoji-popover{position:fixed;left:14px!important;right:14px!important;bottom:78px;width:auto;padding:5px}.emoji-popover .EmojiPickerReact{height:min(410px,calc(100svh - 165px))!important}}
 
 .share-back{border:0;background:none;padding:0 0 8px;display:flex;align-items:center;gap:5px;font-size:8px;color:var(--muted)}
 .share-primary{display:grid;grid-template-columns:repeat(3,1fr) 72px;gap:8px;position:relative}
