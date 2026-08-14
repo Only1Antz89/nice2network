@@ -371,12 +371,26 @@ test("meet visibility is selected in the form without browser prompts", async ()
   assert.match(styles, /\.meet-visibility-options/);
 });
 
-test("ships a role-aware branded podcast stage with audience requests and room chat", async () => {
-  const [schema, room, stageApi, chatApi, calendar, page, styles, migration] = await Promise.all([
+test("meet editing keeps the invite step and reloads existing invitees", async () => {
+  const [page, styles] = await Promise.all([
+    read("app/page.tsx"),
+    read("app/globals.css"),
+  ]);
+  assert.match(page, /fetch\(`\/api\/meetings\/\$\{meet\.id\}`\)/);
+  assert.match(page, /participantProfiles: result\.participants \?\? \[\]/);
+  assert.match(page, /if \(meetStep === 1\) \{\s*continueMeetSetup\(\);\s*return;/);
+  assert.match(page, /type="submit" className="primary-button"/);
+  assert.match(styles, /\.podcast-table-surface\{[^}]*aspect-ratio:1/);
+  assert.match(styles, /background:radial-gradient\(circle at center/);
+});
+
+test("ships a role-aware branded podcast stage with private questions and playable audio", async () => {
+  const [schema, room, stageApi, chatApi, signalsApi, calendar, page, styles, migration] = await Promise.all([
     read("db/schema.ts"),
     read("app/meet/[meetingId]/page.tsx"),
     read("app/api/meetings/[meetingId]/podcast/route.ts"),
     read("app/api/meetings/[meetingId]/chat/route.ts"),
+    read("app/api/meetings/[meetingId]/signals/route.ts"),
     read("app/api/calendar/events/route.ts"),
     read("app/page.tsx"),
     read("app/globals.css"),
@@ -387,8 +401,14 @@ test("ships a role-aware branded podcast stage with audience requests and room c
   for (const role of ["HOST", "CO-HOST", "GUEST SPEAKER", "AUDIENCE SPEAKER"]) assert.match(room, new RegExp(role));
   for (const action of ["request_speak", "approve", "dismiss", "mute"]) assert.match(stageApi, new RegExp(action));
   assert.match(room, /function useSpeaking/);
-  assert.match(room, /ROOM CHAT/);
-  assert.match(chatApi, /meetingMessages/);
+  assert.match(room, /function RemoteAudio/);
+  assert.match(room, /roomModeRef\.current === "audio"[^\n]+addTransceiver\("audio", \{ direction: "recvonly" \}\)/);
+  assert.match(room, /HOST CONSOLE/);
+  assert.match(room, /LISTENER VIEW/);
+  assert.match(room, /podcast-chat-tabs/);
+  assert.match(chatApi, /QUESTION_PREFIX/);
+  assert.match(chatApi, /canSeeQuestions/);
+  assert.match(signalsApi, /role: meetingParticipants\.role/);
   assert.match(calendar, /attendeeRoles/);
   assert.match(page, /Guest speaker/);
   assert.match(page, /Co-host/);

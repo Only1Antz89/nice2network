@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { meetingParticipants, meetingSignals, meetings, users } from "@/db/schema";
+import { meetingParticipants, meetingSignals, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { requireMeetingAccess } from "@/lib/meetings";
 

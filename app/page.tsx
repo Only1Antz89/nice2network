@@ -42,6 +42,7 @@ import {
   Send,
   Share2,
   SmilePlus,
+  Sparkles,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -5024,6 +5025,326 @@ function ContributionDialog({
   );
 }
 
+type RecruitmentDraft = {
+  title: string;
+  profession: string;
+  department: string;
+  description: string;
+  requiredSkills: string;
+  usefulSkills: string;
+  workMode: "remote" | "hybrid" | "in_person";
+  capacity: number;
+};
+
+const emptyRecruitmentDraft: RecruitmentDraft = {
+  title: "",
+  profession: "",
+  department: "",
+  description: "",
+  requiredSkills: "",
+  usefulSkills: "",
+  workMode: "remote",
+  capacity: 1,
+};
+
+function RecruitmentDialog({
+  project,
+  onClose,
+  onRoleCreated,
+  onToast,
+}: {
+  project: ProjectDetailRecord;
+  onClose: () => void;
+  onRoleCreated: (role: ProjectRoleRecord) => void;
+  onToast: (message: string) => void;
+}) {
+  const [tab, setTab] = useState<"manual" | "ai">("manual"),
+    [draft, setDraft] = useState<RecruitmentDraft>(emptyRecruitmentDraft),
+    [blueprint, setBlueprint] = useState<BlueprintRecord | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+
+  const updateDraft = <K extends keyof RecruitmentDraft,>(
+    field: K,
+    value: RecruitmentDraft[K],
+  ) => setDraft((current) => ({ ...current, [field]: value }));
+
+  async function requestRole(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    const requiredSkills = draft.requiredSkills
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const response = await fetch(`/api/projects/${project.id}/roles`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: draft.title.trim() || draft.profession.trim(),
+        department: draft.department.trim(),
+        description: draft.description.trim(),
+        professions: [draft.profession.trim()],
+        requiredSkills,
+        usefulSkills: draft.usefulSkills
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+        phase: "now",
+        criticality: "important",
+        workMode: draft.workMode,
+        capacity: draft.capacity,
+      }),
+    });
+    const data = await response.json();
+    setBusy(false);
+    if (!response.ok) {
+      setError(data.error ?? "Could not publish this role request.");
+      return;
+    }
+    onRoleCreated(data);
+    onToast(`${data.title} is now open for recruitment.`);
+    onClose();
+  }
+
+  async function reviewProject() {
+    setBusy(true);
+    setError("");
+    const response = await fetch(`/api/projects/${project.id}/blueprint`, {
+      method: "POST",
+    });
+    const data = await response.json();
+    setBusy(false);
+    if (!response.ok) {
+      setError(data.error ?? "The project review could not be completed.");
+      return;
+    }
+    setBlueprint(data.blueprint);
+  }
+
+  function useRecommendation(role: BlueprintRole) {
+    setDraft({
+      title: role.title,
+      profession: role.professions[0] ?? role.title,
+      department: role.department,
+      description: role.reason,
+      requiredSkills: role.requiredSkills.join(", "),
+      usefulSkills: role.usefulSkills.join(", "),
+      workMode: role.workMode,
+      capacity: role.headcount,
+    });
+    setTab("manual");
+    setError("");
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <section
+        className="n2-editor-modal recruitment-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="recruitment-title"
+      >
+        <header>
+          <div>
+            <span className="eyebrow">TEAM RECRUITMENT</span>
+            <h2 id="recruitment-title">Who does {project.title} need next?</h2>
+            <p>Request a profession directly or let AI review the next steps.</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close recruitment">
+            <X size={19} />
+          </button>
+        </header>
+
+        <div className="recruitment-tabs" role="tablist" aria-label="Recruitment method">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "manual"}
+            className={tab === "manual" ? "active" : ""}
+            onClick={() => { setTab("manual"); setError(""); }}
+          >
+            <UserPlus size={17} />
+            <span><strong>Request a profession</strong><small>I know the expertise we need</small></span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "ai"}
+            className={tab === "ai" ? "active" : ""}
+            onClick={() => { setTab("ai"); setError(""); }}
+          >
+            <Sparkles size={17} />
+            <span><strong>Consult with AI</strong><small>Review the project and next steps</small></span>
+            <b>AI</b>
+          </button>
+        </div>
+
+        {tab === "manual" ? (
+          <form onSubmit={requestRole}>
+            <div className="recruitment-intro">
+              <span className="eyebrow">MANUAL REQUEST</span>
+              <h3>Create an open role</h3>
+              <p>Give people enough context to recognise where they can be useful.</p>
+            </div>
+            <div className="n2-editor-fields recruitment-fields">
+              <div className="field-row">
+                <label>
+                  Profession or expertise
+                  <input
+                    value={draft.profession}
+                    onChange={(event) => updateDraft("profession", event.target.value)}
+                    placeholder="e.g. Mechanical engineer"
+                    minLength={2}
+                    maxLength={80}
+                    required
+                    autoFocus
+                  />
+                </label>
+                <label>
+                  Role title
+                  <input
+                    value={draft.title}
+                    onChange={(event) => updateDraft("title", event.target.value)}
+                    placeholder="Uses the profession if left blank"
+                    maxLength={100}
+                  />
+                </label>
+              </div>
+              <div className="field-row">
+                <label>
+                  Team or department
+                  <input
+                    value={draft.department}
+                    onChange={(event) => updateDraft("department", event.target.value)}
+                    placeholder="e.g. Engineering"
+                    minLength={2}
+                    maxLength={80}
+                    required
+                  />
+                </label>
+                <label>
+                  Working style
+                  <select value={draft.workMode} onChange={(event) => updateDraft("workMode", event.target.value as RecruitmentDraft["workMode"])}>
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="in_person">In person</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                What will they help with?
+                <textarea
+                  value={draft.description}
+                  onChange={(event) => updateDraft("description", event.target.value)}
+                  placeholder="Describe the challenge and the first useful outcome."
+                  maxLength={500}
+                />
+              </label>
+              <div className="field-row">
+                <label>
+                  Required skills
+                  <input
+                    value={draft.requiredSkills}
+                    onChange={(event) => updateDraft("requiredSkills", event.target.value)}
+                    placeholder="Prototyping, CAD"
+                    required
+                  />
+                  <small>Separate skills with commas.</small>
+                </label>
+                <label>
+                  Useful skills
+                  <input
+                    value={draft.usefulSkills}
+                    onChange={(event) => updateDraft("usefulSkills", event.target.value)}
+                    placeholder="Food systems, testing"
+                  />
+                  <small>Optional · separate skills with commas.</small>
+                </label>
+              </div>
+              <label className="recruitment-capacity">
+                People needed
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={draft.capacity}
+                  onChange={(event) => updateDraft("capacity", Number(event.target.value))}
+                  required
+                />
+              </label>
+            </div>
+            {error && <div className="recruitment-error"><CircleAlert size={16} /> {error}</div>}
+            <footer>
+              <p>This creates an open role and lets relevant members discover it.</p>
+              <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+              <button className="primary-button" disabled={busy}>
+                {busy ? "Publishing…" : "Publish role request"} <ArrowUpRight size={14} />
+              </button>
+            </footer>
+          </form>
+        ) : (
+          <div className="recruitment-ai-panel">
+            {!blueprint ? (
+              <div className="ai-review-start">
+                <span className="ai-review-orb"><Sparkles size={24} /></span>
+                <span className="eyebrow">AI PROJECT ADVISER</span>
+                <h3>Find the most useful next teammate.</h3>
+                <p>AI will assess the project brief, stage, current team and owner expertise. It recommends abstract roles only—never named people.</p>
+                <div className="ai-review-scope">
+                  <span><b>01</b> Project clarity</span>
+                  <span><b>02</b> Capability gaps</span>
+                  <span><b>03</b> Next milestones</span>
+                </div>
+                {error && <div className="recruitment-error"><CircleAlert size={16} /> {error}</div>}
+                <button type="button" className="primary-button" disabled={busy} onClick={reviewProject}>
+                  <Sparkles size={14} /> {busy ? "Reviewing project…" : "Review this project"}
+                </button>
+              </div>
+            ) : (
+              <div className="ai-review-results">
+                <div className="ai-result-heading">
+                  <div><span className="eyebrow">AI PROJECT REVIEW</span><h3>{blueprint.outcome}</h3></div>
+                  <span className="ai-confidence">{blueprint.usedFallback ? "GUIDED REVIEW" : "AI REVIEW"}</span>
+                </div>
+                {blueprint.usedFallback && <p className="ai-fallback-note">The AI provider was unavailable, so this review uses n2’s industry framework. Review each suggestion before publishing.</p>}
+                <section className="ai-next-steps">
+                  <strong>Recommended next steps</strong>
+                  <ol>{blueprint.milestones.map((milestone) => <li key={`${milestone.phase}-${milestone.title}`}><span>{milestone.phase}</span>{milestone.title}</li>)}</ol>
+                </section>
+                <div className="ai-role-recommendations">
+                  <div><span className="eyebrow">TEAM GAPS</span><p>Choose a suggestion to turn it into an editable role request.</p></div>
+                  {blueprint.roles.map((role, index) => (
+                    <article key={`${role.phase}-${role.title}-${index}`} className={index === 0 ? "featured" : ""}>
+                      <b>{String(index + 1).padStart(2, "0")}</b>
+                      <div>
+                        <span>{role.phase} · {role.criticality}</span>
+                        <h4>{role.title}</h4>
+                        <p>{role.reason}</p>
+                        <small>{role.professions.join(" · ")}</small>
+                      </div>
+                      <button type="button" onClick={() => useRecommendation(role)}>Request this role <ArrowUpRight size={13} /></button>
+                    </article>
+                  ))}
+                </div>
+                <footer>
+                  <button type="button" className="secondary-button" onClick={reviewProject} disabled={busy}>
+                    <Sparkles size={13} /> {busy ? "Reviewing…" : "Review again"}
+                  </button>
+                </footer>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function ProjectDetailView({
   projectId,
   onBack,
@@ -5044,6 +5365,7 @@ function ProjectDetailView({
     [fundingType, setFundingType] = useState<
       "invest" | "donate" | "contribute" | "share_request"
     >("contribute"),
+    [recruitmentOpen, setRecruitmentOpen] = useState(false),
     [busy, setBusy] = useState(false);
   useEffect(() => {
     fetch(`/api/projects/${projectId}`)
@@ -5099,7 +5421,8 @@ function ProjectDetailView({
     ).length,
     progress = project.milestones.length
       ? Math.round((completed / project.milestones.length) * 100)
-      : 0;
+      : 0,
+    canRecruit = project.ownerId === project.currentUserId;
   return (
     <div className="project-detail">
       <button className="project-detail-back" onClick={onBack}>
@@ -5255,28 +5578,49 @@ function ProjectDetailView({
         </section>
       )}
       {tab === "team" && (
-        <section className="project-team-grid">
-          {project.team.map((person) => (
-            <button
-              key={person.userId}
-              onClick={() => onProfile(person.userId)}
-            >
-              <Avatar
-                person={{
-                  name: person.name ?? "n2 member",
-                  role: person.profession ?? "Contributor",
-                  img: person.image,
-                }}
-                size="lg"
-              />
-              <span>
-                <strong>{person.name}</strong>
-                <small>{person.department || person.membershipRole}</small>
-                <i>{person.profession}</i>
-              </span>
-              <ArrowUpRight size={15} />
-            </button>
-          ))}
+        <section className="project-team-section">
+          <header className="project-team-head">
+            <div>
+              <span className="eyebrow">PROJECT TEAM</span>
+              <h2>The people making it happen</h2>
+              <p>{canRecruit ? "Add the expertise needed to reach the next milestone." : `${project.team.length} people are contributing to this project.`}</p>
+            </div>
+            {canRecruit && (
+              <button className="primary-button" onClick={() => setRecruitmentOpen(true)}>
+                <UserPlus size={15} /> Add member
+              </button>
+            )}
+          </header>
+          <div className="project-team-grid">
+            {project.team.map((person) => (
+              <button
+                key={person.userId}
+                onClick={() => onProfile(person.userId)}
+              >
+                <Avatar
+                  person={{
+                    name: person.name ?? "n2 member",
+                    role: person.profession ?? "Contributor",
+                    img: person.image,
+                  }}
+                  size="lg"
+                />
+                <span>
+                  <strong>{person.name}</strong>
+                  <small>{person.department || person.membershipRole}</small>
+                  <i>{person.profession}</i>
+                </span>
+                <ArrowUpRight size={15} />
+              </button>
+            ))}
+            {canRecruit && (
+              <button className="project-team-recruit" onClick={() => setRecruitmentOpen(true)}>
+                <span><Plus size={18} /></span>
+                <div><strong>Grow your team</strong><small>Request the profession this project needs next</small></div>
+                <ArrowUpRight size={15} />
+              </button>
+            )}
+          </div>
         </section>
       )}
       {tab === "roadmap" && (
@@ -5387,6 +5731,18 @@ function ProjectDetailView({
             </button>
           </form>
         </div>
+      )}
+      {recruitmentOpen && canRecruit && (
+        <RecruitmentDialog
+          project={project}
+          onClose={() => setRecruitmentOpen(false)}
+          onToast={onToast}
+          onRoleCreated={(role) =>
+            setProject((current) =>
+              current ? { ...current, roles: [...current.roles, role] } : current,
+            )
+          }
+        />
       )}
     </div>
   );
@@ -6790,24 +7146,39 @@ function MeetView() {
     setError("");
     setCreate(true);
   }
-  function openEdit(meet: MeetingRecord) {
+  async function openEdit(meet: MeetingRecord) {
+    let currentMeet = meet;
+    try {
+      const response = await fetch(`/api/meetings/${meet.id}`);
+      if (response.ok) {
+        const result = await response.json();
+        currentMeet = {
+          ...meet,
+          ...result.meeting,
+          participantProfiles: result.participants ?? [],
+          canEdit: result.canEdit,
+        };
+      }
+    } catch {
+      // The calendar payload contains enough data to keep editing available offline.
+    }
     setCreate(false);
-    setEditing(meet);
-    setInvitees((meet.participantProfiles ?? []).map(person => ({
+    setEditing(currentMeet);
+    setInvitees((currentMeet.participantProfiles ?? []).map(person => ({
       id: person.id,
       name: person.name,
       image: person.image,
-      profession: person.profession,
+      profession: person.profession || "n2 member",
       group: person.group ?? "public",
       relationship: person.relationship ?? "Invited",
       podcastRole: person.role ?? "listener",
     })));
-    setMeetMode(meet.mode ?? (meet.provider === "in_person" ? "in_person" : "video"));
-    setMeetVisibility(meet.visibility ?? "public");
-    setMeetProjectId(meet.projectId ?? "");
+    setMeetMode(currentMeet.mode ?? (currentMeet.provider === "in_person" ? "in_person" : "video"));
+    setMeetVisibility(currentMeet.visibility ?? "public");
+    setMeetProjectId(currentMeet.projectId ?? "");
     setMeetStep(1);
-    setMeetLocation(meet.location ?? "");
-    setMeetThumbnail(meet.thumbnailUrl ?? null);
+    setMeetLocation(currentMeet.location ?? "");
+    setMeetThumbnail(currentMeet.thumbnailUrl ?? null);
     setDetail(null);
     setError("");
   }
@@ -6849,6 +7220,10 @@ function MeetView() {
   }
   async function addMeet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (meetStep === 1) {
+      continueMeetSetup();
+      return;
+    }
     setError("");
     const data = new FormData(event.currentTarget),
       start = new Date(String(data.get("startsAt"))),
@@ -7219,7 +7594,7 @@ function MeetView() {
               <p>{meetStep === 1 ? "Add the essentials now. Invitees come next." : `${invitees.length} ${invitees.length === 1 ? "person" : "people"} selected`}</p>
               <div>
                 {meetStep === 2 && <button type="button" className="secondary-button" onClick={() => setMeetStep(1)}><ArrowLeft size={16}/> Back</button>}
-                {meetStep === 1 ? <button type="button" className="primary-button" onClick={continueMeetSetup}>Continue to invites <ChevronRight size={16}/></button> : <button className="primary-button">{editing ? "Save changes" : "Create meet"}</button>}
+                {meetStep === 1 ? <button type="button" className="primary-button" onClick={continueMeetSetup}>Continue to invites <ChevronRight size={16}/></button> : <button type="submit" className="primary-button">{editing ? "Save changes" : "Create meet"}</button>}
               </div>
             </footer>
           </form>
