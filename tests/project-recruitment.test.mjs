@@ -24,7 +24,8 @@ test("owners can choose manual profession recruitment or an AI project review", 
 
   for (const copy of [
     "Request a profession",
-    "Consult with AI",
+    "Ai Assist",
+    "Start Ai Assist",
     "Review this project",
     "Recommended next steps",
     "Request this role",

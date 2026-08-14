@@ -5049,16 +5049,18 @@ const emptyRecruitmentDraft: RecruitmentDraft = {
 
 function RecruitmentDialog({
   project,
+  initialTab = "manual",
   onClose,
   onRoleCreated,
   onToast,
 }: {
   project: ProjectDetailRecord;
+  initialTab?: "manual" | "ai";
   onClose: () => void;
   onRoleCreated: (role: ProjectRoleRecord) => void;
   onToast: (message: string) => void;
 }) {
-  const [tab, setTab] = useState<"manual" | "ai">("manual"),
+  const [tab, setTab] = useState<"manual" | "ai">(initialTab),
     [draft, setDraft] = useState<RecruitmentDraft>(emptyRecruitmentDraft),
     [blueprint, setBlueprint] = useState<BlueprintRecord | null>(null),
     [busy, setBusy] = useState(false),
@@ -5179,7 +5181,7 @@ function RecruitmentDialog({
             onClick={() => { setTab("ai"); setError(""); }}
           >
             <Sparkles size={17} />
-            <span><strong>Consult with AI</strong><small>Review the project and next steps</small></span>
+            <span><strong>Ai Assist</strong><small>Review the project and next steps</small></span>
             <b>AI</b>
           </button>
         </div>
@@ -5359,13 +5361,14 @@ function ProjectDetailView({
   const [project, setProject] = useState<ProjectDetailRecord | null>(null),
     [loading, setLoading] = useState(true),
     [tab, setTab] = useState<
-      "overview" | "team" | "roadmap" | "updates" | "funding"
+      "overview" | "team" | "ai_assist" | "roadmap" | "updates" | "funding"
     >("overview"),
     [fundingOpen, setFundingOpen] = useState(false),
     [fundingType, setFundingType] = useState<
       "invest" | "donate" | "contribute" | "share_request"
     >("contribute"),
     [recruitmentOpen, setRecruitmentOpen] = useState(false),
+    [recruitmentInitialTab, setRecruitmentInitialTab] = useState<"manual" | "ai">("manual"),
     [busy, setBusy] = useState(false);
   useEffect(() => {
     fetch(`/api/projects/${projectId}`)
@@ -5463,14 +5466,16 @@ function ProjectDetailView({
         </div>
       </header>
       <nav className="project-detail-tabs">
-        {(["overview", "team", "roadmap", "updates", "funding"] as const).map(
+        {(["overview", "team", "ai_assist", "roadmap", "updates", "funding"] as const)
+          .filter((item) => item !== "ai_assist" || canRecruit)
+          .map(
           (item) => (
             <button
               key={item}
               className={tab === item ? "active" : ""}
               onClick={() => setTab(item)}
             >
-              {item}
+              {item === "ai_assist" ? "Ai Assist" : item}
             </button>
           ),
         )}
@@ -5586,7 +5591,7 @@ function ProjectDetailView({
               <p>{canRecruit ? "Add the expertise needed to reach the next milestone." : `${project.team.length} people are contributing to this project.`}</p>
             </div>
             {canRecruit && (
-              <button className="primary-button" onClick={() => setRecruitmentOpen(true)}>
+              <button className="primary-button" onClick={() => { setRecruitmentInitialTab("manual"); setRecruitmentOpen(true); }}>
                 <UserPlus size={15} /> Add member
               </button>
             )}
@@ -5614,13 +5619,35 @@ function ProjectDetailView({
               </button>
             ))}
             {canRecruit && (
-              <button className="project-team-recruit" onClick={() => setRecruitmentOpen(true)}>
+              <button className="project-team-recruit" onClick={() => { setRecruitmentInitialTab("manual"); setRecruitmentOpen(true); }}>
                 <span><Plus size={18} /></span>
                 <div><strong>Grow your team</strong><small>Request the profession this project needs next</small></div>
                 <ArrowUpRight size={15} />
               </button>
             )}
           </div>
+        </section>
+      )}
+      {tab === "ai_assist" && canRecruit && (
+        <section className="project-ai-assist-panel">
+          <span className="ai-review-orb"><Sparkles size={24} /></span>
+          <span className="eyebrow">AI PROJECT ADVISER</span>
+          <h2>Work out what this project needs next.</h2>
+          <p>Ai Assist reviews the project brief, stage, current team and your expertise to recommend the most useful next roles and milestones.</p>
+          <div className="ai-review-scope">
+            <span><b>01</b> Project clarity</span>
+            <span><b>02</b> Capability gaps</span>
+            <span><b>03</b> Next milestones</span>
+          </div>
+          <div className="project-ai-context">
+            <span><strong>{project.team.length}</strong><small>people on the team</small></span>
+            <span><strong>{project.roles.filter((role) => role.status === "open").length}</strong><small>open roles</small></span>
+            <span><strong>{project.milestones.length}</strong><small>roadmap milestones</small></span>
+          </div>
+          <button type="button" className="primary-button" onClick={() => { setRecruitmentInitialTab("ai"); setRecruitmentOpen(true); }}>
+            <Sparkles size={14} /> Start Ai Assist
+          </button>
+          <small>Suggestions are advisory. You choose and edit every role before publishing.</small>
         </section>
       )}
       {tab === "roadmap" && (
@@ -5735,6 +5762,7 @@ function ProjectDetailView({
       {recruitmentOpen && canRecruit && (
         <RecruitmentDialog
           project={project}
+          initialTab={recruitmentInitialTab}
           onClose={() => setRecruitmentOpen(false)}
           onToast={onToast}
           onRoleCreated={(role) =>
@@ -6385,7 +6413,12 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
     } | null>(null),
     [typingNames, setTypingNames] = useState<string[]>([]),
     [showArchived, setShowArchived] = useState(false),
-    [conversationError, setConversationError] = useState("");
+    [conversationError, setConversationError] = useState(""),
+    [isSending, setIsSending] = useState(false),
+    [sendError, setSendError] = useState("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const selectedConversationId = selected?.id;
+  const latestMessageId = messagesList.at(-1)?.id;
   const title = (row: ConversationRecord) =>
     row.name ||
     row.members
@@ -6444,6 +6477,9 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
     return () => clearInterval(timer);
   }, [selected, draft]);
   useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [selectedConversationId, latestMessageId]);
+  useEffect(() => {
     const timer = setTimeout(() => {
       if (memberSearch.trim().length < 2) {
         setMemberResults([]);
@@ -6456,19 +6492,33 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
     return () => clearTimeout(timer);
   }, [memberSearch]);
   async function send(type: "message" | "nudge" = "message") {
-    if (!selected || (!draft.trim() && !attachment && type === "message"))
+    if (
+      !selected ||
+      isSending ||
+      (!draft.trim() && !attachment && type === "message")
+    )
       return;
-    const response = await fetch(`/api/conversations/${selected.id}/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        body: draft,
-        attachmentType: attachment?.type,
-        attachmentUrl: attachment?.url,
-        type,
-      }),
-    });
-    if (response.ok) {
+    setIsSending(true);
+    setSendError("");
+    try {
+      const response = await fetch(
+        `/api/conversations/${selected.id}/messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            body: draft,
+            attachmentType: attachment?.type,
+            attachmentUrl: attachment?.url,
+            type,
+          }),
+        },
+      );
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        setSendError(result.error ?? "Your message could not be sent.");
+        return;
+      }
       setDraft("");
       setAttachment(null);
       const data = await response.json();
@@ -6482,6 +6532,10 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
           status: "visible",
         },
       ]);
+    } catch {
+      setSendError("Your message could not be sent. Check your connection and try again.");
+    } finally {
+      setIsSending(false);
     }
   }
   async function conversationAction(
@@ -6643,8 +6697,19 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
             {selected.members.length > 2 ? "Start meet" : "Video call"}
           </button>
         </div>
-        <div className="chat-flow">
+        <div className="chat-flow" role="log" aria-live="polite">
           <div className="chat-date">CONVERSATION</div>
+          {!messagesList.length && (
+            <div className="chat-empty-state">
+              <span>
+                <MessageCircle size={23} />
+              </span>
+              <strong>Start the conversation</strong>
+              <p>
+                Send a message, share a file, or start with a quick wave.
+              </p>
+            </div>
+          )}
           {messagesList.map((message) => (
             <div
               className={`bubble ${message.senderId === currentMember.id ? "mine" : "theirs"} ${message.status === "deleted" ? "deleted" : ""}`}
@@ -6663,7 +6728,15 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
               )}
               <span><LinkifiedText text={message.body} /></span>
               {message.status !== "deleted" && <RichLinkPreview text={message.body} />}
-              {message.editedAt && <small>edited</small>}
+              <small className="message-meta">
+                <time dateTime={message.createdAt}>
+                  {new Date(message.createdAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </time>
+                {message.editedAt && " · edited"}
+              </small>
               {message.senderId === currentMember.id &&
                 message.status !== "deleted" && (
                   <div className="message-actions">
@@ -6675,66 +6748,94 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
                 )}
             </div>
           ))}
+          <div ref={chatEndRef} />
         </div>
-        <div className="chat-extra-actions">
-          <button onClick={() => send("nudge")}>
-            <span className="emoji-glyph">👋</span> Nudge for a response
-          </button>
-          <button onClick={() => conversationAction("delete")}>
-            <Trash2 size={13} /> Delete chat
-          </button>
-        </div>
-        {attachment && (
-          <div className="chat-attachment">
-            <span>{attachment.type} ready</span>
-            <button onClick={() => setAttachment(null)}>
-              <X size={13} />
+        <div className="conversation-composer-dock">
+          <div className="chat-extra-actions">
+            <button onClick={() => send("nudge")} disabled={isSending}>
+              <span className="emoji-glyph">👋</span> Nudge for a response
+            </button>
+            <button onClick={() => conversationAction("delete")}>
+              <Trash2 size={13} /> Delete chat
             </button>
           </div>
-        )}
-        <form
-          className="chat-composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            send();
-          }}
-        >
-          <EmojiPicker
-            onSelect={(emoji) => setDraft((value) => `${value}${emoji}`)}
-          />
-          <label title="Add image">
-            <ImageIcon size={17} />
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(event) => attach(event.target.files?.[0])}
-            />
-          </label>
-          <label title="Add video">
-            <Video size={17} />
-            <input
-              type="file"
-              accept="video/*"
-              onChange={(event) => attach(event.target.files?.[0])}
-            />
-          </label>
-          <label title="Add file">
-            <Paperclip size={17} />
-            <input
-              type="file"
-              accept=".pdf,.zip,.doc,.docx"
-              onChange={(event) => attach(event.target.files?.[0])}
-            />
-          </label>
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder={`Message ${title(selected)}…`}
-          />
-          <button aria-label="Send message">
-            <Send size={17} />
-          </button>
-        </form>
+          {attachment && (
+            <div className="chat-attachment" role="status">
+              <span>
+                <Paperclip size={14} /> {attachment.type} ready to send
+              </span>
+              <button
+                type="button"
+                onClick={() => setAttachment(null)}
+                aria-label="Remove attachment"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+          {sendError && <p className="chat-send-error">{sendError}</p>}
+          <form
+            className="dm-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              send();
+            }}
+          >
+            <div className="dm-composer-main">
+              <textarea
+                rows={3}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    send();
+                  }
+                }}
+                placeholder={`Write a message to ${title(selected)}…`}
+                aria-label={`Message ${title(selected)}`}
+              />
+              <div className="dm-composer-toolbar">
+                <EmojiPicker
+                  onSelect={(emoji) => setDraft((value) => `${value}${emoji}`)}
+                />
+                <label title="Add image" aria-label="Add image">
+                  <ImageIcon size={18} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => attach(event.target.files?.[0])}
+                  />
+                </label>
+                <label title="Add video" aria-label="Add video">
+                  <Video size={18} />
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={(event) => attach(event.target.files?.[0])}
+                  />
+                </label>
+                <label title="Add file" aria-label="Add file">
+                  <Paperclip size={18} />
+                  <input
+                    type="file"
+                    accept=".pdf,.zip,.doc,.docx"
+                    onChange={(event) => attach(event.target.files?.[0])}
+                  />
+                </label>
+                <span>Enter to send · Shift + Enter for a new line</span>
+              </div>
+            </div>
+            <button
+              className="dm-send-button"
+              aria-label="Send message"
+              disabled={isSending || (!draft.trim() && !attachment)}
+            >
+              <Send size={19} />
+              <span>{isSending ? "Sending" : "Send"}</span>
+            </button>
+          </form>
+        </div>
       </div>
     );
   }
