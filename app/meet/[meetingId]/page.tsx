@@ -1,14 +1,15 @@
 /* eslint-disable no-empty, @next/next/no-html-link-for-pages, jsx-a11y/media-has-caption, react-hooks/refs */
 "use client";
 
-import { Camera, Check, Globe2, Headphones, Lock, MessageCircle, Mic, MicOff, PhoneOff, Podcast, Send, Settings2, UserMinus, UserRoundCheck, Users, Video, VideoOff, Volume2, X } from "lucide-react";
+import { Camera, Check, Globe2, Headphones, Lock, Maximize2, MessageCircle, Mic, MicOff, Minimize2, PhoneOff, Podcast, Send, Settings2, UserMinus, UserRoundCheck, Users, Video, VideoOff, Volume2, X } from "lucide-react";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 
 type PodcastRole = "host" | "cohost" | "speaker" | "listener" | "audience_speaker";
 type Person = { id: string; name?: string | null; image?: string | null; profession?: string | null; professionalHeadline?: string | null; city?: string | null; role?: PodcastRole; speakerStatus?: string; status?: string };
 type Signal = { id: string; senderId: string; recipientId?: string | null; type: "join" | "heartbeat" | "offer" | "answer" | "ice" | "media" | "leave" | "stage"; payload: Record<string, unknown>; createdAt: string; sender: Person };
 type RemoteParticipant = { id: string; stream?: MediaStream; person: Person; cameraOn: boolean; audioOn: boolean };
+type VideoParticipant = RemoteParticipant & { local?: boolean };
 type Meeting = { id: string; title: string; mode: "video" | "audio" | "in_person"; visibility: "public" | "project" | "private"; maxParticipants: number };
 type DeviceChoice = { deviceId: string; label: string };
 type ChatMessage = { id: string; body: string; createdAt: string; author: Person };
@@ -19,6 +20,7 @@ const STAGE_ROLES: PodcastRole[] = ["host", "cohost", "speaker", "audience_speak
 export default function N2MeetRoom() {
   const { meetingId } = useParams<{ meetingId: string }>();
   const localVideo = useRef<HTMLVideoElement>(null);
+  const roomRef = useRef<HTMLElement>(null);
   const localStream = useRef<MediaStream | null>(null);
   const peers = useRef(new Map<string, RTCPeerConnection>());
   const mediaState = useRef({ cameraOn: true, audioOn: true });
@@ -42,6 +44,9 @@ export default function N2MeetRoom() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
   const [activeSpeaker, setActiveSpeaker] = useState<string | null>(null);
+  const [manualFocusId, setManualFocusId] = useState<string | null>(null);
+  const [callDuration, setCallDuration] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   if (!lastPoll.current && typeof window !== "undefined") lastPoll.current = Date.now() - 5000;
   const participantCount = 1 + remote.length;
@@ -49,7 +54,15 @@ export default function N2MeetRoom() {
   const isVideoRoom = roomMode === "video";
   const isPodcast = roomMode === "audio";
   const onStage = STAGE_ROLES.includes(currentRole);
-  const gridClass = useMemo(() => `video-grid mode-${roomMode} count-${Math.min(participantCount, 8)}`, [participantCount, roomMode]);
+  const localParticipantId = me?.id ?? "self";
+  const videoParticipants = useMemo<VideoParticipant[]>(() => [
+    { id: localParticipantId, person: me ?? { id: localParticipantId, name: "You" }, stream: localMedia, cameraOn: !cameraOff, audioOn: !muted, local: true },
+    ...remote,
+  ], [cameraOff, localMedia, localParticipantId, me, muted, remote]);
+  const automaticFocusId = activeSpeaker ?? remote[0]?.id ?? localParticipantId;
+  const focusId = manualFocusId && videoParticipants.some(person => person.id === manualFocusId) ? manualFocusId : automaticFocusId;
+  const focusedParticipant = videoParticipants.find(person => person.id === focusId) ?? videoParticipants[0];
+  const thumbnailParticipants = videoParticipants.filter(person => person.id !== focusedParticipant?.id).sort((a, b) => Number(Boolean(a.local)) - Number(Boolean(b.local)));
 
   const signal = useCallback(async (type: Signal["type"], payload: Record<string, unknown> = {}, recipientId?: string) => {
     const response = await fetch(`/api/meetings/${meetingId}/signals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type, payload, recipientId }) });
@@ -178,6 +191,20 @@ export default function N2MeetRoom() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRole, isPodcast, ready]);
 
+  useEffect(() => {
+    if (!ready || isPodcast) return;
+    const startedAt = Date.now();
+    setCallDuration(0);
+    const timer = window.setInterval(() => setCallDuration(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [isPodcast, ready]);
+
+  useEffect(() => {
+    const update = () => setIsFullscreen(document.fullscreenElement === roomRef.current);
+    document.addEventListener("fullscreenchange", update);
+    return () => document.removeEventListener("fullscreenchange", update);
+  }, []);
+
   async function toggle(kind: "audio" | "video") {
     const track = localStream.current?.getTracks().find(item => item.kind === kind);
     if (track) track.enabled = !track.enabled;
@@ -214,19 +241,32 @@ export default function N2MeetRoom() {
   }
 
   function leave() { signal("leave", {}).catch(() => undefined); window.location.href = "/?view=meet"; }
+  async function toggleFullscreen() {
+    if (!roomRef.current) return;
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await roomRef.current.requestFullscreen();
+  }
+  const formatDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remaining = seconds % 60;
+    return hours ? `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${remaining.toString().padStart(2, "0")}` : `${minutes.toString().padStart(2, "0")}:${remaining.toString().padStart(2, "0")}`;
+  };
   const VisibilityIcon = meeting?.visibility === "public" ? Globe2 : meeting?.visibility === "project" ? Users : Lock;
 
   if (isPodcast) return <><PodcastRoom meeting={meeting} me={me} localMedia={localMedia} remote={remote} people={podcastPeople} currentRole={currentRole} canModerate={canModerate} muted={muted} participantCount={participantCount} messages={messages} chatOpen={chatOpen} activeSpeaker={activeSpeaker} setActiveSpeaker={setActiveSpeaker} setChatOpen={setChatOpen} toggleMute={() => toggle("audio")} stageAction={stageAction} sendChat={sendChat} leave={leave} openSettings={() => setShowSettings(true)} error={error}/>{showSettings && <DeviceSettings devices={devices} microphoneId={microphoneId} cameraId={cameraId} speakerId={speakerId} video={false} onClose={() => setShowSettings(false)} onInput={switchInput} onSpeaker={setSpeakerId}/>}</>;
 
-  return <main className="video-room">
-    <header className="room-header"><a href="/" className="room-brand"><span>n2</span><b>nice 2 network</b></a><div className="room-heading"><strong>{meeting?.title ?? "n2 meet"}</strong><small><VisibilityIcon size={13}/>Video meet</small></div><div className="room-count"><Users size={18}/><strong>{participantCount}</strong><span>/{meeting?.maxParticipants ?? 8}</span></div></header>
-    {error ? <section className="video-room-error"><VideoOff size={28}/><h1>Could not join this room</h1><p>{error}</p><button onClick={() => history.back()}>Go back</button></section> : <section className={gridClass}>
-      <ParticipantTile person={me ?? { id: "self", name: "You" }} stream={localStream.current ?? undefined} cameraOn={!cameraOff} muted={muted} local videoRef={localVideo} outputDeviceId={speakerId}/>
-      {remote.map(row => <ParticipantTile key={row.id} person={row.person} stream={row.stream} cameraOn={row.cameraOn} muted={!row.audioOn} outputDeviceId={speakerId}/>)}
-      {ready && participantCount === 1 && <article className="empty-video"><Users size={30}/><span>Waiting for people to join…</span></article>}
+  return <main className="video-room" ref={roomRef}>
+    <header className="room-header"><a href="/" className="room-brand"><span>n2</span><b>nice 2 network</b></a><div className="room-heading"><strong>{meeting?.title ?? "n2 meet"}</strong><small><VisibilityIcon size={13}/>Video meet <i aria-hidden="true"/> <time>{formatDuration(callDuration)}</time></small></div><div className="room-count" aria-label={`${participantCount} of ${meeting?.maxParticipants ?? 8} participants`}><Users size={18}/><strong>{participantCount}</strong><span>/ {meeting?.maxParticipants ?? 8}</span></div></header>
+    {error ? <section className="video-room-error"><VideoOff size={28}/><h1>Could not join this room</h1><p>{error}</p><button onClick={() => history.back()}>Go back</button></section> : <section className="video-stage-shell">
+      <div className="video-stage">
+        {focusedParticipant && <ParticipantTile person={focusedParticipant.person} stream={focusedParticipant.stream} cameraOn={focusedParticipant.cameraOn} muted={!focusedParticipant.audioOn} local={focusedParticipant.local} videoRef={focusedParticipant.local ? localVideo : undefined} outputDeviceId={speakerId} active={activeSpeaker === focusedParticipant.id} onSpeaking={speaking => setActiveSpeaker(current => speaking ? focusedParticipant.id : current === focusedParticipant.id ? null : current)}/>}
+        {ready && participantCount === 1 && <div className="waiting-notice"><Users size={18}/><span>Waiting for people to join…</span></div>}
+      </div>
+      {thumbnailParticipants.length > 0 && <div className="participant-filmstrip" aria-label="Other participants">{thumbnailParticipants.map(person => <ParticipantTile key={person.id} person={person.person} stream={person.stream} cameraOn={person.cameraOn} muted={!person.audioOn} local={person.local} videoRef={person.local ? localVideo : undefined} outputDeviceId={speakerId} compact active={activeSpeaker === person.id} onClick={() => setManualFocusId(person.id)} onSpeaking={speaking => setActiveSpeaker(current => speaking ? person.id : current === person.id ? null : current)}/>)}</div>}
       {participantCount <= 4 && <div className="hd-marker">HD</div>}
+      <footer className="room-controls" aria-label="Call controls"><button aria-label={muted ? "Unmute microphone" : "Mute microphone"} className={muted ? "off" : ""} onClick={() => toggle("audio")}>{muted ? <MicOff/> : <Mic/>}</button><button aria-label={cameraOff ? "Turn camera on" : "Turn camera off"} className={cameraOff ? "off" : ""} onClick={() => toggle("video")}>{cameraOff ? <VideoOff/> : <Video/>}</button><button aria-label="Device settings" onClick={() => setShowSettings(true)}><Settings2/></button><button aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"} onClick={toggleFullscreen}>{isFullscreen ? <Minimize2/> : <Maximize2/>}</button><button aria-label="Leave call" className="hangup" onClick={leave}><PhoneOff/></button></footer>
     </section>}
-    <footer className="room-controls"><button className={muted ? "off" : ""} onClick={() => toggle("audio")}>{muted ? <MicOff/> : <Mic/>}</button><button className={cameraOff ? "off" : ""} onClick={() => toggle("video")}>{cameraOff ? <VideoOff/> : <Video/>}</button><button onClick={() => setShowSettings(true)}><Settings2/></button><button className="hangup" onClick={leave}><PhoneOff/></button></footer>
     {showSettings && <DeviceSettings devices={devices} microphoneId={microphoneId} cameraId={cameraId} speakerId={speakerId} video onClose={() => setShowSettings(false)} onInput={switchInput} onSpeaker={setSpeakerId}/>}
   </main>;
 }
@@ -299,9 +339,11 @@ function DeviceSettings({ devices, microphoneId, cameraId, speakerId, video, onC
   return <div className="room-settings-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="room-settings"><header><div><span>YOUR DEVICES</span><h2>Audio & video settings</h2></div><button onClick={onClose}><X/></button></header><label><Mic/>Microphone<select value={microphoneId} onChange={event => onInput("audio", event.target.value)}>{devices.microphones.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label>{video && <label><Camera/>Camera<select value={cameraId} onChange={event => onInput("video", event.target.value)}>{devices.cameras.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label>}<label><Volume2/>Speakers<select value={speakerId} onChange={event => onSpeaker(event.target.value)} disabled={!devices.speakers.length}>{devices.speakers.length ? devices.speakers.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>) : <option>System default</option>}</select></label><button className="primary-action" onClick={onClose}><Check/>Done</button></section></div>;
 }
 
-function ParticipantTile({ person, stream, cameraOn, muted, local = false, videoRef, outputDeviceId }: { person: Person; stream?: MediaStream; cameraOn: boolean; muted: boolean; local?: boolean; videoRef?: RefObject<HTMLVideoElement | null>; outputDeviceId: string }) {
+function ParticipantTile({ person, stream, cameraOn, muted, local = false, compact = false, active = false, videoRef, outputDeviceId, onClick, onSpeaking }: { person: Person; stream?: MediaStream; cameraOn: boolean; muted: boolean; local?: boolean; compact?: boolean; active?: boolean; videoRef?: RefObject<HTMLVideoElement | null>; outputDeviceId: string; onClick?: () => void; onSpeaking?: (speaking: boolean) => void }) {
   const ownRef = useRef<HTMLVideoElement>(null); const ref = videoRef ?? ownRef;
   useEffect(() => { if (!ref.current || !stream) return; ref.current.srcObject = stream; const media = ref.current as HTMLVideoElement & { setSinkId?: (id: string) => Promise<void> }; if (outputDeviceId && media.setSinkId) media.setSinkId(outputDeviceId).catch(() => undefined); }, [stream, outputDeviceId, ref]);
+  useSpeaking(stream, !muted, onSpeaking ?? (() => undefined));
   const name = local ? "You" : person.name ?? "n2 member";
-  return <article className={`participant-tile ${cameraOn ? "camera-on" : "camera-off"}`}><video ref={ref} autoPlay playsInline muted={local}/>{!cameraOn && <div className="profile-standin"><img src={person.image || fallbackAvatar} alt=""/><strong>{name}</strong><small>{person.profession || "n2 member"}</small></div>}<div className="participant-label"><span>{name}</span>{muted && <MicOff size={14}/>}</div>{!local && <div className="participant-quick-card"><img src={person.image || fallbackAvatar} alt=""/><div><strong>{person.name ?? "n2 member"}</strong><span>{person.professionalHeadline || person.profession || "n2 member"}</span>{person.city && <small>{person.city}</small>}</div></div>}</article>;
+  const activate = (event: KeyboardEvent<HTMLElement>) => { if (onClick && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onClick(); } };
+  return <article className={`participant-tile ${compact ? "compact" : "stage-participant"} ${cameraOn ? "camera-on" : "camera-off"} ${active ? "active-speaker" : ""}`} onClick={onClick} onKeyDown={activate} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined} aria-label={onClick ? `Make ${name} the main view` : undefined}><video ref={ref} autoPlay playsInline muted={local}/>{!cameraOn && <div className="profile-standin"><img src={person.image || fallbackAvatar} alt=""/><strong>{name}</strong><small>{person.profession || "n2 member"}</small></div>}<div className="participant-label"><span>{name}</span>{muted && <MicOff size={compact ? 12 : 14}/>}</div>{!local && !compact && <div className="participant-quick-card"><img src={person.image || fallbackAvatar} alt=""/><div><strong>{person.name ?? "n2 member"}</strong><span>{person.professionalHeadline || person.profession || "n2 member"}</span>{person.city && <small>{person.city}</small>}</div></div>}</article>;
 }
