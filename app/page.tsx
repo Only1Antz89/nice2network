@@ -7068,35 +7068,44 @@ function MeetView() {
       {(create || editing) && (
         <div className="modal-backdrop">
           <form ref={meetFormRef} className="meet-modal meet-creation-flow" onSubmit={addMeet}>
-            <header>
+            <header className="meet-flow-header">
               <div>
                 <span className="eyebrow">{editing ? "EDIT MEET" : "NEW MEET"}</span>
                 <h2>{meetStep === 1 ? (editing ? "Update the room" : "Bring a small room together") : "Invite useful people"}</h2>
               </div>
-              <div className="meet-flow-header-actions"><span>{meetStep} / 2</span><button type="button" className="icon-button" onClick={closeEditor}><X size={18} /></button></div>
-            </header>
-            <section className="meet-editor-step" hidden={meetStep !== 1}>
-              <div className="meet-editor-visual-row">
-                <div className={`meet-cover-preview ${meetThumbnail ? "has-image" : ""}`}>
-                  {meetThumbnail ? <img src={meetThumbnail} alt="Meet thumbnail preview" /> : meetMode === "in_person" && meetLocation ? <div className="meet-local-map"><MapPin size={25}/><strong>{meetLocation}</strong><small>Venue map card</small></div> : <div><ImageIcon size={24}/><strong>{meetMode === "audio" ? "Podcast artwork" : meetMode === "in_person" ? "Venue map" : "Video thumbnail"}</strong><small>{meetMode === "in_person" ? "Add the venue below to create its map card." : "Add a recognisable cover for this meet."}</small></div>}
+              <div className="meet-flow-header-actions">
+                <div className="meet-flow-progress" aria-label={`Step ${meetStep} of 2`}>
+                  <span className={meetStep >= 1 ? "active" : ""}>Details</span>
+                  <i />
+                  <span className={meetStep >= 2 ? "active" : ""}>Invites</span>
                 </div>
-                <div className="meet-cover-copy"><span className="eyebrow">MEET VISUAL</span><h3>{meetMode === "audio" ? "Set the episode artwork" : meetMode === "in_person" ? "Help people find the venue" : "Set the room thumbnail"}</h3><p>This appears in the event details and makes the meet easier to recognise.</p><div className="meet-cover-actions"><label className="secondary-button"><ImageIcon size={15}/>{meetThumbnail ? "Replace" : "Add thumbnail"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectMeetThumbnail(event.target.files?.[0])}/></label>{meetThumbnail && <button type="button" onClick={() => setMeetThumbnail(null)}>Remove</button>}</div><small>JPG, PNG or WebP · up to 1.5 MB</small></div>
+                <button type="button" className="icon-button" aria-label="Close meet editor" onClick={closeEditor}><X size={18} /></button>
               </div>
-            <label>
-              Title
-              <input name="title" required minLength={3} defaultValue={editing?.title ?? ""} />
-            </label>
-            <label>
-              Description
-              <textarea name="description" defaultValue={editing?.description ?? ""} />
-            </label>
-            <fieldset className="meet-visibility-picker">
-              <legend>Who can see this meet?</legend>
-              <div
-                className="meet-visibility-options"
-                role="group"
-                aria-label="Meet visibility"
-              >
+            </header>
+            <div className="meet-flow-body">
+              <section className="meet-editor-step" hidden={meetStep !== 1}>
+                <div className="meet-editor-panel meet-editor-basics">
+                  <div className="meet-editor-visual-row">
+                    <div className={`meet-cover-preview ${meetThumbnail ? "has-image" : ""}`}>
+                      {meetThumbnail ? <img src={meetThumbnail} alt="Meet thumbnail preview" /> : meetMode === "in_person" && meetLocation ? <div className="meet-local-map"><MapPin size={25}/><strong>{meetLocation}</strong><small>Venue map card</small></div> : <div><ImageIcon size={24}/><strong>{meetMode === "audio" ? "Podcast artwork" : meetMode === "in_person" ? "Venue map" : "Video thumbnail"}</strong><small>{meetMode === "in_person" ? "Add the venue below to create its map card." : "Add a recognisable cover for this meet."}</small></div>}
+                    </div>
+                    <div className="meet-cover-copy"><span className="eyebrow">MEET VISUAL</span><h3>{meetMode === "audio" ? "Set the episode artwork" : meetMode === "in_person" ? "Help people find the venue" : "Set the room thumbnail"}</h3><p>This appears in event details and helps people recognise the meet.</p><div className="meet-cover-actions"><label className="secondary-button"><ImageIcon size={15}/>{meetThumbnail ? "Replace" : "Add thumbnail"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectMeetThumbnail(event.target.files?.[0])}/></label>{meetThumbnail && <button type="button" onClick={() => setMeetThumbnail(null)}>Remove</button>}</div><small>JPG, PNG or WebP · up to 1.5 MB</small></div>
+                  </div>
+                  <div className="meet-core-fields">
+                    <label>
+                      Title
+                      <input name="title" required minLength={3} defaultValue={editing?.title ?? ""} placeholder="Give this meet a clear name" />
+                    </label>
+                    <label>
+                      Description
+                      <textarea name="description" defaultValue={editing?.description ?? ""} placeholder="What will people discuss or do?" />
+                    </label>
+                  </div>
+                </div>
+
+                <fieldset className="meet-visibility-picker">
+                  <legend>Who can see this meet?</legend>
+                  <div className="meet-visibility-options" role="group" aria-label="Meet visibility">
                 {(
                   [
                     ["public", "Public", "Visible to everyone on n2"],
@@ -7132,34 +7141,49 @@ function MeetView() {
                     {meetProjects.map((project) => (
                       <option value={project.id} key={project.id}>
                         {project.title}
-                      </option>
-                    ))}
+                    </option>
+                  ))}
                   </select>
                   {!meetProjects.length && (
                     <small>You need an active project to create a project meet.</small>
                   )}
                 </label>
               )}
-            </fieldset>
-            <div className="field-row">
-              <label>
-                Starts
-                <input name="startsAt" type="datetime-local" required defaultValue={editing ? new Date(new Date(editing.startsAt).getTime() - new Date(editing.startsAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} />
-              </label>
-              <label>
-                Duration
-                <select name="duration" defaultValue={editing ? String(Math.max(15, Math.round((new Date(editing.endsAt).getTime() - new Date(editing.startsAt).getTime()) / 60000))) : "45"}>
-                  <option value="30">30 minutes</option>
-                  <option value="45">45 minutes</option>
-                  <option value="60">60 minutes</option>
-                  <option value="90">90 minutes</option>
-                  <option value="120">2 hours</option>
-                </select>
-              </label>
-            </div>
-            <fieldset className="meet-mode-picker">
-              <legend>Meet type</legend>
-              <div>
+                </fieldset>
+
+                <div className="meet-editor-panel">
+                  <div className="meet-panel-heading"><span className="eyebrow">WHEN</span><strong>Schedule and reminder</strong></div>
+                  <div className="meet-schedule-grid">
+                    <label>
+                      Starts
+                      <input name="startsAt" type="datetime-local" required defaultValue={editing ? new Date(new Date(editing.startsAt).getTime() - new Date(editing.startsAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ""} />
+                    </label>
+                    <label>
+                      Duration
+                      <select name="duration" defaultValue={editing ? String(Math.max(15, Math.round((new Date(editing.endsAt).getTime() - new Date(editing.startsAt).getTime()) / 60000))) : "45"}>
+                        <option value="30">30 minutes</option>
+                        <option value="45">45 minutes</option>
+                        <option value="60">60 minutes</option>
+                        <option value="90">90 minutes</option>
+                        <option value="120">2 hours</option>
+                      </select>
+                    </label>
+                    <label>
+                      Reminder
+                      <select name="reminderMinutes" defaultValue={String(editing?.reminderMinutes ?? 30)}>
+                        <option value="0">At start time</option>
+                        <option value="10">10 minutes before</option>
+                        <option value="30">30 minutes before</option>
+                        <option value="60">1 hour before</option>
+                        <option value="1440">1 day before</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <fieldset className="meet-editor-panel meet-mode-picker">
+                  <legend>Meet type</legend>
+                  <div>
                 {([
                   ["video", "Video", "Adaptive video · 8 people", Video],
                   ["audio", "Podcast", "Live audio stage · up to 16 people", Mic],
@@ -7173,31 +7197,27 @@ function MeetView() {
                     <Icon size={18}/><span>{label}</span><small>{description}</small>
                   </button>
                 ))}
+                  </div>
+                  {meetMode === "in_person" && <label className="meet-location-field">
+                    Location
+                    <input name="location" required value={meetLocation} onChange={(event) => setMeetLocation(event.target.value)} placeholder="Place or address" />
+                  </label>}
+                </fieldset>
+                {error && <p className="form-error">{error}</p>}
+              </section>
+              <section className="meet-editor-step meet-invite-step" hidden={meetStep !== 2}>
+                <div className="meet-step-summary">{meetThumbnail ? <img src={meetThumbnail} alt="" /> : <span>{meetMode === "audio" ? <Mic size={20}/> : meetMode === "in_person" ? <MapPin size={20}/> : <Video size={20}/>}</span>}<div><span className="eyebrow">{meetMode === "audio" ? "PODCAST" : meetMode === "in_person" ? "IN PERSON" : "VIDEO MEET"}</span><strong>{(meetFormRef.current?.elements.namedItem("title") as HTMLInputElement | null)?.value || editing?.title || "Untitled meet"}</strong><small>{meetVisibility === "project" ? "Project visibility" : `${meetVisibility[0].toUpperCase()}${meetVisibility.slice(1)} visibility`}{meetLocation ? ` · ${meetLocation}` : ""}</small></div><button type="button" onClick={() => setMeetStep(1)}>Edit details</button></div>
+                <MeetAttendeePicker selected={invitees} onChange={setInvitees} max={meetMode === "video" ? 7 : meetMode === "audio" ? 15 : 100} podcast={meetMode === "audio"} />
+                {error && <p className="form-error">{error}</p>}
+              </section>
+            </div>
+            <footer className="meet-flow-footer">
+              <p>{meetStep === 1 ? "Add the essentials now. Invitees come next." : `${invitees.length} ${invitees.length === 1 ? "person" : "people"} selected`}</p>
+              <div>
+                {meetStep === 2 && <button type="button" className="secondary-button" onClick={() => setMeetStep(1)}><ArrowLeft size={16}/> Back</button>}
+                {meetStep === 1 ? <button type="button" className="primary-button" onClick={continueMeetSetup}>Continue to invites <ChevronRight size={16}/></button> : <button className="primary-button">{editing ? "Save changes" : "Create meet"}</button>}
               </div>
-            </fieldset>
-            {meetMode === "in_person" && <label>
-              Location
-              <input name="location" required value={meetLocation} onChange={(event) => setMeetLocation(event.target.value)} placeholder="Place or address" />
-            </label>}
-            <label>
-              Reminder
-              <select name="reminderMinutes" defaultValue={String(editing?.reminderMinutes ?? 30)}>
-                <option value="0">At start time</option>
-                <option value="10">10 minutes before</option>
-                <option value="30">30 minutes before</option>
-                <option value="60">1 hour before</option>
-                <option value="1440">1 day before</option>
-              </select>
-            </label>
-            {error && <p className="form-error">{error}</p>}
-            <div className="meet-step-actions"><button type="button" className="primary-button" onClick={continueMeetSetup}>Continue to invites <ChevronRight size={16}/></button></div>
-            </section>
-            <section className="meet-editor-step" hidden={meetStep !== 2}>
-              <div className="meet-step-summary">{meetThumbnail ? <img src={meetThumbnail} alt="" /> : <span>{meetMode === "audio" ? <Mic size={20}/> : meetMode === "in_person" ? <MapPin size={20}/> : <Video size={20}/>}</span>}<div><span className="eyebrow">{meetMode === "audio" ? "PODCAST" : meetMode === "in_person" ? "IN PERSON" : "VIDEO MEET"}</span><strong>{(meetFormRef.current?.elements.namedItem("title") as HTMLInputElement | null)?.value || editing?.title || "Untitled meet"}</strong><small>{meetVisibility === "project" ? "Project visibility" : `${meetVisibility[0].toUpperCase()}${meetVisibility.slice(1)} visibility`}{meetLocation ? ` · ${meetLocation}` : ""}</small></div><button type="button" onClick={() => setMeetStep(1)}>Edit details</button></div>
-              <MeetAttendeePicker selected={invitees} onChange={setInvitees} max={meetMode === "video" ? 7 : meetMode === "audio" ? 15 : 100} podcast={meetMode === "audio"} />
-              {error && <p className="form-error">{error}</p>}
-              <div className="meet-step-actions split"><button type="button" className="secondary-button" onClick={() => setMeetStep(1)}><ArrowLeft size={16}/> Back</button><button className="primary-button">{editing ? "Save changes" : "Create meet"}</button></div>
-            </section>
+            </footer>
           </form>
         </div>
       )}
@@ -10141,6 +10161,7 @@ function SettingsView({
     "root" | "profile" | "notifications" | "calendar" | "privacy" | "security"
   >(initialPanel);
   const [saved, setSaved] = useState(false);
+  const [saveStatus, setSaveStatus] = useState({ busy: false, error: "" });
   const [passwordStatus, setPasswordStatus] = useState({
     busy: false,
     error: "",
@@ -10309,11 +10330,44 @@ function SettingsView({
     return () => cancelAnimationFrame(frame);
   }, []);
   async function saveSettings() {
-    localStorage.setItem(
-      "n2-settings",
-      JSON.stringify({ calendarPrefs, privacy, recommendations, availability }),
-    );
-    if (panel === "profile" && profileUserId) {
+    if (saveStatus.busy) return;
+    setSaved(false);
+    setSaveStatus({ busy: true, error: "" });
+    if (panel === "profile" && !profileUserId) {
+      setSaveStatus({
+        busy: false,
+        error: "Your profile is still loading. Please try again in a moment.",
+      });
+      return;
+    }
+    try {
+      if (panel === "profile") {
+      const career = profile.career.filter((item) =>
+        [item.title, item.company, item.location, item.startDate, item.endDate, item.description]
+          .some((value) => String(value ?? "").trim()) || item.current,
+      );
+      const incompleteCareer = career.find((item) => !item.title.trim() || !item.company.trim());
+      if (incompleteCareer) {
+        setSaveStatus({ busy: false, error: "Add both a job title and company for each career entry, or remove the unfinished entry." });
+        return;
+      }
+      const education = profile.education.filter((item) =>
+        [item.institution, item.qualification, item.fieldOfStudy, item.startYear, item.endYear, item.description]
+          .some((value) => String(value ?? "").trim()),
+      );
+      const incompleteEducation = education.find((item) => !item.institution.trim() || !item.qualification.trim());
+      if (incompleteEducation) {
+        setSaveStatus({ busy: false, error: "Add both an institution and qualification for each education entry, or remove the unfinished entry." });
+        return;
+      }
+      if (profile.name.trim().length < 2) {
+        setSaveStatus({ busy: false, error: "Add at least two characters for your name before saving." });
+        return;
+      }
+      if (![profile.primarySkill, profile.secondarySkill, profile.tertiarySkill].every((skill) => skill.trim())) {
+        setSaveStatus({ busy: false, error: "Add your primary, secondary and tertiary career skills before saving." });
+        return;
+      }
       const response = await fetch(`/api/profiles/${profileUserId}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -10323,24 +10377,27 @@ function SettingsView({
             .split(",")
             .map((value) => value.trim())
             .filter(Boolean),
-          career: profile.career.map((item) => ({
+          career: career.map((item) => ({
             ...item,
             startDate: item.startDate || null,
             endDate: item.endDate || null,
           })),
-          education: profile.education.map((item) => ({
+          education: education.map((item) => ({
             ...item,
             startYear: item.startYear ? Number(item.startYear) : null,
             endYear: item.endYear ? Number(item.endYear) : null,
           })),
         }),
       });
-      if (!response.ok) return;
-    }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2200);
-    if (panel === "privacy")
-      fetch("/api/privacy", {
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        setSaveStatus({ busy: false, error: result?.error || "We couldn't save your changes. Please check the fields and try again." });
+        return;
+      }
+      setProfile((current) => ({ ...current, career, education }));
+      }
+      if (panel === "privacy") {
+        const response = await fetch("/api/privacy", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -10357,9 +10414,11 @@ function SettingsView({
           messagePermission:
             privacy.messages === "No one" ? "nobody" : "connections",
         }),
-      }).catch(() => undefined);
-    if (panel === "notifications")
-      fetch("/api/notifications", {
+        });
+        if (!response.ok) throw new Error("We couldn't save your privacy settings.");
+      }
+      if (panel === "notifications") {
+        const response = await fetch("/api/notifications", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -10371,7 +10430,25 @@ function SettingsView({
           officialNotices: notifications.officialNotices,
           emailDigest: notifications.digest,
         }),
-      }).catch(() => undefined);
+        });
+        if (!response.ok) throw new Error("We couldn't save your notification settings.");
+      }
+      localStorage.setItem(
+        "n2-settings",
+        JSON.stringify({ calendarPrefs, privacy, recommendations, availability }),
+      );
+      setSaveStatus({ busy: false, error: "" });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2200);
+    } catch (error) {
+      setSaveStatus({
+        busy: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "We couldn't save your changes. Please try again.",
+      });
+    }
   }
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -10455,17 +10532,23 @@ function SettingsView({
             <button
               className={`save-button ${saved ? "saved" : ""}`}
               onClick={saveSettings}
+              disabled={saveStatus.busy}
             >
               {saved ? (
                 <>
                   <Check size={15} /> Saved
                 </>
               ) : (
-                "Save changes"
+                saveStatus.busy ? "Saving…" : "Save changes"
               )}
             </button>
           )}
         </div>
+        {saveStatus.error && (
+          <p className="settings-save-error" role="alert">
+            <CircleAlert size={15} /> {saveStatus.error}
+          </p>
+        )}
         {panel === "profile" && (
           <div className="settings-form">
             <div className="profile-media-editor">
