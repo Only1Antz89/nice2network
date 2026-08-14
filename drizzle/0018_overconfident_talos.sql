@@ -1,1 +1,1 @@
-ALTER TABLE "meetings" ADD COLUMN "thumbnail_url" text;
+ALTER TABLE "meetings" ADD COLUMN IF NOT EXISTS "thumbnail_url" text;
