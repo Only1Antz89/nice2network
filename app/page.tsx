@@ -6628,7 +6628,12 @@ function MeetView() {
     [detail, setDetail] = useState<MeetingRecord | null>(null),
     [error, setError] = useState(""),
     [invitees, setInvitees] = useState<MeetInvitee[]>([]),
-    [meetProvider, setMeetProvider] = useState("n2");
+    [meetProvider, setMeetProvider] = useState("n2"),
+    [meetVisibility, setMeetVisibility] = useState<
+      "public" | "project" | "private"
+    >("public"),
+    [meetProjectId, setMeetProjectId] = useState(""),
+    [meetProjects, setMeetProjects] = useState<ProjectRecord[]>([]);
   async function load() {
     const response = await fetch("/api/calendar/events");
     const data = response.ok ? await response.json() : { meetings: [] };
@@ -6637,28 +6642,27 @@ function MeetView() {
   useEffect(() => {
     load();
   }, []);
+  useEffect(() => {
+    if (!create) return;
+    fetch("/api/projects?scope=mine&limit=40")
+      .then((response) => (response.ok ? response.json() : { projects: [] }))
+      .then((result) =>
+        setMeetProjects(
+          (result.projects ?? []).filter(
+            (project: ProjectRecord) => project.status === "active",
+          ),
+        ),
+      )
+      .catch(() => setMeetProjects([]));
+  }, [create]);
   async function addMeet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     const data = new FormData(event.currentTarget),
       start = new Date(String(data.get("startsAt"))),
       duration = Number(data.get("duration"));
-    const visibility = (
-      window.prompt("Meet visibility: public, project or private", "public") ??
-      "public"
-    )
-      .trim()
-      .toLowerCase();
-    if (!["public", "project", "private"].includes(visibility)) {
-      setError("Choose public, project or private.");
-      return;
-    }
-    const projectId =
-      visibility === "project"
-        ? (window.prompt("Paste the project ID for this meet") ?? "").trim()
-        : undefined;
-    if (visibility === "project" && !projectId) {
-      setError("A project meet must be linked to a project.");
+    if (meetVisibility === "project" && !meetProjectId) {
+      setError("Choose the project this meet belongs to.");
       return;
     }
     const response = await fetch("/api/calendar/events", {
@@ -6666,8 +6670,9 @@ function MeetView() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         provider: data.get("provider"),
-        visibility,
-        projectId: projectId || undefined,
+        visibility: meetVisibility,
+        projectId:
+          meetVisibility === "project" ? meetProjectId : undefined,
         title: data.get("title"),
         description: data.get("description"),
         startsAt: start.toISOString(),
@@ -6685,6 +6690,8 @@ function MeetView() {
     }
     setCreate(false);
     setInvitees([]);
+    setMeetVisibility("public");
+    setMeetProjectId("");
     setDetail(result);
     load();
   }
@@ -6879,6 +6886,57 @@ function MeetView() {
               Description
               <textarea name="description" />
             </label>
+            <fieldset className="meet-visibility-picker">
+              <legend>Who can see this meet?</legend>
+              <div
+                className="meet-visibility-options"
+                role="group"
+                aria-label="Meet visibility"
+              >
+                {(
+                  [
+                    ["public", "Public", "Visible to everyone on n2"],
+                    ["project", "Project", "Only the selected project"],
+                    ["private", "Private", "Invited people only"],
+                  ] as const
+                ).map(([value, label, description]) => (
+                  <button
+                    type="button"
+                    key={value}
+                    className={meetVisibility === value ? "active" : ""}
+                    aria-pressed={meetVisibility === value}
+                    onClick={() => {
+                      setMeetVisibility(value);
+                      setError("");
+                      if (value !== "project") setMeetProjectId("");
+                    }}
+                  >
+                    <span>{label}</span>
+                    <small>{description}</small>
+                  </button>
+                ))}
+              </div>
+              {meetVisibility === "project" && (
+                <label className="meet-project-choice">
+                  Project
+                  <select
+                    value={meetProjectId}
+                    onChange={(event) => setMeetProjectId(event.target.value)}
+                    required
+                  >
+                    <option value="">Choose a project</option>
+                    {meetProjects.map((project) => (
+                      <option value={project.id} key={project.id}>
+                        {project.title}
+                      </option>
+                    ))}
+                  </select>
+                  {!meetProjects.length && (
+                    <small>You need an active project to create a project meet.</small>
+                  )}
+                </label>
+              )}
+            </fieldset>
             <div className="field-row">
               <label>
                 Starts
@@ -6954,6 +7012,16 @@ function MeetView() {
               <div>
                 <dt>Provider</dt>
                 <dd>{detail.provider}</dd>
+              </div>
+              <div>
+                <dt>Visibility</dt>
+                <dd>
+                  {detail.visibility === "project"
+                    ? "Project"
+                    : detail.visibility === "private"
+                      ? "Private"
+                      : "Public"}
+                </dd>
               </div>
               {detail.location && (
                 <div>

@@ -350,6 +350,20 @@ test("meet creation selects n2 profiles instead of collecting attendee emails", 
   assert.match(calendar, /createNotifications/);
 });
 
+test("meet visibility is selected in the form without browser prompts", async () => {
+  const [page, styles] = await Promise.all([
+    read("app/page.tsx"),
+    read("app/globals.css"),
+  ]);
+  assert.match(page, /className="meet-visibility-picker"/);
+  assert.match(page, /\["public", "Public", "Visible to everyone on n2"\]/);
+  assert.match(page, /\["project", "Project", "Only the selected project"\]/);
+  assert.match(page, /\["private", "Private", "Invited people only"\]/);
+  assert.doesNotMatch(page, /Meet visibility: public, project or private/);
+  assert.doesNotMatch(page, /Paste the project ID for this meet/);
+  assert.match(styles, /\.meet-visibility-options/);
+});
+
 test("uses the brand orange for project highlights and server-owned founder identity", async () => {
   const [page, profile, styles] = await Promise.all([
     read("app/page.tsx"),
