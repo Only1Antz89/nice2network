@@ -408,3 +408,9 @@ body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-
   .meet-step-summary{grid-template-columns:44px minmax(0,1fr)}
   .meet-step-summary>button{grid-column:1/-1;width:100%}
 }
+
+/* Signed-in notification access outside the mobile home header. */
+.mobile-page-notification{display:none}
+@media(max-width:820px){
+  .mobile-page-notification{display:grid;place-items:center;position:fixed;right:16px;top:18px;z-index:30;width:42px;height:42px;padding:0;border:1px solid var(--line);border-radius:50%;background:#fff;box-shadow:0 5px 20px rgba(0,0,0,.1)}
+}

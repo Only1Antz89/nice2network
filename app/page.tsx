@@ -5755,22 +5755,7 @@ function NetworkView({
             })}
           </svg>
           <button
-            className="network-node network-self network-self-desktop"
-            style={
-              {
-                left: "50%",
-                top: "43%",
-                "--node-colour": "#111",
-              } as React.CSSProperties
-            }
-            onClick={() => onProfile(currentMember.id ?? "")}
-          >
-            <Avatar person={currentMember} size="lg" ring />
-            <span>{currentMember.name}</span>
-            <small>Your profile</small>
-          </button>
-          <button
-            className="network-node network-self network-self-mobile"
+            className="network-node network-self network-self-search"
             style={
               {
                 left: "50%",
@@ -5786,7 +5771,7 @@ function NetworkView({
             <span>{currentMember.name}</span>
             <small>{mobileSearchOpen ? "Close search" : "Search your network"}</small>
           </button>
-          <div className={`network-floating-tools ${mobileSearchOpen ? "mobile-open" : ""}`}>
+          <div className={`network-floating-tools ${mobileSearchOpen ? "search-open" : ""}`}>
             <label className="network-search">
               <Search size={16} />
               <input
@@ -11842,6 +11827,22 @@ export default function HomePage() {
         >
           {menuOpen ? <ArrowLeft /> : <Menu />}
         </button>
+        {authenticated && view !== "feed" && (
+          <button
+            className="mobile-page-notification notification-button"
+            onClick={() => setNotificationsOpen(true)}
+            aria-label={
+              unreadNotifications > 0
+                ? `Open notifications, ${unreadNotifications} unread`
+                : "Open notifications"
+            }
+          >
+            <Bell size={20} />
+            {unreadNotifications > 0 && (
+              <b>{unreadNotifications > 9 ? "9+" : unreadNotifications}</b>
+            )}
+          </button>
+        )}
         <div className="content-column">
           {selectedProjectId ? (
             <ProjectDetailView
