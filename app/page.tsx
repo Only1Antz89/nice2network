@@ -53,7 +53,7 @@ import {
   Archive,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { signIn, signOut } from "next-auth/react";
 import PasswordInput from "@/components/password-input";
 import EmojiPicker from "@/components/emoji-picker";
@@ -423,6 +423,36 @@ function localGreeting(value: Date) {
 function firstUrl(value?: string | null) {
   const match = value?.match(/https?:\/\/[^\s<>]+/i)?.[0];
   return match?.replace(/[),.!?;:]+$/, "") ?? null;
+}
+
+function LinkifiedText({ text }: { text: string }) {
+  const matches = [...text.matchAll(/https?:\/\/[^\s<>]+/gi)];
+  if (!matches.length) return <>{text}</>;
+  const content: ReactNode[] = [];
+  let cursor = 0;
+  matches.forEach((match, index) => {
+    const start = match.index ?? 0;
+    const raw = match[0];
+    const href = raw.replace(/[),.!?;:]+$/, "");
+    const trailing = raw.slice(href.length);
+    if (start > cursor) content.push(text.slice(cursor, start));
+    content.push(
+      <a
+        className="n2-hyperlink"
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        key={`${href}-${start}-${index}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {href}
+      </a>,
+    );
+    if (trailing) content.push(trailing);
+    cursor = start + raw.length;
+  });
+  if (cursor < text.length) content.push(text.slice(cursor));
+  return <>{content}</>;
 }
 
 function RichLinkPreview({ text, url }: { text?: string | null; url?: string | null }) {
@@ -2695,7 +2725,7 @@ function TimelinePostCard({
           (event.key === "Enter" || event.key === " ") && onThread()
         }
       >
-        {post.body}
+        <LinkifiedText text={post.body} />
       </p>
       <RichLinkPreview text={post.body} url={!embed ? post.videoUrl : null} />
       {post.linkedProjects.length > 0 && (
@@ -4535,7 +4565,7 @@ function UpdatesPanel({
                     : ""}
                 </small>
               </header>
-              <p>{update.body}</p>
+              <p><LinkifiedText text={update.body} /></p>
               {update.attachmentType === "image" && update.attachmentUrl && (
                 <img
                   src={update.attachmentUrl}
@@ -6199,7 +6229,7 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
                   Download file
                 </a>
               )}
-              <span>{message.body}</span>
+              <span><LinkifiedText text={message.body} /></span>
               {message.status !== "deleted" && <RichLinkPreview text={message.body} />}
               {message.editedAt && <small>edited</small>}
               {message.senderId === currentMember.id &&
@@ -8355,7 +8385,7 @@ function PostThread({
               </span>
             </div>
           </div>
-          <p>{post.body}</p>
+          <p><LinkifiedText text={post.body} /></p>
           <RichLinkPreview text={post.body} url={post.videoUrl} />
           <div className="thread-post-actions">
             <button
@@ -8402,7 +8432,7 @@ function PostThread({
                     {reply.isDemo && <DemoBadge />}
                   </button>
                   <time>{new Date(reply.createdAt).toLocaleString()}</time>
-                  <p>{reply.body}</p>
+                  <p><LinkifiedText text={reply.body} /></p>
                   <RichLinkPreview text={reply.body} />
                 </div>
               </article>
@@ -8590,7 +8620,7 @@ function ProjectComments({
                     {comment.authorIsAdmin && <N2AdminBadge />}
                   </button>
                   <time>{new Date(comment.createdAt).toLocaleString()}</time>
-                  <p>{comment.body}</p>
+                  <p><LinkifiedText text={comment.body} /></p>
                   <div className="comment-save-actions">
                     <button onClick={() => saveComment(comment, "pin")}>
                       <Pin size={13} />
