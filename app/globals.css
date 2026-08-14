@@ -148,7 +148,7 @@ body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-
 .composer{position:relative;min-height:58px;padding:7px 14px 7px 124px;overflow:visible}.composer>.avatar-md{position:absolute;z-index:2;left:15px;top:50%;width:98px;height:98px;transform:translateY(-50%);border:6px solid #fff;box-shadow:0 0 0 1px var(--line);background:#111}.composer>button{min-width:0}.composer:before{content:"";position:absolute;z-index:1;left:25px;top:-1px;width:78px;height:1px;background:#fff}.composer:after{content:"";position:absolute;z-index:1;left:25px;bottom:-1px;width:78px;height:1px;background:#fff}@media(max-width:700px){.composer{min-height:54px;padding:6px 12px 6px 103px}.composer>.avatar-md{left:11px;width:84px;height:84px;border-width:5px}.composer:before,.composer:after{left:21px;width:64px}}
 
 /* Post reply composer: keep the text field visible across desktop and mobile. */
-.comment-composer .emoji-popover button{width:auto;height:auto;min-width:0;border-radius:0;background:transparent;color:inherit;display:block}
+.comment-composer .emoji-popover button{width:auto;height:auto;min-width:0;border-radius:0;background-color:transparent;color:inherit;display:block}
 .comment-composer .emoji-popover .epr-emoji{display:flex;border-radius:8px}
 .comment-composer .emoji-popover .epr-category-nav button,.comment-composer .emoji-popover .epr-skin-tones button,.comment-composer .emoji-popover .epr-search-container button{display:flex;align-items:center;justify-content:center}
 .post-thread .post-reply-composer{display:grid!important;grid-template-columns:36px minmax(0,1fr) 42px!important;align-items:center;gap:9px;min-height:74px;padding:14px 18px;background:#fff;border-top:1px solid var(--line)}
@@ -162,9 +162,26 @@ body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-
 @media(max-width:560px){.post-thread .post-reply-composer{grid-template-columns:34px minmax(0,1fr) 40px!important;padding:12px 14px;gap:7px;position:sticky;bottom:0}.post-thread .post-reply-composer input{height:42px;font-size:16px;padding-inline:14px}.post-thread .post-reply-composer>.post-reply-send{width:40px!important;height:40px!important;min-width:40px}}
 
 /* Composer controls must not restyle the emoji library's internal buttons. */
-.chat-composer .emoji-popover button,.comment-composer .emoji-popover button{width:auto;height:auto;min-width:0;border:0;border-radius:0;background:transparent;color:inherit;display:flex;padding:0}
+.chat-composer .emoji-popover button,.comment-composer .emoji-popover button{width:auto;height:auto;min-width:0;border:0;border-radius:0;background-color:transparent;color:inherit;display:flex;padding:0}
 .chat-composer .emoji-popover .epr-emoji,.comment-composer .emoji-popover .epr-emoji{width:var(--epr-emoji-fullsize)!important;height:var(--epr-emoji-fullsize)!important;border-radius:8px!important;align-items:center;justify-content:center}
 .chat-composer .emoji-popover .epr-category-nav button,.comment-composer .emoji-popover .epr-category-nav button,.chat-composer .emoji-popover .epr-skin-tones button,.comment-composer .emoji-popover .epr-skin-tones button{width:var(--epr-category-navigation-button-size)!important;height:var(--epr-category-navigation-button-size)!important;border-radius:50%!important;align-items:center;justify-content:center}
+
+/* Keep every emoji category visible; background shorthand erases the picker's icon sprite. */
+.emoji-popover .epr-category-nav{display:flex!important;visibility:visible!important;opacity:1;min-height:44px;align-items:center;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.emoji-popover .epr-category-nav::-webkit-scrollbar{display:none}
+.emoji-popover .epr-category-nav button{display:flex!important;visibility:visible!important;opacity:.72;flex:0 0 auto;background-color:transparent!important;background-repeat:no-repeat!important}
+.emoji-popover .epr-category-nav button:hover,.emoji-popover .epr-category-nav button.epr-active{opacity:1}
+
+/* Project comments use the same keyboard-safe, visible composer as post replies. */
+.comment-thread .project-comment-composer{display:grid!important;grid-template-columns:36px minmax(0,1fr) 42px!important;align-items:center;gap:9px;min-height:74px;padding:14px 18px;background:#fff;border-top:1px solid var(--line)}
+.comment-thread .project-comment-composer>label{display:block;min-width:0}
+.comment-thread .project-comment-composer input{display:block;width:100%;height:44px;min-width:0;border:1px solid #bdbdb6;border-radius:999px;background:#fafaf7;padding:0 16px;color:var(--ink);font-size:11px;outline:0}
+.comment-thread .project-comment-composer input::placeholder{color:#777}
+.comment-thread .project-comment-composer input:focus{border-color:#111;background:#fff;box-shadow:0 0 0 2px rgba(17,17,17,.08)}
+.comment-thread .project-comment-composer .emoji-trigger{width:36px!important;height:36px!important;border:1px solid var(--line)!important;border-radius:50%!important;background:#fff!important;color:var(--ink)!important}
+.comment-thread .project-comment-composer>.post-reply-send{width:42px!important;height:42px!important;min-width:42px;border:0;border-radius:50%;background:#111;color:#fff;display:grid;place-items:center}
+.comment-thread .project-comment-composer>.post-reply-send:disabled{opacity:.3}
+@media(max-width:560px){.comment-thread .project-comment-composer{grid-template-columns:34px minmax(0,1fr) 40px!important;padding:12px 14px calc(12px + env(safe-area-inset-bottom));gap:7px;position:sticky;bottom:0;z-index:22}.comment-thread .project-comment-composer input{height:42px;font-size:16px;padding-inline:14px}.comment-thread .project-comment-composer>.post-reply-send{width:40px!important;height:40px!important;min-width:40px}.comment-thread .project-comment-composer .emoji-popover{bottom:calc(100% + 8px)}}
 
 /* One coherent n2 treatment for every privileged confirmation. */
 .admin-action-backdrop{z-index:120}.admin-action-dialog{width:min(560px,calc(100% - 28px));padding:0;overflow:hidden}.admin-action-dialog>header{padding:24px 26px 19px;background:#111;color:#fff;border-bottom:0}.admin-action-dialog>header p{margin:6px 0 0;color:#bcbcb7;font-size:9px}.admin-action-dialog>header .icon-button{color:#fff;border-color:#444;background:#191919}.admin-action-dialog .official-badge{background:#fff;color:#111}.admin-action-dialog .n2-editor-fields{padding:22px 26px}.admin-action-dialog .n2-editor-fields>p{margin:0 0 4px}.admin-action-dialog .n2-editor-fields textarea{min-height:120px}.admin-action-dialog>footer{padding:17px 26px 23px}.admin-dialog-error{display:flex;align-items:flex-start;gap:9px;border:1px solid #edc7bd;border-radius:10px;background:#fff2ef;color:#963324;padding:12px;font-size:9px;line-height:1.45}.admin-dialog-error svg{flex:0 0 auto;margin-top:1px}.secondary-button{border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);padding:10px 17px;font-size:9px;font-weight:700}@media(max-width:560px){.admin-action-dialog>header{padding:21px 20px 17px}.admin-action-dialog .n2-editor-fields{padding:19px 20px}.admin-action-dialog>footer{padding:15px 20px 20px}}

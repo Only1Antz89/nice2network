@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { Smile } from "lucide-react";
-import { EmojiStyle, SkinTonePickerLocation, SkinTones, Theme, type EmojiClickData } from "emoji-picker-react";
+import { EmojiStyle, SkinTonePickerLocation, SkinTones, SuggestionMode, Theme, type EmojiClickData } from "emoji-picker-react";
 import { useEffect, useRef, useState } from "react";
 
 const FullEmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
@@ -57,6 +57,7 @@ export default function EmojiPicker({ onSelect, align = "left" }: { onSelect: (e
         emojiStyle={EmojiStyle.NATIVE}
         theme={Theme.LIGHT}
         searchPlaceHolder="Search emojis"
+        suggestedEmojisMode={SuggestionMode.RECENT}
         previewConfig={{ showPreview: false }}
         width="100%"
         height={410}

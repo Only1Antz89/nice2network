@@ -405,3 +405,18 @@ test("uses the brand orange for project highlights and server-owned founder iden
   assert.match(page, /className="n2-founder-label">n2 Founder/);
   assert.match(styles, /\.n2-founder-label\{color:var\(--orange\)/);
 });
+
+test("project comments share the keyboard-safe reply composer and preserve emoji categories", async () => {
+  const [page, picker, styles] = await Promise.all([
+    read("app/page.tsx"),
+    read("components/emoji-picker.tsx"),
+    read("app/globals.css"),
+  ]);
+  assert.match(page, /project-comment-composer/);
+  assert.match(page, /Write a project comment/);
+  assert.match(page, /className="post-reply-send"/);
+  assert.match(picker, /SuggestionMode\.RECENT/);
+  assert.match(styles, /\.emoji-popover \.epr-category-nav\{display:flex!important;visibility:visible!important/);
+  assert.doesNotMatch(styles, /\.comment-composer \.emoji-popover button\{[^}]*background:transparent/);
+  assert.match(styles, /\.comment-thread \.project-comment-composer/);
+});

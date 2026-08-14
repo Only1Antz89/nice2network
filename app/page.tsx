@@ -8612,17 +8612,28 @@ function ProjectComments({
             </div>
           )}
         </div>
-        <form className="comment-composer" onSubmit={submit}>
+        <form
+          className="comment-composer post-reply-composer project-comment-composer"
+          onSubmit={submit}
+        >
           <EmojiPicker
             onSelect={(emoji) => setDraft((value) => `${value}${emoji}`)}
           />
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Add a thoughtful comment…"
-            maxLength={2000}
-          />
-          <button disabled={busy || !draft.trim()} aria-label="Post comment">
+          <label>
+            <span className="sr-only">Write a project comment</span>
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Add a thoughtful comment…"
+              maxLength={2000}
+              autoComplete="off"
+            />
+          </label>
+          <button
+            className="post-reply-send"
+            disabled={busy || !draft.trim()}
+            aria-label="Post comment"
+          >
             <Send size={17} />
           </button>
         </form>
