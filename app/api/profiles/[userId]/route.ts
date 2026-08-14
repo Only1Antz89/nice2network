@@ -7,6 +7,7 @@ import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { after } from "next/server";
 import { recomputeMemberRecommendations } from "@/lib/recommendations/service";
+import { sanitizeRichText } from "@/lib/rich-text";
 
 const profileSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -22,7 +23,7 @@ const profileSchema = z.object({
   interests: z.array(z.string().trim().min(1).max(80)).max(12).default([]),
   city: z.string().trim().max(100).nullable().optional(), country: z.string().trim().max(100).nullable().optional(),
   timezone: z.string().trim().min(3).max(80).default("Europe/London"), workMode: z.enum(["remote", "hybrid", "in_person"]).default("remote"),
-  career: z.array(z.object({ id: z.uuid().optional(), title: z.string().trim().min(1).max(120), company: z.string().trim().min(1).max(120), location: z.string().trim().max(120).nullable().optional(), startDate: z.string().date().nullable().optional(), endDate: z.string().date().nullable().optional(), current: z.boolean().default(false), description: z.string().trim().max(1000).nullable().optional() })).max(20).default([]),
+  career: z.array(z.object({ id: z.uuid().optional(), title: z.string().trim().min(1).max(120), company: z.string().trim().min(1).max(120), location: z.string().trim().max(120).nullable().optional(), startDate: z.string().date().nullable().optional(), endDate: z.string().date().nullable().optional(), current: z.boolean().default(false), description: z.string().trim().max(6000).nullable().optional() })).max(20).default([]),
   education: z.array(z.object({ id: z.uuid().optional(), institution: z.string().trim().min(1).max(160), qualification: z.string().trim().min(1).max(160), fieldOfStudy: z.string().trim().max(160).nullable().optional(), startYear: z.number().int().min(1940).max(2100).nullable().optional(), endYear: z.number().int().min(1940).max(2100).nullable().optional(), description: z.string().trim().max(1000).nullable().optional() })).max(20).default([]),
 });
 
@@ -68,7 +69,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ user
     await db.transaction(async tx => {
       await tx.update(users).set({ name: input.name, image: input.image, coverImage: input.coverImage, headline: input.headline, profession: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: [input.primarySkill, input.secondarySkill, input.tertiarySkill], interests: input.interests, city: input.city, country: input.country, timezone: input.timezone, workMode: input.workMode, location: [input.city, input.country].filter(Boolean).join(", ") || null, updatedAt: new Date() }).where(eq(users.id, userId));
       await tx.delete(careerHistory).where(eq(careerHistory.userId, userId));
-      if (input.career.length) await tx.insert(careerHistory).values(input.career.map((item, sortOrder) => ({ ...item, id: undefined, userId, startDate: item.startDate ?? null, endDate: item.current ? null : item.endDate ?? null, sortOrder })));
+      if (input.career.length) await tx.insert(careerHistory).values(input.career.map((item, sortOrder) => ({ ...item, description: sanitizeRichText(item.description) || null, id: undefined, userId, startDate: item.startDate ?? null, endDate: item.current ? null : item.endDate ?? null, sortOrder })));
       await tx.delete(educationHistory).where(eq(educationHistory.userId, userId));
       if (input.education.length) await tx.insert(educationHistory).values(input.education.map((item, sortOrder) => ({ ...item, id: undefined, userId, sortOrder })));
     });

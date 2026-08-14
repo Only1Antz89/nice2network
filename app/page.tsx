@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Bell,
+  Bold,
   Bookmark,
   BriefcaseBusiness,
   CalendarDays,
@@ -20,6 +21,7 @@ import {
   Ellipsis,
   Eye,
   Image as ImageIcon,
+  Italic,
   GraduationCap,
   Globe2,
   Home,
@@ -49,6 +51,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  Underline,
   Video,
   Archive,
   X,
@@ -57,6 +60,7 @@ import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { signIn, signOut } from "next-auth/react";
 import PasswordInput from "@/components/password-input";
 import EmojiPicker from "@/components/emoji-picker";
+import { sanitizeRichText } from "@/lib/rich-text";
 
 type View =
   | "feed"
@@ -613,6 +617,74 @@ function FreeChoiceInput({
             )}
         </div>
       )}
+    </div>
+  );
+}
+
+function RichTextEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const selectionRef = useRef<Range | null>(null);
+
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = sanitizeRichText(value);
+    }
+  }, [value]);
+
+  const rememberSelection = () => {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && editorRef.current?.contains(selection.anchorNode)) {
+      selectionRef.current = selection.getRangeAt(0).cloneRange();
+    }
+  };
+
+  const runCommand = (command: string, commandValue?: string) => {
+    editorRef.current?.focus();
+    const selection = window.getSelection();
+    if (selection && selectionRef.current) {
+      selection.removeAllRanges();
+      selection.addRange(selectionRef.current);
+    }
+    document.execCommand(command, false, commandValue);
+    rememberSelection();
+    onChange(sanitizeRichText(editorRef.current?.innerHTML));
+  };
+
+  return (
+    <div className="rich-text-field">
+      <div className="rich-text-toolbar" aria-label="Role description formatting">
+        <button type="button" title="Bold" aria-label="Bold" onMouseDown={(event) => { event.preventDefault(); runCommand("bold"); }}><Bold size={15} /></button>
+        <button type="button" title="Italic" aria-label="Italic" onMouseDown={(event) => { event.preventDefault(); runCommand("italic"); }}><Italic size={15} /></button>
+        <button type="button" title="Underline" aria-label="Underline" onMouseDown={(event) => { event.preventDefault(); runCommand("underline"); }}><Underline size={15} /></button>
+        <span />
+        <select aria-label="Font" defaultValue="Arial" onMouseDown={rememberSelection} onChange={(event) => runCommand("fontName", event.target.value)}>
+          <option value="Arial">Sans serif</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Verdana">Verdana</option>
+          <option value="Courier New">Monospace</option>
+        </select>
+        <select aria-label="Font size" defaultValue="3" onMouseDown={rememberSelection} onChange={(event) => runCommand("fontSize", event.target.value)}>
+          <option value="2">Small</option>
+          <option value="3">Normal</option>
+          <option value="4">Large</option>
+          <option value="5">Extra large</option>
+        </select>
+      </div>
+      <div
+        ref={editorRef}
+        className="rich-text-editor"
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="true"
+        aria-label="Role description"
+        data-placeholder="Describe what you did, achieved and contributed."
+        onInput={() => onChange(sanitizeRichText(editorRef.current?.innerHTML))}
+        onMouseUp={rememberSelection}
+        onKeyUp={rememberSelection}
+        onBlur={() => onChange(sanitizeRichText(editorRef.current?.innerHTML))}
+      />
     </div>
   );
 }
@@ -7526,7 +7598,7 @@ function LegacyProfileView({
                             ? "Present"
                             : (item.endDate?.slice(0, 4) ?? "")}
                         </small>
-                        {item.description && <p>{item.description}</p>}
+                        {item.description && <div className="rich-role-description" dangerouslySetInnerHTML={{ __html: sanitizeRichText(item.description) }} />}
                       </div>
                     </article>
                   ))
@@ -7555,7 +7627,7 @@ function LegacyProfileView({
                           {item.startYear ?? ""}
                           {item.endYear ? ` — ${item.endYear}` : ""}
                         </small>
-                        {item.description && <p>{item.description}</p>}
+                        {item.description && <div className="rich-role-description" dangerouslySetInnerHTML={{ __html: sanitizeRichText(item.description) }} />}
                       </div>
                     </article>
                   ))
@@ -10662,14 +10734,14 @@ function SettingsView({
                     </label>
                     <label className="full">
                       Role description
-                      <textarea
+                      <RichTextEditor
                         value={item.description}
-                        onChange={(e) =>
+                        onChange={(description) =>
                           setProfile({
                             ...profile,
                             career: profile.career.map((row, i) =>
                               i === index
-                                ? { ...row, description: e.target.value }
+                                ? { ...row, description }
                                 : row,
                             ),
                           })

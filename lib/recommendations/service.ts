@@ -8,6 +8,7 @@ import {
   roleEmbeddings, sanctions, users,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api";
+import { richTextToPlainText } from "@/lib/rich-text";
 import { createNotifications } from "@/lib/notifications";
 import { trackProductEvent } from "@/lib/analytics";
 import { blueprintInputSchema, projectBlueprintSchema, type BlueprintInput, type BlueprintRole, type ProjectBlueprint } from "./blueprint-schema";
@@ -38,7 +39,7 @@ export async function getActiveAlgorithmSettings(): Promise<ActiveAlgorithmSetti
 
 function scrubCareerText(value: string | null) {
   if (!value) return null;
-  return value.replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, "[removed]").replace(/\+?\d[\d\s().-]{7,}\d/g, "[removed]").slice(0, 240);
+  return richTextToPlainText(value).replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, "[removed]").replace(/\+?\d[\d\s().-]{7,}\d/g, "[removed]").slice(0, 240);
 }
 
 export async function buildBlueprintInput(projectId: string): Promise<{ input: BlueprintInput; ownerId: string }> {
