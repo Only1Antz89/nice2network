@@ -21,6 +21,7 @@ const schema = z.object({
   timezone: z.string().default("Europe/London"),
   location: z.string().max(300).optional(),
   attendeeIds: z.array(z.uuid()).max(100).default([]),
+  attendeeRoles: z.record(z.uuid(), z.enum(["cohost", "speaker", "listener"])).default({}),
   attendees: z.array(z.object({ email: z.email(), name: z.string().max(100).optional() })).max(100).default([]),
   reminderMinutes: z.number().int().min(0).max(10080).default(30),
   online: z.boolean().default(true),
@@ -62,6 +63,8 @@ export async function GET() {
       name: users.name,
       image: users.image,
       profession: users.profession,
+      role: meetingParticipants.role,
+      speakerStatus: meetingParticipants.speakerStatus,
     }).from(meetingParticipants)
       .innerJoin(users, eq(users.id, meetingParticipants.userId))
       .where(inArray(meetingParticipants.meetingId, meetingIds)) : [];
@@ -120,7 +123,12 @@ export async function POST(request: Request) {
       attendees,
       reminderMinutes: input.reminderMinutes,
     }).returning();
-    if (selectedMembers.length) await db.insert(meetingParticipants).values(selectedMembers.map(person => ({ meetingId: meeting.id, userId: person.id })));
+    if (selectedMembers.length) await db.insert(meetingParticipants).values(selectedMembers.map(person => ({
+      meetingId: meeting.id,
+      userId: person.id,
+      role: mode === "audio" ? (input.attendeeRoles[person.id] ?? "listener") : "speaker",
+      speakerStatus: mode === "audio" && input.attendeeRoles[person.id] !== "listener" ? "approved" : "none",
+    })));
     if (mode !== "in_person") {
       meeting.joinUrl = `/meet/${meeting.id}`;
       await db.update(meetings).set({ joinUrl: meeting.joinUrl }).where(eq(meetings.id, meeting.id));

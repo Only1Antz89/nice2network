@@ -244,10 +244,22 @@ export const meetingParticipants = pgTable("meeting_participants", {
   meetingId: uuid("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   status: text("status").notNull().default("invited"),
+  role: text("role").notNull().default("listener"),
+  speakerStatus: text("speaker_status").notNull().default("none"),
+  promotedAt: timestamp("promoted_at", { withTimezone: true }),
   invitedAt: timestamp("invited_at", { withTimezone: true }).defaultNow().notNull(),
   joinedAt: timestamp("joined_at", { withTimezone: true }),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
 }, table => [primaryKey({ columns: [table.meetingId, table.userId] }), index("meeting_participants_user_idx").on(table.userId, table.invitedAt)]);
+
+export const meetingMessages = pgTable("meeting_messages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  meetingId: uuid("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
+  authorId: uuid("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, table => [index("meeting_messages_room_idx").on(table.meetingId, table.createdAt)]);
 
 export const meetingSignals = pgTable("meeting_signals", {
   id: uuid("id").defaultRandom().primaryKey(), meetingId: uuid("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }), senderId: uuid("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }), recipientId: uuid("recipient_id").references(() => users.id, { onDelete: "cascade" }), type: text("type").notNull(), payload: jsonb("payload").$type<Record<string, unknown>>().notNull(), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

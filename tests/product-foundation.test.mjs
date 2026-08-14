@@ -366,6 +366,32 @@ test("meet visibility is selected in the form without browser prompts", async ()
   assert.match(styles, /\.meet-visibility-options/);
 });
 
+test("ships a role-aware branded podcast stage with audience requests and room chat", async () => {
+  const [schema, room, stageApi, chatApi, calendar, page, styles, migration] = await Promise.all([
+    read("db/schema.ts"),
+    read("app/meet/[meetingId]/page.tsx"),
+    read("app/api/meetings/[meetingId]/podcast/route.ts"),
+    read("app/api/meetings/[meetingId]/chat/route.ts"),
+    read("app/api/calendar/events/route.ts"),
+    read("app/page.tsx"),
+    read("app/globals.css"),
+    read("drizzle/0017_tranquil_vector.sql"),
+  ]);
+  assert.match(schema, /export const meetingMessages = pgTable/);
+  assert.match(schema, /speakerStatus: text\("speaker_status"\)/);
+  for (const role of ["HOST", "CO-HOST", "GUEST SPEAKER", "AUDIENCE SPEAKER"]) assert.match(room, new RegExp(role));
+  for (const action of ["request_speak", "approve", "dismiss", "mute"]) assert.match(stageApi, new RegExp(action));
+  assert.match(room, /function useSpeaking/);
+  assert.match(room, /ROOM CHAT/);
+  assert.match(chatApi, /meetingMessages/);
+  assert.match(calendar, /attendeeRoles/);
+  assert.match(page, /Guest speaker/);
+  assert.match(page, /Co-host/);
+  assert.match(styles, /@keyframes n2PodcastPulse/);
+  assert.match(styles, /\.podcast-card\.speaking/);
+  assert.match(migration, /CREATE TABLE "meeting_messages"/);
+});
+
 test("uses the brand orange for project highlights and server-owned founder identity", async () => {
   const [page, profile, styles] = await Promise.all([
     read("app/page.tsx"),

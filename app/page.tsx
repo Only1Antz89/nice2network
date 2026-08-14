@@ -6479,7 +6479,7 @@ type MeetingRecord = {
   maxParticipants?: number;
   reminderMinutes?: number;
   attendees?: Array<{ email: string; name?: string }>;
-  participantProfiles?: Array<MeetInvitee & { status?: string }>;
+  participantProfiles?: Array<MeetInvitee & { status?: string; role?: PodcastInviteRole }>;
   canEdit?: boolean;
   isPinned?: boolean;
   isBookmarked?: boolean;
@@ -6491,15 +6491,19 @@ type MeetInvitee = {
   profession: string;
   group: "connections" | "followers" | "public";
   relationship: string;
+  podcastRole?: PodcastInviteRole;
 };
+type PodcastInviteRole = "cohost" | "speaker" | "listener";
 function MeetAttendeePicker({
   selected,
   onChange,
   max,
+  podcast,
 }: {
   selected: MeetInvitee[];
   onChange: (people: MeetInvitee[]) => void;
   max: number;
+  podcast?: boolean;
 }) {
   const [people, setPeople] = useState<MeetInvitee[]>([]),
     [query, setQuery] = useState(""),
@@ -6530,7 +6534,7 @@ function MeetAttendeePicker({
   function toggle(person: MeetInvitee) {
     if (chosen.has(person.id))
       onChange(selected.filter((item) => item.id !== person.id));
-    else if (selected.length < max) onChange([...selected, person]);
+    else if (selected.length < max) onChange([...selected, { ...person, podcastRole: podcast ? "listener" : undefined }]);
   }
   return (
     <fieldset className="meet-attendee-picker">
@@ -6541,22 +6545,17 @@ function MeetAttendeePicker({
       {selected.length > 0 && (
         <div className="meet-selected-people">
           {selected.map((person) => (
-            <button
-              type="button"
-              key={person.id}
-              onClick={() => toggle(person)}
-            >
-              <Avatar
-                person={{
-                  name: person.name,
-                  role: person.profession,
-                  img: person.image,
-                }}
-                size="sm"
-              />
-              <span>{person.name}</span>
-              <X size={13} />
-            </button>
+            <div className="meet-selected-person" key={person.id}>
+              <button type="button" onClick={() => toggle(person)} aria-label={`Remove ${person.name}`}>
+                <Avatar person={{ name: person.name, role: person.profession, img: person.image }} size="sm" />
+                <span>{person.name}</span><X size={13} />
+              </button>
+              {podcast && <select aria-label={`${person.name} podcast role`} value={person.podcastRole ?? "listener"} onChange={event => onChange(selected.map(item => item.id === person.id ? { ...item, podcastRole: event.target.value as PodcastInviteRole } : item))}>
+                <option value="cohost">Co-host</option>
+                <option value="speaker">Guest speaker</option>
+                <option value="listener">Listener</option>
+              </select>}
+            </div>
           ))}
         </div>
       )}
@@ -6681,6 +6680,7 @@ function MeetView() {
       profession: person.profession,
       group: person.group ?? "public",
       relationship: person.relationship ?? "Invited",
+      podcastRole: person.role ?? "listener",
     })));
     setMeetMode(meet.mode ?? (meet.provider === "in_person" ? "in_person" : "video"));
     setMeetVisibility(meet.visibility ?? "public");
@@ -6721,6 +6721,7 @@ function MeetView() {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         location: data.get("location") || undefined,
         attendeeIds: invitees.map((person) => person.id),
+        attendeeRoles: Object.fromEntries(invitees.map(person => [person.id, person.podcastRole ?? "listener"])),
         reminderMinutes: Number(data.get("reminderMinutes") ?? 30),
         online: meetMode !== "in_person",
       }),
@@ -6876,7 +6877,7 @@ function MeetView() {
                 <div className="meet-card-meta">
                   <span className={`tag ${meet.provider === "in_person" ? "dark" : ""}`}>
                     {meet.mode === "audio" ? <Mic size={11}/> : meet.provider === "in_person" ? <MapPin size={11}/> : <Video size={11}/>}
-                    {meet.mode === "audio" ? "AUDIO" : meet.provider === "in_person" ? "IN PERSON" : "VIDEO"}
+                    {meet.mode === "audio" ? "PODCAST" : meet.provider === "in_person" ? "IN PERSON" : "VIDEO"}
                   </span>
                   <span className="meet-visibility-label">
                     {meet.visibility === "private" ? <ShieldCheck size={12}/> : meet.visibility === "project" ? <UsersRound size={12}/> : <Globe2 size={12}/>}
@@ -7006,7 +7007,7 @@ function MeetView() {
               <div>
                 {([
                   ["video", "Video", "Adaptive video · 8 people", Video],
-                  ["audio", "Audio", "Audio room · up to 16 people", Mic],
+                  ["audio", "Podcast", "Live audio stage · up to 16 people", Mic],
                   ["in_person", "In person", "A physical place · 100 guests", MapPin],
                 ] as const).map(([value, label, description, Icon]) => (
                   <button type="button" key={value} className={meetMode === value ? "active" : ""} onClick={() => {
@@ -7037,6 +7038,7 @@ function MeetView() {
               selected={invitees}
               onChange={setInvitees}
               max={meetMode === "video" ? 7 : meetMode === "audio" ? 15 : 100}
+              podcast={meetMode === "audio"}
             />
             {error && <p className="form-error">{error}</p>}
             <button className="primary-button wide">{editing ? "Save changes" : "Create meet"}</button>
@@ -7075,7 +7077,7 @@ function MeetView() {
               </div>
               <div>
                 <dt>Type</dt>
-                <dd>{detail.mode === "audio" ? "Audio only" : detail.provider === "in_person" ? "In person" : "Video"}</dd>
+                <dd>{detail.mode === "audio" ? "Podcast" : detail.provider === "in_person" ? "In person" : "Video"}</dd>
               </div>
               <div>
                 <dt>Visibility</dt>

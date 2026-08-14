@@ -8,7 +8,7 @@ import { requireMeetingAccess } from "@/lib/meetings";
 
 const schema = z.object({
   recipientId: z.uuid().nullable().optional(),
-  type: z.enum(["join", "heartbeat", "offer", "answer", "ice", "media", "leave"]),
+  type: z.enum(["join", "heartbeat", "offer", "answer", "ice", "media", "leave", "stage"]),
   payload: z.record(z.string(), z.unknown()).default({}),
 });
 

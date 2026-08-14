@@ -19,6 +19,7 @@ const updateSchema = z.object({
   projectId: z.uuid().nullable().optional(),
   location: z.string().max(300).optional(),
   attendeeIds: z.array(z.uuid()).max(100).default([]),
+  attendeeRoles: z.record(z.uuid(), z.enum(["cohost", "speaker", "listener"])).default({}),
   reminderMinutes: z.number().int().min(0).max(10080).default(30),
 }).superRefine((value, context) => {
   if (new Date(value.endsAt) <= new Date(value.startsAt)) context.addIssue({ code: "custom", message: "End time must follow start time", path: ["endsAt"] });
@@ -45,11 +46,17 @@ export async function GET(_: Request, { params }: { params: Promise<{ meetingId:
     const participants = await db.select({
       ...profileFields,
       status: meetingParticipants.status,
+      role: meetingParticipants.role,
+      speakerStatus: meetingParticipants.speakerStatus,
     }).from(meetingParticipants)
       .innerJoin(users, eq(users.id, meetingParticipants.userId))
       .where(eq(meetingParticipants.meetingId, meetingId));
     const [creator] = await db.select(profileFields).from(users).where(eq(users.id, meeting.createdBy)).limit(1);
-    return NextResponse.json({ meeting, currentMember, creator, participants, canEdit: meeting.createdBy === member.id });
+    const currentParticipant = participants.find(person => person.id === member.id);
+    return NextResponse.json({
+      meeting, currentMember, creator, participants, canEdit: meeting.createdBy === member.id,
+      currentRole: meeting.createdBy === member.id ? "host" : currentParticipant?.role ?? (meeting.mode === "audio" ? "listener" : "speaker"),
+    });
   } catch (error) {
     return apiError(error);
   }
@@ -92,7 +99,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ me
         updatedAt: new Date(),
       }).where(eq(meetings.id, meetingId)).returning();
       await tx.delete(meetingParticipants).where(eq(meetingParticipants.meetingId, meetingId));
-      if (selectedMembers.length) await tx.insert(meetingParticipants).values(selectedMembers.map(person => ({ meetingId, userId: person.id })));
+      if (selectedMembers.length) await tx.insert(meetingParticipants).values(selectedMembers.map(person => ({
+        meetingId,
+        userId: person.id,
+        role: input.mode === "audio" ? (input.attendeeRoles[person.id] ?? "listener") : "speaker",
+        speakerStatus: input.mode === "audio" && input.attendeeRoles[person.id] !== "listener" ? "approved" : "none",
+      })));
       return rows;
     });
 
