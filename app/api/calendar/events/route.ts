@@ -1,6 +1,145 @@
-import { and,eq,gte,inArray,or,sql } from "drizzle-orm";import { NextResponse } from "next/server";import { z } from "zod";import { getDb } from "@/db";import { meetings,projectMembers,safetyRisks,savedItems,users } from "@/db/schema";import { ApiError,apiError,requireMember } from "@/lib/api";import { audit } from "@/lib/audit";import { IntegrationProvider,usableAccessToken } from "@/lib/integrations";import { trackProductEvent } from "@/lib/analytics";import { createNotifications } from "@/lib/notifications";
-const schema=z.object({provider:z.enum(["n2","google","microsoft","in_person"]),projectId:z.uuid().optional(),visibility:z.enum(["public","project","private"]).default("public"),title:z.string().min(3).max(160),description:z.string().max(3000).optional(),startsAt:z.iso.datetime(),endsAt:z.iso.datetime(),timezone:z.string().default("Europe/London"),location:z.string().max(300).optional(),attendeeIds:z.array(z.uuid()).max(100).default([]),attendees:z.array(z.object({email:z.email(),name:z.string().max(100).optional()})).max(100).default([]),online:z.boolean().default(true)}).refine(v=>new Date(v.endsAt)>new Date(v.startsAt),"End time must follow start time").refine(v=>v.visibility!=="project"||Boolean(v.projectId),{message:"Choose a project for a project meet",path:["projectId"]});
-export async function GET(){try{const member=await requireMember(),db=getDb();const projectIds=(await db.select({projectId:projectMembers.projectId}).from(projectMembers).where(eq(projectMembers.userId,member.id))).map(row=>row.projectId);const visibility=projectIds.length?or(eq(meetings.createdBy,member.id),eq(meetings.visibility,"public"),and(eq(meetings.visibility,"project"),inArray(meetings.projectId,projectIds))):or(eq(meetings.createdBy,member.id),eq(meetings.visibility,"public"));const rows=await db.select({meeting:meetings,isPinned:sql<boolean>`coalesce(${savedItems.pinned},false)`,isBookmarked:sql<boolean>`coalesce(${savedItems.bookmarked},false)`}).from(meetings).leftJoin(savedItems,and(eq(savedItems.entityType,"meeting"),eq(savedItems.entityId,meetings.id),eq(savedItems.userId,member.id))).where(and(gte(meetings.endsAt,new Date(Date.now()-86400000)),visibility)).orderBy(meetings.startsAt).limit(100);return NextResponse.json({meetings:rows.map(row=>({...row.meeting,isPinned:row.isPinned,isBookmarked:row.isBookmarked}))})}catch(error){return apiError(error)}}
-export async function POST(request:Request){try{const member=await requireMember(),input=schema.parse(await request.json()),db=getDb();if(input.visibility==="project"&&input.projectId){const [membership]=await db.select({id:projectMembers.userId}).from(projectMembers).where(and(eq(projectMembers.projectId,input.projectId),eq(projectMembers.userId,member.id))).limit(1);if(!membership)throw new ApiError(403,"Join this project before creating its meet")}const [creator]=await db.select({ageBand:users.ageBand}).from(users).where(eq(users.id,member.id)).limit(1);const selectedMembers=input.attendeeIds.length?await db.select({id:users.id,email:users.email,name:users.name,ageBand:users.ageBand}).from(users).where(and(inArray(users.id,input.attendeeIds),eq(users.status,"active"))):[];if(selectedMembers.length!==input.attendeeIds.length)throw new ApiError(400,"One or more selected members are no longer available");const attendees=[...selectedMembers.map(person=>({email:person.email,name:person.name??undefined})),...input.attendees];const attendeeRecords=selectedMembers.length?selectedMembers:input.attendees.length?await db.select({id:users.id,email:users.email,name:users.name,ageBand:users.ageBand}).from(users).where(inArray(users.email,input.attendees.map(a=>a.email.toLowerCase()))):[];const mixedAge=attendeeRecords.some(a=>a.ageBand==="teen_16_17")&&(creator?.ageBand!=="teen_16_17"||attendeeRecords.some(a=>a.ageBand!=="teen_16_17"));if(mixedAge&&(!input.projectId||attendees.length<2)){await db.insert(safetyRisks).values({subjectUserId:creator?.ageBand==="teen_16_17"?member.id:null,type:"adult_teen_meeting_blocked",severity:"high",details:{projectLinked:Boolean(input.projectId),attendeeCount:attendees.length}});throw new ApiError(403,"Adult and teen meetings must be project-linked groups of at least three people")}
-let providerEventId:string|undefined,joinUrl:string|undefined;if(input.provider!=="in_person"&&input.provider!=="n2"){const token=await usableAccessToken(member.id,input.provider as IntegrationProvider);if(input.provider==="google"){const response=await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all",{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:JSON.stringify({summary:input.title,description:input.description,start:{dateTime:input.startsAt,timeZone:input.timezone},end:{dateTime:input.endsAt,timeZone:input.timezone},attendees:attendees.map(({email})=>({email})),location:input.location,...(input.online?{conferenceData:{createRequest:{requestId:crypto.randomUUID(),conferenceSolutionKey:{type:"hangoutsMeet"}}}}:{})})});if(!response.ok)throw new Error("Google Calendar did not accept the event");const event=await response.json() as {id:string;hangoutLink?:string};providerEventId=event.id;joinUrl=event.hangoutLink}else{const response=await fetch("https://graph.microsoft.com/v1.0/me/events",{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:JSON.stringify({subject:input.title,body:{contentType:"HTML",content:input.description??""},start:{dateTime:input.startsAt,timeZone:input.timezone},end:{dateTime:input.endsAt,timeZone:input.timezone},attendees:attendees.map(a=>({emailAddress:{address:a.email,name:a.name},type:"required"})),location:{displayName:input.location??""},isOnlineMeeting:input.online,onlineMeetingProvider:input.online?"teamsForBusiness":undefined})});if(!response.ok)throw new Error("Microsoft Calendar did not accept the event");const event=await response.json() as {id:string;onlineMeeting?:{joinUrl?:string}};providerEventId=event.id;joinUrl=event.onlineMeeting?.joinUrl}}
-const [meeting]=await db.insert(meetings).values({projectId:input.projectId,createdBy:member.id,provider:input.provider,providerEventId,title:input.title,visibility:input.visibility,description:input.description,startsAt:new Date(input.startsAt),endsAt:new Date(input.endsAt),timezone:input.timezone,joinUrl,location:mixedAge?null:input.location,attendees}).returning();if(input.provider==="n2"){joinUrl=`/meet/${meeting.id}`;await db.update(meetings).set({joinUrl}).where(eq(meetings.id,meeting.id));meeting.joinUrl=joinUrl}await createNotifications(selectedMembers.map(person=>({userId:person.id,actorId:member.id,type:"meet" as const,title:`${member.name??"An n2 member"} invited you to a meet`,body:`${input.title} · ${new Date(input.startsAt).toLocaleString("en-GB")}`,entityType:"meeting",entityId:meeting.id,href:"/?view=meet"})));await audit(member.id,"meeting.created","meeting",meeting.id,{provider:input.provider,projectId:input.projectId,visibility:input.visibility,attendeeCount:attendees.length});await trackProductEvent({actorId:member.id,ageBand:creator?.ageBand,event:"meeting_created",entityType:"meeting",entityId:meeting.id,properties:{provider:input.provider,visibility:input.visibility}});return NextResponse.json(meeting,{status:201})}catch(error){return apiError(error)}}
+import { and, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getDb } from "@/db";
+import { meetingParticipants, meetings, projectMembers, safetyRisks, savedItems, users } from "@/db/schema";
+import { ApiError, apiError, requireMember } from "@/lib/api";
+import { audit } from "@/lib/audit";
+import { trackProductEvent } from "@/lib/analytics";
+import { MEETING_CAPACITY, type MeetingMode } from "@/lib/meetings";
+import { createNotifications } from "@/lib/notifications";
+
+const schema = z.object({
+  provider: z.enum(["n2", "google", "microsoft", "in_person"]).default("n2"),
+  mode: z.enum(["video", "audio", "in_person"]).optional(),
+  projectId: z.uuid().optional(),
+  visibility: z.enum(["public", "project", "private"]).default("public"),
+  title: z.string().min(3).max(160),
+  description: z.string().max(3000).optional(),
+  startsAt: z.iso.datetime(),
+  endsAt: z.iso.datetime(),
+  timezone: z.string().default("Europe/London"),
+  location: z.string().max(300).optional(),
+  attendeeIds: z.array(z.uuid()).max(100).default([]),
+  attendees: z.array(z.object({ email: z.email(), name: z.string().max(100).optional() })).max(100).default([]),
+  reminderMinutes: z.number().int().min(0).max(10080).default(30),
+  online: z.boolean().default(true),
+}).superRefine((value, context) => {
+  if (new Date(value.endsAt) <= new Date(value.startsAt)) context.addIssue({ code: "custom", message: "End time must follow start time", path: ["endsAt"] });
+  if (value.visibility === "project" && !value.projectId) context.addIssue({ code: "custom", message: "Choose a project for a project meet", path: ["projectId"] });
+  const mode = value.mode ?? (value.provider === "in_person" ? "in_person" : "video");
+  if (mode === "in_person" && !value.location?.trim()) context.addIssue({ code: "custom", message: "Add a location for an in-person meet", path: ["location"] });
+});
+
+function modeFor(input: z.infer<typeof schema>): MeetingMode {
+  return input.mode ?? (input.provider === "in_person" ? "in_person" : "video");
+}
+
+export async function GET() {
+  try {
+    const member = await requireMember();
+    const db = getDb();
+    const projectIds = (await db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, member.id))).map(row => row.projectId);
+    const invited = sql<boolean>`exists (select 1 from ${meetingParticipants} mp where mp.meeting_id = ${meetings.id} and mp.user_id = ${member.id})`;
+    const visibility = projectIds.length
+      ? or(eq(meetings.createdBy, member.id), eq(meetings.visibility, "public"), invited, and(eq(meetings.visibility, "project"), inArray(meetings.projectId, projectIds)))
+      : or(eq(meetings.createdBy, member.id), eq(meetings.visibility, "public"), invited);
+    const rows = await db.select({
+      meeting: meetings,
+      isPinned: sql<boolean>`coalesce(${savedItems.pinned},false)`,
+      isBookmarked: sql<boolean>`coalesce(${savedItems.bookmarked},false)`,
+    }).from(meetings)
+      .leftJoin(savedItems, and(eq(savedItems.entityType, "meeting"), eq(savedItems.entityId, meetings.id), eq(savedItems.userId, member.id)))
+      .where(and(gte(meetings.endsAt, new Date(Date.now() - 86400000)), visibility))
+      .orderBy(meetings.startsAt)
+      .limit(100);
+
+    const meetingIds = rows.map(row => row.meeting.id);
+    const people = meetingIds.length ? await db.select({
+      meetingId: meetingParticipants.meetingId,
+      status: meetingParticipants.status,
+      id: users.id,
+      name: users.name,
+      image: users.image,
+      profession: users.profession,
+    }).from(meetingParticipants)
+      .innerJoin(users, eq(users.id, meetingParticipants.userId))
+      .where(inArray(meetingParticipants.meetingId, meetingIds)) : [];
+    const byMeeting = new Map<string, typeof people>();
+    for (const person of people) byMeeting.set(person.meetingId, [...(byMeeting.get(person.meetingId) ?? []), person]);
+
+    return NextResponse.json({ meetings: rows.map(row => ({
+      ...row.meeting,
+      isPinned: row.isPinned,
+      isBookmarked: row.isBookmarked,
+      participantProfiles: byMeeting.get(row.meeting.id) ?? [],
+      canEdit: row.meeting.createdBy === member.id,
+    })) });
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const member = await requireMember();
+    const input = schema.parse(await request.json());
+    const db = getDb();
+    const mode = modeFor(input);
+    const maxParticipants = MEETING_CAPACITY[mode];
+    if (input.attendeeIds.length > maxParticipants - 1) throw new ApiError(400, `Choose up to ${maxParticipants - 1} guests for this ${mode === "in_person" ? "in-person" : mode} meet`);
+    if (input.visibility === "project" && input.projectId) {
+      const [membership] = await db.select({ id: projectMembers.userId }).from(projectMembers).where(and(eq(projectMembers.projectId, input.projectId), eq(projectMembers.userId, member.id))).limit(1);
+      if (!membership) throw new ApiError(403, "Join this project before creating its meet");
+    }
+
+    const [creator] = await db.select({ ageBand: users.ageBand }).from(users).where(eq(users.id, member.id)).limit(1);
+    const selectedMembers = input.attendeeIds.length ? await db.select({ id: users.id, email: users.email, name: users.name, ageBand: users.ageBand }).from(users).where(and(inArray(users.id, input.attendeeIds), eq(users.status, "active"))) : [];
+    if (selectedMembers.length !== input.attendeeIds.length) throw new ApiError(400, "One or more selected members are no longer available");
+    const attendees = [...selectedMembers.map(person => ({ email: person.email, name: person.name ?? undefined })), ...input.attendees];
+    const mixedAge = selectedMembers.some(person => person.ageBand === "teen_16_17") && (creator?.ageBand !== "teen_16_17" || selectedMembers.some(person => person.ageBand !== "teen_16_17"));
+    if (mixedAge && (!input.projectId || attendees.length < 2)) {
+      await db.insert(safetyRisks).values({ subjectUserId: creator?.ageBand === "teen_16_17" ? member.id : null, type: "adult_teen_meeting_blocked", severity: "high", details: { projectLinked: Boolean(input.projectId), attendeeCount: attendees.length } });
+      throw new ApiError(403, "Adult and teen meetings must be project-linked groups of at least three people");
+    }
+
+    const provider = mode === "in_person" ? "in_person" : input.provider === "in_person" ? "n2" : input.provider;
+    const [meeting] = await db.insert(meetings).values({
+      projectId: input.projectId,
+      createdBy: member.id,
+      provider,
+      mode,
+      maxParticipants,
+      title: input.title,
+      visibility: input.visibility,
+      description: input.description,
+      startsAt: new Date(input.startsAt),
+      endsAt: new Date(input.endsAt),
+      timezone: input.timezone,
+      location: mode === "in_person" && !mixedAge ? input.location : null,
+      attendees,
+      reminderMinutes: input.reminderMinutes,
+    }).returning();
+    if (selectedMembers.length) await db.insert(meetingParticipants).values(selectedMembers.map(person => ({ meetingId: meeting.id, userId: person.id })));
+    if (mode !== "in_person") {
+      meeting.joinUrl = `/meet/${meeting.id}`;
+      await db.update(meetings).set({ joinUrl: meeting.joinUrl }).where(eq(meetings.id, meeting.id));
+    }
+
+    await createNotifications(selectedMembers.map(person => ({
+      userId: person.id,
+      actorId: member.id,
+      type: "meet" as const,
+      title: `${member.name ?? "An n2 member"} invited you to a meet`,
+      body: `${input.title} · ${new Date(input.startsAt).toLocaleString("en-GB")}`,
+      entityType: "meeting",
+      entityId: meeting.id,
+      href: "/?view=meet",
+    })));
+    await audit(member.id, "meeting.created", "meeting", meeting.id, { provider, mode, projectId: input.projectId, visibility: input.visibility, attendeeCount: attendees.length });
+    await trackProductEvent({ actorId: member.id, ageBand: creator?.ageBand, event: "meeting_created", entityType: "meeting", entityId: meeting.id, properties: { provider, mode, visibility: input.visibility } });
+    return NextResponse.json(meeting, { status: 201 });
+  } catch (error) {
+    return apiError(error);
+  }
+}

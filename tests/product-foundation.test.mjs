@@ -19,8 +19,8 @@ test("ships secured feature routes", async () => {
     read("app/api/matches/feedback/route.ts"),
   ]);
   for (const route of [projects, calendar, reports, feedback]) assert.match(route, /requireMember\(\)/);
-  assert.match(calendar, /graph\.microsoft\.com/);
-  assert.match(calendar, /googleapis\.com/);
+  assert.match(calendar, /MEETING_CAPACITY/);
+  assert.match(calendar, /meetingParticipants/);
 });
 
 test("includes a deployable PostgreSQL migration", async () => {
@@ -173,7 +173,7 @@ test("ships durable project-team recommendations and owner approval", async () =
   assert.match(admin, /system\.manage/);
 });
 
-test("ships editable profiles, durable chat controls and four-person n2 meets", async () => {
+test("ships editable profiles, durable chat controls and adaptive n2 meets", async () => {
   const [schema, profile, conversations, chat, message, calendar, signals, room, page] = await Promise.all([
     read("db/schema.ts"), read("app/api/profiles/[userId]/route.ts"), read("app/api/conversations/route.ts"),
     read("app/api/conversations/[conversationId]/messages/route.ts"), read("app/api/messages/[messageId]/route.ts"),
@@ -186,9 +186,11 @@ test("ships editable profiles, durable chat controls and four-person n2 meets", 
   for (const action of ["archive", "snooze", "delete"]) assert.match(conversations, new RegExp(action));
   assert.match(chat, /nudge/);
   assert.match(message, /editedAt/);
-  assert.match(calendar, /provider:z\.enum\(\["n2"/);
-  assert.match(signals, /limited to four people/);
+  assert.match(calendar, /mode: z\.enum\(\["video", "audio", "in_person"\]\)/);
+  assert.match(signals, /meeting\.maxParticipants/);
   assert.match(room, /RTCPeerConnection/);
+  assert.match(room, /hd-marker/);
+  assert.match(room, /Audio & video settings/);
   assert.match(page, /Create group chat/);
 });
 

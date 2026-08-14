@@ -1,4 +1,85 @@
-import { and,asc,eq,gt,ne,or,isNull } from "drizzle-orm";import { NextResponse } from "next/server";import { z } from "zod";import { getDb } from "@/db";import { meetingSignals,meetings } from "@/db/schema";import { ApiError,apiError,requireMember } from "@/lib/api";
-const schema=z.object({recipientId:z.uuid().nullable().optional(),type:z.enum(["join","heartbeat","offer","answer","ice","leave"]),payload:z.record(z.string(),z.unknown()).default({})});
-export async function GET(request:Request,{params}:{params:Promise<{meetingId:string}>}){try{const member=await requireMember(),{meetingId}=await params,since=new Date(Number(new URL(request.url).searchParams.get("since")??Date.now()-30000));const rows=await getDb().select().from(meetingSignals).where(and(eq(meetingSignals.meetingId,meetingId),ne(meetingSignals.senderId,member.id),gt(meetingSignals.createdAt,since),or(eq(meetingSignals.recipientId,member.id),isNull(meetingSignals.recipientId)))).orderBy(asc(meetingSignals.createdAt)).limit(100);return NextResponse.json({signals:rows,serverTime:Date.now()})}catch(error){return apiError(error)}}
-export async function POST(request:Request,{params}:{params:Promise<{meetingId:string}>}){try{const member=await requireMember(),{meetingId}=await params,input=schema.parse(await request.json()),db=getDb();const [meeting]=await db.select({id:meetings.id}).from(meetings).where(eq(meetings.id,meetingId)).limit(1);if(!meeting)throw new ApiError(404,"Meet not found");const active=await db.selectDistinct({senderId:meetingSignals.senderId}).from(meetingSignals).where(and(eq(meetingSignals.meetingId,meetingId),gt(meetingSignals.createdAt,new Date(Date.now()-45000))));if(input.type==="join"&&active.length>=4&&!active.some(row=>row.senderId===member.id))throw new ApiError(409,"This demo room is limited to four people");const [signal]=await db.insert(meetingSignals).values({meetingId,senderId:member.id,recipientId:input.recipientId??null,type:input.type,payload:input.payload}).returning();return NextResponse.json(signal,{status:201})}catch(error){return apiError(error)}}
+import { and, asc, eq, gt, isNull, ne, or } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getDb } from "@/db";
+import { meetingParticipants, meetingSignals, users } from "@/db/schema";
+import { ApiError, apiError, requireMember } from "@/lib/api";
+import { requireMeetingAccess } from "@/lib/meetings";
+
+const schema = z.object({
+  recipientId: z.uuid().nullable().optional(),
+  type: z.enum(["join", "heartbeat", "offer", "answer", "ice", "media", "leave"]),
+  payload: z.record(z.string(), z.unknown()).default({}),
+});
+
+export async function GET(request: Request, { params }: { params: Promise<{ meetingId: string }> }) {
+  try {
+    const member = await requireMember();
+    const { meetingId } = await params;
+    await requireMeetingAccess(meetingId, member.id);
+    const sinceValue = Number(new URL(request.url).searchParams.get("since") ?? Date.now() - 30000);
+    const since = new Date(Number.isFinite(sinceValue) ? sinceValue : Date.now() - 30000);
+    const rows = await getDb().select({
+      id: meetingSignals.id,
+      meetingId: meetingSignals.meetingId,
+      senderId: meetingSignals.senderId,
+      recipientId: meetingSignals.recipientId,
+      type: meetingSignals.type,
+      payload: meetingSignals.payload,
+      createdAt: meetingSignals.createdAt,
+      sender: {
+        id: users.id,
+        name: users.name,
+        image: users.image,
+        profession: users.profession,
+        professionalHeadline: users.headline,
+        city: users.city,
+      },
+    }).from(meetingSignals)
+      .innerJoin(users, eq(users.id, meetingSignals.senderId))
+      .where(and(
+        eq(meetingSignals.meetingId, meetingId),
+        ne(meetingSignals.senderId, member.id),
+        gt(meetingSignals.createdAt, since),
+        or(eq(meetingSignals.recipientId, member.id), isNull(meetingSignals.recipientId)),
+      ))
+      .orderBy(asc(meetingSignals.createdAt))
+      .limit(150);
+    return NextResponse.json({ signals: rows, serverTime: Date.now() });
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+export async function POST(request: Request, { params }: { params: Promise<{ meetingId: string }> }) {
+  try {
+    const member = await requireMember();
+    const { meetingId } = await params;
+    const input = schema.parse(await request.json());
+    const db = getDb();
+    const meeting = await requireMeetingAccess(meetingId, member.id);
+    if (meeting.mode === "in_person") throw new ApiError(400, "In-person meets do not have an online room");
+    const active = await db.selectDistinct({ senderId: meetingSignals.senderId }).from(meetingSignals).where(and(eq(meetingSignals.meetingId, meetingId), gt(meetingSignals.createdAt, new Date(Date.now() - 45000))));
+    if (input.type === "join" && active.length >= meeting.maxParticipants && !active.some(row => row.senderId === member.id)) throw new ApiError(409, `This room is full (${meeting.maxParticipants} people)`);
+
+    const now = new Date();
+    if (["join", "heartbeat", "media"].includes(input.type)) {
+      await db.insert(meetingParticipants).values({
+        meetingId,
+        userId: member.id,
+        status: "joined",
+        joinedAt: now,
+        lastSeenAt: now,
+      }).onConflictDoUpdate({
+        target: [meetingParticipants.meetingId, meetingParticipants.userId],
+        set: { status: "joined", lastSeenAt: now },
+      });
+    } else if (input.type === "leave") {
+      await db.update(meetingParticipants).set({ status: "left", lastSeenAt: now }).where(and(eq(meetingParticipants.meetingId, meetingId), eq(meetingParticipants.userId, member.id)));
+    }
+    const [signal] = await db.insert(meetingSignals).values({ meetingId, senderId: member.id, recipientId: input.recipientId ?? null, type: input.type, payload: input.payload }).returning();
+    return NextResponse.json(signal, { status: 201 });
+  } catch (error) {
+    return apiError(error);
+  }
+}
