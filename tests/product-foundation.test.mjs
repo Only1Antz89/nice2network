@@ -225,6 +225,27 @@ test("makes post and project three-dot menus functional", async () => {
   assert.match(reports, /"post"/);
 });
 
+test("edits and deletes posts inside branded, dismissible interfaces", async () => {
+  const [page, posts, styles] = await Promise.all([
+    read("app/page.tsx"),
+    read("app/api/posts/[postId]/route.ts"),
+    read("app/globals.css"),
+  ]);
+  assert.doesNotMatch(page, /window\.prompt\("Edit post"/);
+  assert.match(page, /initialPost=\{post\}/);
+  assert.match(page, /document\.addEventListener\("pointerdown", dismiss\)/);
+  assert.match(page, /Remove this post\?/);
+  assert.match(styles, /project-menu button\.danger/);
+  assert.match(posts, /linkedProjectIds/);
+  assert.match(posts, /attachmentUrl/);
+});
+
+test("uses stored project creation time instead of a live-project placeholder", async () => {
+  const page = await read("app/page.tsx");
+  assert.match(page, /relativeNetworkAge\(project\.createdAt\)/);
+  assert.doesNotMatch(page, /owner\.role\} · \{second \? "3h" : "18m"\}/);
+});
+
 test("uses the n2 share box for internal and external destinations", async () => {
   const page = await read("app/page.tsx");
   for (const option of ["Send in messages", "Share to a project", "Copy link", "External sharing options"]) assert.match(page, new RegExp(option));

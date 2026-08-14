@@ -396,6 +396,19 @@ function formatNetworkDate(
   }).format(typeof value === "string" ? new Date(value) : value);
 }
 
+function relativeNetworkAge(value: Date | string) {
+  const timestamp = typeof value === "string" ? new Date(value) : value;
+  const elapsed = Math.max(0, Date.now() - timestamp.getTime());
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return formatNetworkDate(timestamp, { day: "numeric", month: "short" });
+}
+
 function localGreeting(value: Date) {
   const hour = value.getHours();
   if (hour < 5) return "Good night";
@@ -1570,8 +1583,13 @@ function ProjectCard({
                 {owner.name} {owner.isN2Admin && <N2AdminBadge />}{" "}
                 {project?.isDemo && <DemoBadge />}
               </button>
-              <span>
-                {owner.role} · {second ? "3h" : "18m"}
+              <span suppressHydrationWarning>
+                {owner.role} ·{" "}
+                {project
+                  ? relativeNetworkAge(project.createdAt)
+                  : second
+                    ? "3h"
+                    : "18m"}
               </span>
             </div>
           </div>
@@ -2384,7 +2402,7 @@ function videoEmbed(url: string) {
 
 function TimelinePostCard({
   post,
-  currentMemberId,
+  currentMember,
   onProfile,
   onProject,
   onThread,
@@ -2395,7 +2413,7 @@ function TimelinePostCard({
   onChanged,
 }: {
   post: TimelinePost;
-  currentMemberId?: string;
+  currentMember: MemberPerson;
   onProfile: (id: string) => void;
   onProject: () => void;
   onThread: () => void;
@@ -2412,7 +2430,25 @@ function TimelinePostCard({
 }) {
   const embed = post.videoUrl ? videoEmbed(post.videoUrl) : null;
   const [menuOpen, setMenuOpen] = useState(false),
-    owner = post.authorId === currentMemberId;
+    [editOpen, setEditOpen] = useState(false),
+    [deleteOpen, setDeleteOpen] = useState(false),
+    menuRef = useRef<HTMLDivElement>(null),
+    owner = post.authorId === currentMember.id;
+  useEffect(() => {
+    if (!menuOpen) return;
+    function dismiss(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    }
+    function dismissWithKeyboard(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", dismissWithKeyboard);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", dismissWithKeyboard);
+    };
+  }, [menuOpen]);
   function share() {
     onShare({
       id: post.id,
@@ -2448,20 +2484,9 @@ function TimelinePostCard({
     );
     setMenuOpen(false);
   }
-  async function edit() {
-    const body = window.prompt("Edit post", post.body);
-    if (!body?.trim()) return;
-    const response = await fetch(`/api/posts/${post.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ body }),
-      }),
-      result = await response.json();
-    if (response.ok) {
-      onChanged({ ...post, body: result.post.body });
-      onToast("Post updated.");
-    } else onToast(result.error ?? "Could not update this post.");
+  function edit() {
     setMenuOpen(false);
+    setEditOpen(true);
   }
   async function visibility() {
     const visibility =
@@ -2483,17 +2508,13 @@ function TimelinePostCard({
     setMenuOpen(false);
   }
   async function remove() {
-    if (
-      !window.confirm("Delete this post? It will be removed from the timeline.")
-    )
-      return;
     const response = await fetch(`/api/posts/${post.id}`, { method: "DELETE" }),
       result = await response.json();
     if (response.ok) {
       onChanged(null);
       onToast("Post deleted.");
     } else onToast(result.error ?? "Could not delete this post.");
-    setMenuOpen(false);
+    setDeleteOpen(false);
   }
   async function report() {
     const reason = window.prompt(
@@ -2562,6 +2583,7 @@ function TimelinePostCard({
     );
   }
   return (
+    <>
     <article className="timeline-post">
       <header>
         <Avatar
@@ -2591,7 +2613,7 @@ function TimelinePostCard({
             {post.visibility === "connections" ? " · Connections only" : ""}
           </span>
         </div>
-        <div className="project-menu-wrap">
+        <div className="project-menu-wrap" ref={menuRef}>
           <button
             className="icon-button"
             aria-label="Post options"
@@ -2635,7 +2657,13 @@ function TimelinePostCard({
                       ? "public"
                       : "connections only"}
                   </button>
-                  <button className="danger" onClick={remove}>
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setDeleteOpen(true);
+                    }}
+                  >
                     <Trash2 size={15} />
                     Delete post
                   </button>
@@ -2727,31 +2755,77 @@ function TimelinePostCard({
         </button>
       </footer>
     </article>
+    {editOpen && (
+      <PostComposer
+        currentMember={currentMember}
+        initialPost={post}
+        onClose={() => setEditOpen(false)}
+        onPosted={(updated) => onChanged(updated)}
+        onToast={onToast}
+      />
+    )}
+    {deleteOpen && (
+      <div
+        className="modal-backdrop"
+        role="presentation"
+        onMouseDown={(event) =>
+          event.target === event.currentTarget && setDeleteOpen(false)
+        }
+      >
+        <section className="confirm-modal" role="dialog" aria-modal="true">
+          <span className="eyebrow">DELETE POST</span>
+          <h2>Remove this post?</h2>
+          <p>It will disappear from the timeline, replies and shared links.</p>
+          <footer>
+            <button className="secondary-button" onClick={() => setDeleteOpen(false)}>
+              Keep post
+            </button>
+            <button className="primary-button danger" onClick={remove}>
+              <Trash2 size={16} /> Delete post
+            </button>
+          </footer>
+        </section>
+      </div>
+    )}
+    </>
   );
 }
 
 function PostComposer({
   currentMember,
+  initialPost,
   onClose,
   onPosted,
   onToast,
 }: {
   currentMember: MemberPerson;
+  initialPost?: TimelinePost;
   onClose: () => void;
   onPosted: (post: TimelinePost) => void;
   onToast: (message: string) => void;
 }) {
-  const [body, setBody] = useState(""),
+  const editing = Boolean(initialPost);
+  const [body, setBody] = useState(initialPost?.body ?? ""),
     [attachment, setAttachment] = useState<{
       type: "image" | "video";
       url: string;
       name: string;
-    } | null>(null),
+    } | null>(
+      initialPost?.attachmentType && initialPost.attachmentUrl
+        ? {
+            type: initialPost.attachmentType,
+            url: initialPost.attachmentUrl,
+            name: "Current attachment",
+          }
+        : null,
+    ),
     [ownProjects, setOwnProjects] = useState<ProjectRecord[]>([]),
     [publicProjects, setPublicProjects] = useState<ProjectRecord[]>([]),
     [projectSource, setProjectSource] = useState<"mine" | "public">("mine"),
     [projectQuery, setProjectQuery] = useState(""),
-    [linked, setLinked] = useState<string[]>([]),
+    [linked, setLinked] = useState<string[]>(
+      initialPost?.linkedProjects.map((project) => project.id) ?? [],
+    ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   useEffect(() => {
@@ -2840,17 +2914,20 @@ function PostComposer({
     event.preventDefault();
     setBusy(true);
     setError("");
-    const response = await fetch("/api/posts", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        body,
-        linkedProjectIds: linked,
-        attachmentType: attachment?.type ?? null,
-        attachmentUrl: attachment?.url ?? null,
-        videoUrl: firstUrl(body),
-      }),
-    });
+    const response = await fetch(
+      editing ? `/api/posts/${initialPost!.id}` : "/api/posts",
+      {
+        method: editing ? "PATCH" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          body,
+          linkedProjectIds: linked,
+          attachmentType: attachment?.type ?? null,
+          attachmentUrl: attachment?.url ?? null,
+          videoUrl: firstUrl(body),
+        }),
+      },
+    );
     const data = await response.json();
     if (!response.ok) {
       setError(data.error ?? "Could not publish your post.");
@@ -2858,12 +2935,13 @@ function PostComposer({
       return;
     }
     onPosted({
+      ...(initialPost ?? {}),
       ...data.post,
       linkedProjects: projectsList
         .filter((project) => linked.includes(project.id))
         .map((project) => ({ id: project.id, title: project.title })),
     });
-    onToast("Your idea is now on the timeline.");
+    onToast(editing ? "Post updated." : "Your idea is now on the timeline.");
     onClose();
   }
   return (
@@ -2875,8 +2953,10 @@ function PostComposer({
       <form className="post-composer-modal" onSubmit={submit}>
         <header>
           <div>
-            <span className="eyebrow">SHARE WITH THE NETWORK</span>
-            <h2>Share a post or idea</h2>
+            <span className="eyebrow">
+              {editing ? "EDIT YOUR POST" : "SHARE WITH THE NETWORK"}
+            </span>
+            <h2>{editing ? "Edit post" : "Share a post or idea"}</h2>
           </div>
           <button type="button" className="icon-button" onClick={onClose}>
             <X size={19} />
@@ -2990,7 +3070,13 @@ function PostComposer({
         <footer>
           <small>{body.length}/3000</small>
           <button className="primary-button" disabled={busy || !body.trim()}>
-            {busy ? "Posting…" : "Post"}
+            {busy
+              ? editing
+                ? "Saving…"
+                : "Posting…"
+              : editing
+                ? "Save changes"
+                : "Post"}
           </button>
         </footer>
       </form>
@@ -3554,7 +3640,7 @@ function Feed({
             <TimelinePostCard
               key={`post-${post.id}`}
               post={post}
-              currentMemberId={currentMember.id}
+              currentMember={currentMember}
               onProfile={onProfile}
               onProject={authenticated ? onProject : onRequireAuth}
               onThread={() =>
