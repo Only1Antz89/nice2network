@@ -228,6 +228,7 @@ type ProfileRecord = {
   interests: string[];
   location: string | null;
   isN2Admin: boolean;
+  isFounder: boolean;
   isDemo?: boolean;
   isCurrent: boolean;
   projectCount: number;
@@ -618,6 +619,9 @@ function N2AdminBadge() {
       <b>n2</b> ADMIN
     </span>
   );
+}
+function N2FounderLabel() {
+  return <span className="n2-founder-label">n2 Founder</span>;
 }
 function DemoBadge() {
   return (
@@ -7451,7 +7455,9 @@ function LegacyProfileView2({
       ? {
           id: profile.id,
           name: profile.name ?? "n2 member",
-          role: profile.headline ?? profile.profession ?? "n2 member",
+          role: profile.isFounder
+            ? "n2 Founder"
+            : profile.headline ?? profile.profession ?? "n2 member",
           img: profile.image,
           isN2Admin: profile.isN2Admin,
         }
@@ -7490,7 +7496,7 @@ function LegacyProfileView2({
           {person.name} {person.isN2Admin && <N2AdminBadge />}
         </h1>
         <p className="profile-role">
-          {person.role}
+          {profile?.isFounder ? <N2FounderLabel /> : person.role}
           {profile?.location ? ` · ${profile.location}` : ""}
         </p>
         {profile && (
@@ -7835,7 +7841,9 @@ function ProfileView({
       ? {
           id: profile.id,
           name: profile.name ?? "n2 member",
-          role: profile.headline ?? profile.profession ?? "n2 member",
+          role: profile.isFounder
+            ? "n2 Founder"
+            : profile.headline ?? profile.profession ?? "n2 member",
           img: profile.image,
           isN2Admin: profile.isN2Admin,
         }
@@ -7872,7 +7880,7 @@ function ProfileView({
           {person.name} {person.isN2Admin && <N2AdminBadge />}
         </h1>
         <p className="profile-role">
-          {person.role}
+          {profile?.isFounder ? <N2FounderLabel /> : person.role}
           {profile?.location ? ` · ${profile.location}` : ""}
         </p>
         <div className="profile-network-counts">

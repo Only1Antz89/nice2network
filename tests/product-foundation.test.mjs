@@ -349,3 +349,17 @@ test("meet creation selects n2 profiles instead of collecting attendee emails", 
   assert.match(calendar, /attendeeIds/);
   assert.match(calendar, /createNotifications/);
 });
+
+test("uses the brand orange for project highlights and server-owned founder identity", async () => {
+  const [page, profile, styles] = await Promise.all([
+    read("app/page.tsx"),
+    read("app/api/profiles/[userId]/route.ts"),
+    read("app/globals.css"),
+  ]);
+  assert.match(styles, /--orange:#ff6b35/);
+  assert.match(styles, /project-kicker span:first-child\{background:var\(--orange\)!important/);
+  assert.match(profile, /isFounder: sql<boolean>`\$\{users\.role\} = 'founder'`/);
+  assert.match(page, /function N2FounderLabel/);
+  assert.match(page, /className="n2-founder-label">n2 Founder/);
+  assert.match(styles, /\.n2-founder-label\{color:var\(--orange\)/);
+});
