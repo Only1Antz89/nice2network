@@ -315,6 +315,14 @@ type TimelinePost = {
   reposted?: boolean;
   linkedProjects: Array<{ id: string; title: string }>;
 };
+type LinkPreviewRecord = {
+  url: string;
+  title: string;
+  description: string;
+  image: string | null;
+  siteName: string;
+  domain: string;
+};
 type PulseSlide = {
   id: string;
   kind: string;
@@ -395,6 +403,42 @@ function localGreeting(value: Date) {
   if (hour < 18) return "Good afternoon";
   if (hour < 22) return "Good evening";
   return "Good night";
+}
+
+function firstUrl(value?: string | null) {
+  const match = value?.match(/https?:\/\/[^\s<>]+/i)?.[0];
+  return match?.replace(/[),.!?;:]+$/, "") ?? null;
+}
+
+function RichLinkPreview({ text, url }: { text?: string | null; url?: string | null }) {
+  const target = url || firstUrl(text),
+    [preview, setPreview] = useState<LinkPreviewRecord | null>(null);
+  useEffect(() => {
+    if (!target) {
+      setPreview(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/link-preview?url=${encodeURIComponent(target)}`, {
+      signal: controller.signal,
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => setPreview(data))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [target]);
+  if (!target || !preview) return null;
+  return (
+    <a className="rich-link-preview" href={preview.url} target="_blank" rel="noreferrer">
+      {preview.image && <img src={preview.image} alt="" />}
+      <span>
+        <small>{preview.siteName || preview.domain}</small>
+        <strong>{preview.title}</strong>
+        {preview.description && <p>{preview.description}</p>}
+        <em>{preview.domain} <ArrowUpRight size={11} /></em>
+      </span>
+    </a>
+  );
 }
 
 const people = {
@@ -2620,6 +2664,7 @@ function TimelinePostCard({
       >
         {post.body}
       </p>
+      <RichLinkPreview text={post.body} url={!embed ? post.videoUrl : null} />
       {post.linkedProjects.length > 0 && (
         <div className="post-project-links">
           {post.linkedProjects.map((project) => (
@@ -2657,16 +2702,6 @@ function TimelinePostCard({
             allowFullScreen
           />
         </div>
-      )}
-      {post.videoUrl && !embed && (
-        <a
-          className="post-video-link"
-          href={post.videoUrl}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <Video size={16} /> Watch shared video <ArrowUpRight size={14} />
-        </a>
       )}
       <footer>
         <button onClick={onThread}>
@@ -2707,8 +2742,6 @@ function PostComposer({
   onToast: (message: string) => void;
 }) {
   const [body, setBody] = useState(""),
-    [videoUrl, setVideoUrl] = useState(""),
-    [videoLinkOpen, setVideoLinkOpen] = useState(false),
     [attachment, setAttachment] = useState<{
       type: "image" | "video";
       url: string;
@@ -2815,7 +2848,7 @@ function PostComposer({
         linkedProjectIds: linked,
         attachmentType: attachment?.type ?? null,
         attachmentUrl: attachment?.url ?? null,
-        videoUrl: videoUrl.trim() || null,
+        videoUrl: firstUrl(body),
       }),
     });
     const data = await response.json();
@@ -2877,6 +2910,10 @@ function PostComposer({
           </div>
         )}
         <div className="post-tools">
+          <EmojiPicker
+            onSelect={(emoji) => setBody((value) => `${value}${emoji}`)}
+            align="right"
+          />
           <label>
             <ImageIcon size={17} /> Image
             <input
@@ -2893,46 +2930,6 @@ function PostComposer({
               onChange={(event) => chooseFile(event.target.files?.[0])}
             />
           </label>
-          <div className="video-link-tool">
-            <button
-              type="button"
-              className={videoUrl ? "active" : ""}
-              onClick={() => setVideoLinkOpen((open) => !open)}
-            >
-              <Link2 size={17} /> Link
-            </button>
-            {videoLinkOpen && (
-              <div className="video-link-popover">
-                <label>
-                  YouTube or Vimeo link
-                  <input
-                    autoFocus
-                    value={videoUrl}
-                    onChange={(event) => setVideoUrl(event.target.value)}
-                    placeholder="https://…"
-                  />
-                </label>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVideoUrl("");
-                      setVideoLinkOpen(false);
-                    }}
-                  >
-                    Clear
-                  </button>
-                  <button type="button" onClick={() => setVideoLinkOpen(false)}>
-                    Done
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-          <EmojiPicker
-            onSelect={(emoji) => setBody((value) => `${value}${emoji}`)}
-            align="right"
-          />
         </div>
         <section className="project-hashtags">
           <div>
@@ -5440,6 +5437,7 @@ function NetworkView({
       Array<Record<string, unknown>>
     >([]),
     [platformSearching, setPlatformSearching] = useState(false),
+    [mobileSearchOpen, setMobileSearchOpen] = useState(false),
     [selected, setSelected] = useState<NetworkNodeRecord | null>(null);
   useEffect(() => {
     fetch("/api/network/graph")
@@ -5564,7 +5562,7 @@ function NetworkView({
             })}
           </svg>
           <button
-            className="network-node network-self"
+            className="network-node network-self network-self-desktop"
             style={
               {
                 left: "50%",
@@ -5578,7 +5576,24 @@ function NetworkView({
             <span>{currentMember.name}</span>
             <small>Your profile</small>
           </button>
-          <div className="network-floating-tools">
+          <button
+            className="network-node network-self network-self-mobile"
+            style={
+              {
+                left: "50%",
+                top: "43%",
+                "--node-colour": "#111",
+              } as React.CSSProperties
+            }
+            onClick={() => setMobileSearchOpen((open) => !open)}
+            aria-expanded={mobileSearchOpen}
+            aria-label="Search your network"
+          >
+            <i className="network-self-search-icon"><Search size={28} /></i>
+            <span>{currentMember.name}</span>
+            <small>{mobileSearchOpen ? "Close search" : "Search your network"}</small>
+          </button>
+          <div className={`network-floating-tools ${mobileSearchOpen ? "mobile-open" : ""}`}>
             <label className="network-search">
               <Search size={16} />
               <input
@@ -6094,6 +6109,7 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
                 </a>
               )}
               <span>{message.body}</span>
+              {message.status !== "deleted" && <RichLinkPreview text={message.body} />}
               {message.editedAt && <small>edited</small>}
               {message.senderId === currentMember.id &&
                 message.status !== "deleted" && (
@@ -6157,17 +6173,6 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
               onChange={(event) => attach(event.target.files?.[0])}
             />
           </label>
-          <button
-            type="button"
-            title="Add link"
-            onClick={() => {
-              const link = window.prompt("Paste a link");
-              if (link)
-                setDraft((value) => `${value}${value ? " " : ""}${link}`);
-            }}
-          >
-            <Link2 size={17} />
-          </button>
           <input
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -8120,6 +8125,7 @@ function PostThread({
             </div>
           </div>
           <p>{post.body}</p>
+          <RichLinkPreview text={post.body} url={post.videoUrl} />
           <div className="thread-post-actions">
             <button
               className={post.liked ? "active" : ""}
@@ -8166,6 +8172,7 @@ function PostThread({
                   </button>
                   <time>{new Date(reply.createdAt).toLocaleString()}</time>
                   <p>{reply.body}</p>
+                  <RichLinkPreview text={reply.body} />
                 </div>
               </article>
             ))
@@ -11088,6 +11095,35 @@ export default function HomePage() {
   });
   const [authenticated, setAuthenticated] = useState(false);
   const latestSystemMessage = useRef<string | null | false>(false);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const syncKeyboard = () => {
+      const inset = Math.max(
+        0,
+        window.innerHeight - viewport.height - viewport.offsetTop,
+      );
+      document.documentElement.style.setProperty("--keyboard-inset", `${inset}px`);
+      const active = document.activeElement;
+      if (
+        inset > 80 &&
+        active instanceof HTMLElement &&
+        (active.matches("input, textarea, [contenteditable='true']"))
+      ) {
+        window.requestAnimationFrame(() =>
+          active.scrollIntoView({ block: "center", inline: "nearest" }),
+        );
+      }
+    };
+    viewport.addEventListener("resize", syncKeyboard);
+    viewport.addEventListener("scroll", syncKeyboard);
+    syncKeyboard();
+    return () => {
+      viewport.removeEventListener("resize", syncKeyboard);
+      viewport.removeEventListener("scroll", syncKeyboard);
+      document.documentElement.style.setProperty("--keyboard-inset", "0px");
+    };
+  }, []);
   useEffect(() => {
     fetch("/api/auth/session")
       .then((r) => r.json())
