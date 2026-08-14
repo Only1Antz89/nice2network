@@ -313,7 +313,12 @@ test("ships a connected-member network map with profession and skill discovery",
   assert.match(page, /All professions/);
   assert.match(page, /View full profile/);
   assert.match(page, /profile\?\.isMutual\s*\?\s*"Connected"/);
-  assert.match(graph, /from follows mine join users/);
+  assert.match(graph, /from users u/);
+  assert.match(graph, /as is_following/);
+  assert.match(graph, /as follows_viewer/);
+  assert.match(graph, /or exists\(select 1 from follows incoming/);
+  assert.match(page, /edge\.mutual \? "mutual" : "following"/);
+  assert.match(page, /n2:network-changed/);
   assert.match(graph, /show_followers=true/);
   assert.match(styles, /\.network-canvas/);
   assert.match(styles, /\.network-node \.avatar/);

@@ -5585,8 +5585,12 @@ type NetworkNodeRecord = {
   bio: string | null;
   location: string | null;
   mutual: boolean;
+  is_following: boolean;
+  follows_viewer: boolean;
 };
 type NetworkEdgeRecord = { source: string; target: string; mutual: boolean };
+const signalNetworkChanged = () =>
+  window.dispatchEvent(new Event("n2:network-changed"));
 const networkProfession = (
   person: Pick<NetworkNodeRecord, "profession" | "industry">,
 ) => {
@@ -5633,12 +5637,25 @@ function NetworkView({
     [mobileSearchOpen, setMobileSearchOpen] = useState(false),
     [selected, setSelected] = useState<NetworkNodeRecord | null>(null);
   useEffect(() => {
-    fetch("/api/network/graph")
+    const loadGraph = () => {
+      setLoading(true);
+      fetch("/api/network/graph", { cache: "no-store" })
       .then((response) =>
         response.ok ? response.json() : { current: null, nodes: [], edges: [] },
       )
-      .then(setData)
+      .then((next) => {
+        setData(next);
+        setSelected((current) =>
+          current
+            ? (next.nodes.find((node: NetworkNodeRecord) => node.id === current.id) ?? null)
+            : null,
+        );
+      })
       .finally(() => setLoading(false));
+    };
+    loadGraph();
+    window.addEventListener("n2:network-changed", loadGraph);
+    return () => window.removeEventListener("n2:network-changed", loadGraph);
   }, []);
   useEffect(() => {
     const controller = new AbortController(),
@@ -5732,7 +5749,7 @@ function NetworkView({
               </span>
             ))}
             <span className="line-key solid">Mutual</span>
-            <span className="line-key dashed">Following</span>
+            <span className="line-key dashed">One-way follow</span>
           </div>
           <svg
             viewBox="0 0 100 100"
@@ -5927,7 +5944,9 @@ function NetworkView({
               <span className="network-connection-state">
                 {selected.mutual
                   ? "Mutual connection"
-                  : "You follow this member"}
+                  : selected.is_following
+                    ? "You follow this member"
+                    : "Follows you"}
               </span>
               <h2>{selected.name}</h2>
               <p className="network-brief-role">
@@ -7371,13 +7390,15 @@ function LegacyProfileView({
         method: profile.isFollowing ? "DELETE" : "POST",
       }),
       result = await response.json();
-    if (response.ok)
+    if (response.ok) {
+      signalNetworkChanged();
       setProfile({
         ...profile,
         isFollowing: result.following,
         isMutual: result.mutual,
         followers: Math.max(0, profile.followers + (result.following ? 1 : -1)),
       });
+    }
   }
   return (
     <div className="subpage profile-page">
@@ -7731,7 +7752,8 @@ function LegacyProfileView2({
         method: profile.isFollowing ? "DELETE" : "POST",
       }),
       result = await response.json();
-    if (response.ok)
+    if (response.ok) {
+      signalNetworkChanged();
       setProfile((current) =>
         current
           ? {
@@ -7745,6 +7767,7 @@ function LegacyProfileView2({
             }
           : current,
       );
+    }
     setBusy(false);
   }
   if (loading)
@@ -8124,7 +8147,8 @@ function ProfileView({
         method: profile.isFollowing ? "DELETE" : "POST",
       }),
       result = await response.json();
-    if (response.ok)
+    if (response.ok) {
+      signalNetworkChanged();
       setProfile((current) =>
         current
           ? {
@@ -8138,6 +8162,7 @@ function ProfileView({
             }
           : current,
       );
+    }
     setBusy(false);
   }
   const person: MemberPerson = profile
@@ -11370,6 +11395,7 @@ function PeopleDiscoveryPanel({
       }),
       result = await response.json();
     if (response.ok) {
+      signalNetworkChanged();
       setItems((rows) => rows.filter((row) => row.id !== item.id));
       onToast(
         result.mutual
@@ -11988,6 +12014,7 @@ export default function HomePage() {
                         ),
                         result = await response.json();
                       if (response.ok) {
+                        signalNetworkChanged();
                         setPeopleSuggestions((rows) =>
                           rows.filter((row) => row.id !== item.id),
                         );
