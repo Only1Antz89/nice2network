@@ -20,6 +20,10 @@ const schema = z.object({
   endsAt: z.iso.datetime(),
   timezone: z.string().default("Europe/London"),
   location: z.string().max(300).optional(),
+  thumbnailUrl: z.union([
+    z.string().max(2_100_000).regex(/^data:image\/(?:jpeg|png|webp);base64,/),
+    z.null(),
+  ]).optional(),
   attendeeIds: z.array(z.uuid()).max(100).default([]),
   attendeeRoles: z.record(z.uuid(), z.enum(["cohost", "speaker", "listener"])).default({}),
   attendees: z.array(z.object({ email: z.email(), name: z.string().max(100).optional() })).max(100).default([]),
@@ -120,6 +124,7 @@ export async function POST(request: Request) {
       endsAt: new Date(input.endsAt),
       timezone: input.timezone,
       location: mode === "in_person" && !mixedAge ? input.location : null,
+      thumbnailUrl: input.thumbnailUrl ?? null,
       attendees,
       reminderMinutes: input.reminderMinutes,
     }).returning();

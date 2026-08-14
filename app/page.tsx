@@ -6505,6 +6505,7 @@ type MeetingRecord = {
   timezone: string;
   joinUrl?: string | null;
   location?: string | null;
+  thumbnailUrl?: string | null;
   mode?: "video" | "audio" | "in_person";
   maxParticipants?: number;
   reminderMinutes?: number;
@@ -6655,6 +6656,8 @@ function MeetAttendeePicker({
   );
 }
 function MeetView() {
+  const meetFormRef = useRef<HTMLFormElement>(null);
+  const [clockNow, setClockNow] = useState(0);
   const [calendarView, setCalendarView] = useState<"agenda" | "month">(
       "agenda",
     ),
@@ -6669,12 +6672,20 @@ function MeetView() {
       "public" | "project" | "private"
     >("public"),
     [meetProjectId, setMeetProjectId] = useState(""),
-    [meetProjects, setMeetProjects] = useState<ProjectRecord[]>([]);
+    [meetProjects, setMeetProjects] = useState<ProjectRecord[]>([]),
+    [meetStep, setMeetStep] = useState<1 | 2>(1),
+    [meetLocation, setMeetLocation] = useState(""),
+    [meetThumbnail, setMeetThumbnail] = useState<string | null>(null);
   async function load() {
     const response = await fetch("/api/calendar/events");
     const data = response.ok ? await response.json() : { meetings: [] };
     setMeets(data.meetings ?? []);
   }
+  useEffect(() => {
+    setClockNow(Date.now());
+    const timer = window.setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   useEffect(() => {
     load();
   }, []);
@@ -6697,6 +6708,9 @@ function MeetView() {
     setMeetMode("video");
     setMeetVisibility("public");
     setMeetProjectId("");
+    setMeetStep(1);
+    setMeetLocation("");
+    setMeetThumbnail(null);
     setError("");
     setCreate(true);
   }
@@ -6715,6 +6729,9 @@ function MeetView() {
     setMeetMode(meet.mode ?? (meet.provider === "in_person" ? "in_person" : "video"));
     setMeetVisibility(meet.visibility ?? "public");
     setMeetProjectId(meet.projectId ?? "");
+    setMeetStep(1);
+    setMeetLocation(meet.location ?? "");
+    setMeetThumbnail(meet.thumbnailUrl ?? null);
     setDetail(null);
     setError("");
   }
@@ -6722,7 +6739,37 @@ function MeetView() {
     setCreate(false);
     setEditing(null);
     setInvitees([]);
+    setMeetStep(1);
+    setMeetLocation("");
+    setMeetThumbnail(null);
     setError("");
+  }
+  function selectMeetThumbnail(file?: File) {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Choose a JPG, PNG or WebP image for the meet cover.");
+      return;
+    }
+    if (file.size > 1_500_000) {
+      setError("Meet cover images must be 1.5 MB or smaller.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setMeetThumbnail(String(reader.result));
+      setError("");
+    };
+    reader.readAsDataURL(file);
+  }
+  function continueMeetSetup() {
+    const form = meetFormRef.current;
+    if (!form?.reportValidity()) return;
+    if (meetVisibility === "project" && !meetProjectId) {
+      setError("Choose the project this meet belongs to.");
+      return;
+    }
+    setError("");
+    setMeetStep(2);
   }
   async function addMeet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -6750,6 +6797,7 @@ function MeetView() {
         endsAt: new Date(start.getTime() + duration * 60000).toISOString(),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         location: data.get("location") || undefined,
+        thumbnailUrl: meetThumbnail,
         attendeeIds: invitees.map((person) => person.id),
         attendeeRoles: Object.fromEntries(invitees.map(person => [person.id, person.podcastRole ?? "listener"])),
         reminderMinutes: Number(data.get("reminderMinutes") ?? 30),
@@ -6764,6 +6812,9 @@ function MeetView() {
     setCreate(false);
     setEditing(null);
     setInvitees([]);
+    setMeetStep(1);
+    setMeetLocation("");
+    setMeetThumbnail(null);
     setMeetVisibility("public");
     setMeetProjectId("");
     setDetail({ ...result, participantProfiles: invitees, canEdit: true });
@@ -6891,7 +6942,10 @@ function MeetView() {
           const start = new Date(meet.startsAt),
             minutes = Math.round(
               (new Date(meet.endsAt).getTime() - start.getTime()) / 60000,
-            );
+            ),
+            joinOpensAt = start.getTime() - 15 * 60_000,
+            canJoin = Boolean(clockNow) && clockNow >= joinOpensAt && clockNow <= new Date(meet.endsAt).getTime(),
+            isFuture = Boolean(clockNow) && clockNow < joinOpensAt;
           return (
             <div className="meet-card" key={meet.id}>
               <div className="meet-time">
@@ -6924,13 +6978,11 @@ function MeetView() {
                   {meet.description || meet.location || "Open meeting details"}
                 </p>
               </div>
-              <button className="join-button" onClick={() => join(meet)}>
-                {meet.provider === "in_person" ? (
+              {meet.provider === "in_person" ? <button className="join-button" onClick={() => setDetail(meet)}>
                   <ArrowUpRight size={16} />
-                ) : (
-                  "Join"
-                )}
-              </button>
+                </button> : canJoin ? <button className="join-button" onClick={() => join(meet)}>Join</button> : isFuture ? (
+                  <span className="meet-scheduled-label"><Clock3 size={14}/>{start.toLocaleDateString(undefined, { day: "numeric", month: "short" })} · {start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                ) : <span className="meet-scheduled-label ended">Ended</span>}
             </div>
           );
         })
@@ -6943,20 +6995,21 @@ function MeetView() {
       )}
       {(create || editing) && (
         <div className="modal-backdrop">
-          <form className="meet-modal" onSubmit={addMeet}>
+          <form ref={meetFormRef} className="meet-modal meet-creation-flow" onSubmit={addMeet}>
             <header>
               <div>
                 <span className="eyebrow">{editing ? "EDIT MEET" : "NEW MEET"}</span>
-                <h2>{editing ? "Update the room" : "Bring a small room together"}</h2>
+                <h2>{meetStep === 1 ? (editing ? "Update the room" : "Bring a small room together") : "Invite useful people"}</h2>
               </div>
-              <button
-                type="button"
-                className="icon-button"
-                onClick={closeEditor}
-              >
-                <X size={18} />
-              </button>
+              <div className="meet-flow-header-actions"><span>{meetStep} / 2</span><button type="button" className="icon-button" onClick={closeEditor}><X size={18} /></button></div>
             </header>
+            <section className="meet-editor-step" hidden={meetStep !== 1}>
+              <div className="meet-editor-visual-row">
+                <div className={`meet-cover-preview ${meetThumbnail ? "has-image" : ""}`}>
+                  {meetThumbnail ? <img src={meetThumbnail} alt="Meet thumbnail preview" /> : meetMode === "in_person" && meetLocation ? <div className="meet-local-map"><MapPin size={25}/><strong>{meetLocation}</strong><small>Venue map card</small></div> : <div><ImageIcon size={24}/><strong>{meetMode === "audio" ? "Podcast artwork" : meetMode === "in_person" ? "Venue map" : "Video thumbnail"}</strong><small>{meetMode === "in_person" ? "Add the venue below to create its map card." : "Add a recognisable cover for this meet."}</small></div>}
+                </div>
+                <div className="meet-cover-copy"><span className="eyebrow">MEET VISUAL</span><h3>{meetMode === "audio" ? "Set the episode artwork" : meetMode === "in_person" ? "Help people find the venue" : "Set the room thumbnail"}</h3><p>This appears in the event details and makes the meet easier to recognise.</p><div className="meet-cover-actions"><label className="secondary-button"><ImageIcon size={15}/>{meetThumbnail ? "Replace" : "Add thumbnail"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => selectMeetThumbnail(event.target.files?.[0])}/></label>{meetThumbnail && <button type="button" onClick={() => setMeetThumbnail(null)}>Remove</button>}</div><small>JPG, PNG or WebP · up to 1.5 MB</small></div>
+              </div>
             <label>
               Title
               <input name="title" required minLength={3} defaultValue={editing?.title ?? ""} />
@@ -7052,7 +7105,7 @@ function MeetView() {
             </fieldset>
             {meetMode === "in_person" && <label>
               Location
-              <input name="location" required defaultValue={editing?.location ?? ""} placeholder="Place or address" />
+              <input name="location" required value={meetLocation} onChange={(event) => setMeetLocation(event.target.value)} placeholder="Place or address" />
             </label>}
             <label>
               Reminder
@@ -7064,14 +7117,15 @@ function MeetView() {
                 <option value="1440">1 day before</option>
               </select>
             </label>
-            <MeetAttendeePicker
-              selected={invitees}
-              onChange={setInvitees}
-              max={meetMode === "video" ? 7 : meetMode === "audio" ? 15 : 100}
-              podcast={meetMode === "audio"}
-            />
             {error && <p className="form-error">{error}</p>}
-            <button className="primary-button wide">{editing ? "Save changes" : "Create meet"}</button>
+            <div className="meet-step-actions"><button type="button" className="primary-button" onClick={continueMeetSetup}>Continue to invites <ChevronRight size={16}/></button></div>
+            </section>
+            <section className="meet-editor-step" hidden={meetStep !== 2}>
+              <div className="meet-step-summary">{meetThumbnail ? <img src={meetThumbnail} alt="" /> : <span>{meetMode === "audio" ? <Mic size={20}/> : meetMode === "in_person" ? <MapPin size={20}/> : <Video size={20}/>}</span>}<div><span className="eyebrow">{meetMode === "audio" ? "PODCAST" : meetMode === "in_person" ? "IN PERSON" : "VIDEO MEET"}</span><strong>{(meetFormRef.current?.elements.namedItem("title") as HTMLInputElement | null)?.value || editing?.title || "Untitled meet"}</strong><small>{meetVisibility === "project" ? "Project visibility" : `${meetVisibility[0].toUpperCase()}${meetVisibility.slice(1)} visibility`}{meetLocation ? ` · ${meetLocation}` : ""}</small></div><button type="button" onClick={() => setMeetStep(1)}>Edit details</button></div>
+              <MeetAttendeePicker selected={invitees} onChange={setInvitees} max={meetMode === "video" ? 7 : meetMode === "audio" ? 15 : 100} podcast={meetMode === "audio"} />
+              {error && <p className="form-error">{error}</p>}
+              <div className="meet-step-actions split"><button type="button" className="secondary-button" onClick={() => setMeetStep(1)}><ArrowLeft size={16}/> Back</button><button className="primary-button">{editing ? "Save changes" : "Create meet"}</button></div>
+            </section>
           </form>
         </div>
       )}
@@ -7087,6 +7141,7 @@ function MeetView() {
                 <X size={18} />
               </button>
             </header>
+            {detail.thumbnailUrl && <img className="meet-detail-cover" src={detail.thumbnailUrl} alt="" />}
             <p>{detail.description || "No description added."}</p>
             <div className="saved-actions">
               <button onClick={() => saveMeet(detail, "pin")}>
@@ -7136,7 +7191,7 @@ function MeetView() {
                 <dd>{detail.reminderMinutes === 0 ? "At start time" : `${detail.reminderMinutes ?? 30} minutes before`}</dd>
               </div>
             </dl>
-            {detail.joinUrl && detail.provider !== "in_person" && (
+            {detail.joinUrl && detail.provider !== "in_person" && clockNow >= new Date(detail.startsAt).getTime() - 15 * 60_000 && clockNow <= new Date(detail.endsAt).getTime() && (
               <button
                 className="primary-button wide"
                 onClick={() => join(detail)}
@@ -7144,6 +7199,10 @@ function MeetView() {
                 Join meet
               </button>
             )}
+            {detail.provider !== "in_person" && clockNow < new Date(detail.startsAt).getTime() - 15 * 60_000 && (
+              <div className="meet-not-ready"><Clock3 size={17}/><div><strong>Scheduled for {new Date(detail.startsAt).toLocaleString()}</strong><small>The room opens 15 minutes before it starts. We’ll remind you based on your notification setting.</small></div></div>
+            )}
+            {detail.provider !== "in_person" && clockNow > new Date(detail.endsAt).getTime() && <div className="meet-not-ready ended"><Check size={17}/><div><strong>This meet has ended</strong><small>The room is no longer open.</small></div></div>}
           </section>
         </div>
       )}

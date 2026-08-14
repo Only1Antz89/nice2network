@@ -1,0 +1,1 @@
+ALTER TABLE "meetings" ADD COLUMN "thumbnail_url" text;

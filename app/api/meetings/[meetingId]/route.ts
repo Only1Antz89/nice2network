@@ -18,6 +18,10 @@ const updateSchema = z.object({
   visibility: z.enum(["public", "project", "private"]),
   projectId: z.uuid().nullable().optional(),
   location: z.string().max(300).optional(),
+  thumbnailUrl: z.union([
+    z.string().max(2_100_000).regex(/^data:image\/(?:jpeg|png|webp);base64,/),
+    z.null(),
+  ]).optional(),
   attendeeIds: z.array(z.uuid()).max(100).default([]),
   attendeeRoles: z.record(z.uuid(), z.enum(["cohost", "speaker", "listener"])).default({}),
   reminderMinutes: z.number().int().min(0).max(10080).default(30),
@@ -92,6 +96,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ me
         visibility: input.visibility,
         projectId: input.projectId ?? null,
         location: input.mode === "in_person" ? input.location : null,
+        thumbnailUrl: input.thumbnailUrl ?? null,
         joinUrl: input.mode === "in_person" ? null : `/meet/${meetingId}`,
         attendees: selectedMembers.map(person => ({ email: person.email, name: person.name ?? undefined })),
         reminderMinutes: input.reminderMinutes,
