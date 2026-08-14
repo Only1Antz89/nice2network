@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
@@ -49,15 +49,23 @@ export async function GET() {
     const visibility = projectIds.length
       ? or(eq(meetings.createdBy, member.id), eq(meetings.visibility, "public"), invited, and(eq(meetings.visibility, "project"), inArray(meetings.projectId, projectIds)))
       : or(eq(meetings.createdBy, member.id), eq(meetings.visibility, "public"), invited);
-    const rows = await db.select({
+    const selection = {
       meeting: meetings,
       isPinned: sql<boolean>`coalesce(${savedItems.pinned},false)`,
       isBookmarked: sql<boolean>`coalesce(${savedItems.bookmarked},false)`,
-    }).from(meetings)
+    } as const;
+    const now = new Date();
+    const upcomingRows = await db.select(selection).from(meetings)
       .leftJoin(savedItems, and(eq(savedItems.entityType, "meeting"), eq(savedItems.entityId, meetings.id), eq(savedItems.userId, member.id)))
-      .where(and(gte(meetings.endsAt, new Date(Date.now() - 86400000)), visibility))
+      .where(and(gte(meetings.endsAt, now), visibility))
       .orderBy(meetings.startsAt)
       .limit(100);
+    const pastRows = await db.select(selection).from(meetings)
+      .leftJoin(savedItems, and(eq(savedItems.entityType, "meeting"), eq(savedItems.entityId, meetings.id), eq(savedItems.userId, member.id)))
+      .where(and(lt(meetings.endsAt, now), visibility))
+      .orderBy(desc(meetings.endsAt))
+      .limit(50);
+    const rows = [...upcomingRows, ...pastRows];
 
     const meetingIds = rows.map(row => row.meeting.id);
     const people = meetingIds.length ? await db.select({

@@ -7035,6 +7035,7 @@ type MeetingRecord = {
   projectId?: string | null;
   startsAt: string;
   endsAt: string;
+  endedAt?: string | null;
   timezone: string;
   joinUrl?: string | null;
   location?: string | null;
@@ -7209,6 +7210,7 @@ function MeetView() {
     [meetStep, setMeetStep] = useState<1 | 2>(1),
     [meetLocation, setMeetLocation] = useState(""),
     [meetThumbnail, setMeetThumbnail] = useState<string | null>(null);
+  const [showAllPastMeets, setShowAllPastMeets] = useState(false);
   async function load() {
     const response = await fetch("/api/calendar/events");
     const data = response.ok ? await response.json() : { meetings: [] };
@@ -7405,7 +7407,9 @@ function MeetView() {
   const eventDays = [
       ...new Set(meets.map((meet) => new Date(meet.startsAt).getDate())),
     ],
-    today = new Date();
+    today = new Date(),
+    upcomingMeets = clockNow ? meets.filter(meet => !meet.endedAt && new Date(meet.endsAt).getTime() >= clockNow) : meets,
+    pastMeets = clockNow ? meets.filter(meet => Boolean(meet.endedAt) || new Date(meet.endsAt).getTime() < clockNow) : [];
   return (
     <div className="subpage">
       <div className="subpage-head">
@@ -7487,10 +7491,10 @@ function MeetView() {
       )}
       <div className="section-title">
         <h3>Upcoming</h3>
-        <span>{meets.length} meets</span>
+        <span>{upcomingMeets.length} meets</span>
       </div>
-      {meets.length ? (
-        meets.map((meet) => {
+      {upcomingMeets.length ? (
+        upcomingMeets.map((meet) => {
           const start = new Date(meet.startsAt),
             minutes = Math.round(
               (new Date(meet.endsAt).getTime() - start.getTime()) / 60000,
@@ -7545,6 +7549,29 @@ function MeetView() {
           <p>Add a small room or keep the day clear.</p>
         </div>
       )}
+      {pastMeets.length > 0 && <>
+        <div className="section-title meet-history-title">
+          <h3>Past meets</h3>
+          {pastMeets.length > 5 ? <button onClick={() => setShowAllPastMeets(value => !value)}>{showAllPastMeets ? "Show recent" : `View all ${pastMeets.length}`}</button> : <span>{pastMeets.length} meets</span>}
+        </div>
+        <div className="meet-history-list">
+          {pastMeets.slice(0, showAllPastMeets ? pastMeets.length : 5).map(meet => {
+            const start = new Date(meet.startsAt);
+            return <div className="meet-card meet-card-past" key={meet.id}>
+              <div className="meet-time"><strong>{start.toLocaleDateString(undefined, { day: "numeric", month: "short" })}</strong><span>{start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
+              <div>
+                <div className="meet-card-meta">
+                  <span className={`tag ${meet.provider === "in_person" ? "dark" : ""}`}>{meet.mode === "audio" ? <Mic size={11}/> : meet.provider === "in_person" ? <MapPin size={11}/> : <Video size={11}/>} {meet.mode === "audio" ? "PODCAST" : meet.provider === "in_person" ? "IN PERSON" : "VIDEO"}</span>
+                  <span className="meet-history-status">ENDED</span>
+                </div>
+                <button className="meet-title-button" onClick={() => setDetail(meet)}>{meet.title}</button>
+                <p>{meet.description || meet.location || "Open meeting details"}</p>
+              </div>
+              <button className="meet-history-detail" onClick={() => setDetail(meet)}>Details</button>
+            </div>;
+          })}
+        </div>
+      </>}
       {(create || editing) && (
         <div className="modal-backdrop">
           <form ref={meetFormRef} className="meet-modal meet-creation-flow" onSubmit={addMeet}>
