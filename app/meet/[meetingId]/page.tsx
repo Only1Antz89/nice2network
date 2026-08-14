@@ -12,7 +12,8 @@ type RemoteParticipant = { id: string; stream?: MediaStream; person: Person; cam
 type VideoParticipant = RemoteParticipant & { local?: boolean };
 type Meeting = { id: string; title: string; mode: "video" | "audio" | "in_person"; visibility: "public" | "project" | "private"; maxParticipants: number };
 type DeviceChoice = { deviceId: string; label: string };
-type ChatMessage = { id: string; body: string; createdAt: string; author: Person };
+type ChatMessage = { id: string; body: string; createdAt: string; author: Person; kind?: "message" | "question" };
+type ConnectionStatus = "awaiting" | "connecting" | "connected" | "disconnected";
 
 const fallbackAvatar = "/brand/nice-2-network-mark.svg";
 const STAGE_ROLES: PodcastRole[] = ["host", "cohost", "speaker", "audience_speaker"];
@@ -43,10 +44,17 @@ export default function N2MeetRoom() {
   const [canModerate, setCanModerate] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
+  const [unreadChat, setUnreadChat] = useState(0);
+  const [invitedPeople, setInvitedPeople] = useState<Person[]>([]);
+  const [connectionStates, setConnectionStates] = useState<Record<string, ConnectionStatus>>({});
+  const [participantPanelOpen, setParticipantPanelOpen] = useState(false);
+  const [profilePreview, setProfilePreview] = useState<Person | null>(null);
   const [activeSpeaker, setActiveSpeaker] = useState<string | null>(null);
   const [manualFocusId, setManualFocusId] = useState<string | null>(null);
   const [callDuration, setCallDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const chatOpenRef = useRef(false);
+  const messageIdsRef = useRef(new Set<string>());
 
   if (!lastPoll.current && typeof window !== "undefined") lastPoll.current = Date.now() - 5000;
   const participantCount = 1 + remote.length;
@@ -63,6 +71,30 @@ export default function N2MeetRoom() {
   const focusId = manualFocusId && videoParticipants.some(person => person.id === manualFocusId) ? manualFocusId : automaticFocusId;
   const focusedParticipant = videoParticipants.find(person => person.id === focusId) ?? videoParticipants[0];
   const thumbnailParticipants = videoParticipants.filter(person => person.id !== focusedParticipant?.id).sort((a, b) => Number(Boolean(a.local)) - Number(Boolean(b.local)));
+  const roomPeople = useMemo(() => {
+    const known = new Map<string, Person>();
+    for (const person of invitedPeople) known.set(person.id, person);
+    for (const person of podcastPeople) known.set(person.id, { ...known.get(person.id), ...person });
+    for (const person of remote) known.set(person.id, { ...known.get(person.id), ...person.person });
+    if (me) known.set(me.id, { ...known.get(me.id), ...me, role: currentRole });
+    return [...known.values()];
+  }, [currentRole, invitedPeople, me, podcastPeople, remote]);
+
+  const applyMessages = useCallback((next: ChatMessage[]) => {
+    const ids = messageIdsRef.current;
+    const newlyArrived = next.filter(message => !ids.has(message.id));
+    next.forEach(message => ids.add(message.id));
+    if (!chatOpenRef.current && ids.size > newlyArrived.length) {
+      const incoming = newlyArrived.filter(message => message.author.id !== me?.id).length;
+      if (incoming) setUnreadChat(count => count + incoming);
+    }
+    setMessages(next);
+  }, [me?.id]);
+
+  useEffect(() => {
+    chatOpenRef.current = chatOpen;
+    if (chatOpen) setUnreadChat(0);
+  }, [chatOpen]);
 
   const signal = useCallback(async (type: Signal["type"], payload: Record<string, unknown> = {}, recipientId?: string) => {
     const response = await fetch(`/api/meetings/${meetingId}/signals`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type, payload, recipientId }) });
@@ -93,7 +125,12 @@ export default function N2MeetRoom() {
     localStream.current?.getTracks().forEach(track => pc!.addTrack(track, localStream.current!));
     pc.onicecandidate = event => event.candidate && signal("ice", { candidate: event.candidate.toJSON() }, id).catch(() => undefined);
     pc.ontrack = event => upsertRemote(id, { stream: event.streams[0], person });
-    pc.onconnectionstatechange = () => { if (["closed", "failed", "disconnected"].includes(pc!.connectionState)) setRemote(rows => rows.filter(row => row.id !== id)); };
+    pc.onconnectionstatechange = () => {
+      const state = pc!.connectionState;
+      const status: ConnectionStatus = state === "connected" ? "connected" : ["new", "checking"].includes(state) ? "connecting" : ["closed", "failed", "disconnected"].includes(state) ? "disconnected" : "connecting";
+      setConnectionStates(current => ({ ...current, [id]: status }));
+      if (status === "disconnected") setRemote(rows => rows.filter(row => row.id !== id));
+    };
     peers.current.set(id, pc);
     return pc;
   }
@@ -105,6 +142,7 @@ export default function N2MeetRoom() {
       return;
     }
     upsertRemote(item.senderId, { person: item.sender, cameraOn: typeof item.payload.cameraOn === "boolean" ? item.payload.cameraOn : undefined, audioOn: typeof item.payload.audioOn === "boolean" ? item.payload.audioOn : undefined });
+    setConnectionStates(current => ({ ...current, [item.senderId]: item.type === "leave" ? "disconnected" : item.type === "join" ? "connecting" : "connected" }));
     if (item.type === "media" || item.type === "heartbeat") return;
     const pc = peer(item.senderId, item.sender);
     if (item.type === "join") { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await signal("offer", { sdp: offer, cameraOn: !cameraOff, audioOn: !muted }, item.senderId); }
@@ -146,7 +184,12 @@ export default function N2MeetRoom() {
         const currentMeeting = data.meeting as Meeting;
         if (currentMeeting.mode === "in_person") throw new Error("This is an in-person meet. Open its details for the location.");
         const role = (data.currentRole ?? "listener") as PodcastRole;
-        setMeeting(currentMeeting); setMe(data.currentMember as Person); setCurrentRole(role);
+        const participants = (data.participants ?? []) as Person[];
+        const creator = data.creator as Person | undefined;
+        const people = creator && !participants.some(person => person.id === creator.id)
+          ? [{ ...creator, role: "host" as PodcastRole }, ...participants]
+          : participants.map(person => person.id === creator?.id ? { ...person, role: "host" as PodcastRole } : person);
+        setMeeting(currentMeeting); setMe(data.currentMember as Person); setCurrentRole(role); setInvitedPeople(people);
         if (currentMeeting.mode === "audio") await loadPodcast();
         const wantsVideo = currentMeeting.mode === "video";
         const wantsAudio = currentMeeting.mode === "video" || STAGE_ROLES.includes(role);
@@ -170,7 +213,7 @@ export default function N2MeetRoom() {
         }, 1300);
         if (currentMeeting.mode === "audio") {
           podcastTimer = setInterval(loadPodcast, 2500);
-          const loadChat = async () => { const response = await fetch(`/api/meetings/${meetingId}/chat`); if (response.ok) setMessages((await response.json()).messages ?? []); };
+          const loadChat = async () => { const response = await fetch(`/api/meetings/${meetingId}/chat`); if (response.ok) applyMessages((await response.json()).messages ?? []); };
           await loadChat(); chatTimer = setInterval(loadChat, 1800);
         }
       } catch (cause) { setError(cause instanceof Error ? cause.message : "Microphone access is required"); }
@@ -236,8 +279,9 @@ export default function N2MeetRoom() {
 
   async function sendChat(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = event.currentTarget; const field = form.elements.namedItem("message") as HTMLInputElement; const body = field.value.trim(); if (!body) return;
-    const response = await fetch(`/api/meetings/${meetingId}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body }) });
-    if (response.ok) { field.value = ""; const chat = await fetch(`/api/meetings/${meetingId}/chat`); if (chat.ok) setMessages((await chat.json()).messages ?? []); }
+    const kind = body.endsWith("?") ? "question" : "message";
+    const response = await fetch(`/api/meetings/${meetingId}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body, kind }) });
+    if (response.ok) { field.value = ""; const chat = await fetch(`/api/meetings/${meetingId}/chat`); if (chat.ok) applyMessages((await chat.json()).messages ?? []); }
   }
 
   function leave() { signal("leave", {}).catch(() => undefined); window.location.href = "/?view=meet"; }
@@ -254,10 +298,13 @@ export default function N2MeetRoom() {
   };
   const VisibilityIcon = meeting?.visibility === "public" ? Globe2 : meeting?.visibility === "project" ? Users : Lock;
 
-  if (isPodcast) return <><PodcastRoom meeting={meeting} me={me} localMedia={localMedia} remote={remote} people={podcastPeople} currentRole={currentRole} canModerate={canModerate} muted={muted} participantCount={participantCount} messages={messages} chatOpen={chatOpen} activeSpeaker={activeSpeaker} setActiveSpeaker={setActiveSpeaker} setChatOpen={setChatOpen} toggleMute={() => toggle("audio")} stageAction={stageAction} sendChat={sendChat} leave={leave} openSettings={() => setShowSettings(true)} error={error}/>{showSettings && <DeviceSettings devices={devices} microphoneId={microphoneId} cameraId={cameraId} speakerId={speakerId} video={false} onClose={() => setShowSettings(false)} onInput={switchInput} onSpeaker={setSpeakerId}/>}</>;
+  if (isPodcast) return <>
+    <PodcastRoom meeting={meeting} me={me} localMedia={localMedia} remote={remote} people={roomPeople} currentRole={currentRole} canModerate={canModerate} muted={muted} participantCount={participantCount} messages={messages} chatOpen={chatOpen} unreadChat={unreadChat} connectionStates={connectionStates} activeSpeaker={activeSpeaker} setActiveSpeaker={setActiveSpeaker} setChatOpen={setChatOpen} toggleMute={() => toggle("audio")} stageAction={stageAction} sendChat={sendChat} leave={leave} openSettings={() => setShowSettings(true)} onProfile={setProfilePreview} error={error}/>
+    {showSettings && <DeviceSettings devices={devices} microphoneId={microphoneId} cameraId={cameraId} speakerId={speakerId} video={false} onClose={() => setShowSettings(false)} onInput={switchInput} onSpeaker={setSpeakerId}/>}
+    {profilePreview && <MeetProfilePreview person={profilePreview} onClose={() => setProfilePreview(null)}/>}</>;
 
   return <main className="video-room" ref={roomRef}>
-    <header className="room-header"><a href="/" className="room-brand"><span>n2</span><b>nice 2 network</b></a><div className="room-heading"><strong>{meeting?.title ?? "n2 meet"}</strong><small><VisibilityIcon size={13}/>Video meet <i aria-hidden="true"/> <time>{formatDuration(callDuration)}</time></small></div><div className="room-count" aria-label={`${participantCount} of ${meeting?.maxParticipants ?? 8} participants`}><Users size={18}/><strong>{participantCount}</strong><span>/ {meeting?.maxParticipants ?? 8}</span></div></header>
+    <header className="room-header"><a href="/" className="room-brand"><span>n2</span><b>nice 2 network</b></a><div className="room-heading"><strong>{meeting?.title ?? "n2 meet"}</strong><small><VisibilityIcon size={13}/>Video meet <i aria-hidden="true"/> <time>{formatDuration(callDuration)}</time></small></div><button className="room-count room-count-button" aria-label={`Show ${participantCount} of ${meeting?.maxParticipants ?? 8} participants`} onClick={() => setParticipantPanelOpen(true)}><Users size={18}/><strong>{participantCount}</strong><span>/ {meeting?.maxParticipants ?? 8}</span></button></header>
     {error ? <section className="video-room-error"><VideoOff size={28}/><h1>Could not join this room</h1><p>{error}</p><button onClick={() => history.back()}>Go back</button></section> : <section className="video-stage-shell">
       <div className="video-stage">
         {focusedParticipant && <ParticipantTile person={focusedParticipant.person} stream={focusedParticipant.stream} cameraOn={focusedParticipant.cameraOn} muted={!focusedParticipant.audioOn} local={focusedParticipant.local} videoRef={focusedParticipant.local ? localVideo : undefined} outputDeviceId={speakerId} active={activeSpeaker === focusedParticipant.id} onSpeaking={speaking => setActiveSpeaker(current => speaking ? focusedParticipant.id : current === focusedParticipant.id ? null : current)}/>}
@@ -268,36 +315,54 @@ export default function N2MeetRoom() {
       <footer className="room-controls" aria-label="Call controls"><button aria-label={muted ? "Unmute microphone" : "Mute microphone"} className={muted ? "off" : ""} onClick={() => toggle("audio")}>{muted ? <MicOff/> : <Mic/>}</button><button aria-label={cameraOff ? "Turn camera on" : "Turn camera off"} className={cameraOff ? "off" : ""} onClick={() => toggle("video")}>{cameraOff ? <VideoOff/> : <Video/>}</button><button aria-label="Device settings" onClick={() => setShowSettings(true)}><Settings2/></button><button aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"} onClick={toggleFullscreen}>{isFullscreen ? <Minimize2/> : <Maximize2/>}</button><button aria-label="Leave call" className="hangup" onClick={leave}><PhoneOff/></button></footer>
     </section>}
     {showSettings && <DeviceSettings devices={devices} microphoneId={microphoneId} cameraId={cameraId} speakerId={speakerId} video onClose={() => setShowSettings(false)} onInput={switchInput} onSpeaker={setSpeakerId}/>}
+    {participantPanelOpen && <ParticipantPanel people={roomPeople} currentUserId={me?.id} connectedIds={new Set(remote.map(person => person.id).concat(me?.id ? [me.id] : []))} connectionStates={connectionStates} onClose={() => setParticipantPanelOpen(false)} onProfile={person => { setParticipantPanelOpen(false); setProfilePreview(person); }}/>}
+    {profilePreview && <MeetProfilePreview person={profilePreview} onClose={() => setProfilePreview(null)}/>}
   </main>;
 }
 
-function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, canModerate, muted, participantCount, messages, chatOpen, activeSpeaker, setActiveSpeaker, setChatOpen, toggleMute, stageAction, sendChat, leave, openSettings, error }: {
-  meeting: Meeting | null; me: Person | null; localMedia?: MediaStream; remote: RemoteParticipant[]; people: Person[]; currentRole: PodcastRole; canModerate: boolean; muted: boolean; participantCount: number; messages: ChatMessage[]; chatOpen: boolean; activeSpeaker: string | null; setActiveSpeaker: (id: string | null) => void; setChatOpen: (open: boolean) => void; toggleMute: () => void; stageAction: (action: "request_speak" | "cancel_request" | "approve" | "dismiss" | "mute", userId?: string) => void; sendChat: (event: FormEvent<HTMLFormElement>) => void; leave: () => void; openSettings: () => void; error: string;
+function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, canModerate, muted, participantCount, messages, chatOpen, unreadChat, connectionStates, activeSpeaker, setActiveSpeaker, setChatOpen, toggleMute, stageAction, sendChat, leave, openSettings, onProfile, error }: {
+  meeting: Meeting | null; me: Person | null; localMedia?: MediaStream; remote: RemoteParticipant[]; people: Person[]; currentRole: PodcastRole; canModerate: boolean; muted: boolean; participantCount: number; messages: ChatMessage[]; chatOpen: boolean; unreadChat: number; connectionStates: Record<string, ConnectionStatus>; activeSpeaker: string | null; setActiveSpeaker: (id: string | null) => void; setChatOpen: (open: boolean) => void; toggleMute: () => void; stageAction: (action: "request_speak" | "cancel_request" | "approve" | "dismiss" | "mute", userId?: string) => void; sendChat: (event: FormEvent<HTMLFormElement>) => void; leave: () => void; openSettings: () => void; onProfile: (person: Person) => void; error: string;
 }) {
+  const [participantPanelOpen, setParticipantPanelOpen] = useState(false);
   const remoteById = new Map(remote.map(person => [person.id, person]));
-  const stage = people.filter(person => person.role && STAGE_ROLES.includes(person.role));
+  const hosts = people.filter(person => person.role === "host");
+  const cohosts = people.filter(person => person.role === "cohost");
+  const guests = people.filter(person => person.role === "speaker");
+  const audienceSpeakers = people.filter(person => person.role === "audience_speaker");
+  const stage = [...hosts, ...cohosts, ...guests, ...audienceSpeakers];
   const requests = people.filter(person => person.speakerStatus === "requested");
   const self = people.find(person => person.id === me?.id) ?? (me ? { ...me, role: currentRole } : null);
   const isListener = currentRole === "listener";
   const requested = self?.speakerStatus === "requested";
+  const connectedIds = new Set(remote.map(person => person.id).concat(me?.id ? [me.id] : []));
+  const connectionStatus = (person: Person): ConnectionStatus => {
+    if (person.id === me?.id) return "connected";
+    if (connectionStates[person.id]) return connectionStates[person.id];
+    if (remoteById.has(person.id)) return "connected";
+    return person.status === "left" ? "disconnected" : "awaiting";
+  };
+  const card = (person: Person) => {
+    const connection = person.id === me?.id ? { stream: localMedia, audioOn: !muted } : remoteById.get(person.id);
+    return <PodcastCard key={person.id} person={person} stream={connection?.stream} status={connectionStatus(person)} muted={person.id === me?.id ? muted : !connection?.audioOn} active={activeSpeaker === person.id} onSpeaking={speaking => setActiveSpeaker(speaking ? person.id : activeSpeaker === person.id ? null : activeSpeaker)} canModerate={canModerate && person.id !== me?.id && person.role !== "host"} onDismiss={() => stageAction("dismiss", person.id)} onMute={() => stageAction("mute", person.id)} onProfile={() => onProfile(person)}/>;
+  };
   return <main className={`podcast-room ${chatOpen ? "chat-open" : ""}`}>
     <header className="podcast-header">
       <a href="/" className="room-brand"><span>n2</span><b>nice 2 network</b></a>
-      <div className="room-heading"><strong>{meeting?.title ?? "n2 podcast"}</strong><small>{meeting?.visibility === "public" ? <Globe2 size={13}/> : meeting?.visibility === "private" ? <Lock size={13}/> : <Users size={13}/>} {meeting?.visibility} podcast</small></div>
-      <div className="room-count"><Headphones size={17}/><strong>{participantCount}</strong><span>/{meeting?.maxParticipants ?? 16}</span></div>
+      <div className="podcast-header-mark" aria-label={`${meeting?.visibility ?? "private"} podcast`}><Podcast size={20}/><span>{meeting?.visibility} podcast</span></div>
+      <button className="room-count room-count-button" aria-label="Show everyone in this podcast" onClick={() => setParticipantPanelOpen(true)}><Headphones size={17}/><strong>{participantCount}</strong><span>/{meeting?.maxParticipants ?? 16}</span></button>
     </header>
     <div className="podcast-layout">
       <section className="podcast-main">
         {error && <p className="podcast-error">{error}</p>}
-        <div className="podcast-intro"><span>LIVE PODCAST</span><h1>{meeting?.title}</h1><p>{isListener ? "You’re listening. Request the microphone when you want to contribute." : currentRole === "host" ? "You’re hosting this room." : currentRole === "cohost" ? "You can manage the stage with the host." : "You’re live on the stage."}</p></div>
-        <div className="podcast-stage">
-          {stage.map(person => {
-            const connection = person.id === me?.id ? { stream: undefined, audioOn: !muted } : remoteById.get(person.id);
-            return <PodcastCard key={person.id} person={person} stream={person.id === me?.id ? localMedia : connection?.stream} muted={person.id === me?.id ? muted : !connection?.audioOn} active={activeSpeaker === person.id} onSpeaking={speaking => setActiveSpeaker(speaking ? person.id : activeSpeaker === person.id ? null : activeSpeaker)} canModerate={canModerate && person.id !== me?.id && person.role !== "host"} onDismiss={() => stageAction("dismiss", person.id)} onMute={() => stageAction("mute", person.id)}/>;
-          })}
-        </div>
-        {canModerate && requests.length > 0 && <section className="speaker-requests"><header><span>REQUESTS TO SPEAK</span><strong>{requests.length}</strong></header>{requests.map(person => <div key={person.id}><img src={person.image || fallbackAvatar} alt=""/><span><b>{person.name}</b><small>{person.profession || "n2 member"}</small></span><button onClick={() => stageAction("dismiss", person.id)}><X size={15}/></button><button className="approve" onClick={() => stageAction("approve", person.id)}><UserRoundCheck size={15}/>Bring up</button></div>)}</section>}
-        <section className="audience-status"><Headphones/><div><b>{Math.max(0, participantCount - stage.filter(person => remoteById.has(person.id) || person.id === me?.id).length)} listening</b><span>Listeners remain off stage until a host invites them to speak.</span></div></section>
+        <div className="podcast-canopy" aria-label={meeting?.title}><span>LIVE PODCAST</span><h1>{meeting?.title ?? "n2 podcast"}</h1><i/><i/><i/><Podcast/></div>
+        <section className="podcast-table-stage" aria-label="Podcast stage">
+          <div className="podcast-host-row">{hosts.map(card)}</div>
+          <div className="podcast-table-middle"><div className="podcast-cohost-side left">{cohosts.filter((_, index) => index % 2 === 0).map(card)}</div><div className="podcast-table-surface"><span className="n2-table-mark">n2</span><small>{isListener ? "Listening" : currentRole === "host" ? "Hosting" : "On stage"}</small></div><div className="podcast-cohost-side right">{cohosts.filter((_, index) => index % 2 === 1).map(card)}</div></div>
+          <div className="podcast-guest-row">{guests.map(card)}</div>
+        </section>
+        {audienceSpeakers.length > 0 && <section className="audience-speakers"><header><span>AUDIENCE CONTRIBUTORS</span><small>Temporarily on stage</small></header><div>{audienceSpeakers.map(card)}</div></section>}
+        {canModerate && requests.length > 0 && <section className="speaker-requests"><header><span>QUESTIONS & REQUESTS TO SPEAK</span><strong>{requests.length}</strong></header>{requests.map(person => <div key={person.id}><img src={person.image || fallbackAvatar} alt=""/><span><b>{person.name}</b><small>{person.profession || "n2 member"}</small></span><button onClick={() => stageAction("dismiss", person.id)}><X size={15}/></button><button className="approve" onClick={() => stageAction("approve", person.id)}><UserRoundCheck size={15}/>Bring up</button></div>)}</section>}
+        <section className="audience-status"><Headphones/><div><b>{Math.max(0, participantCount - stage.filter(person => connectedIds.has(person.id)).length)} listening</b><span>Listeners stay off the table until a host brings them in to speak.</span></div></section>
       </section>
       <PodcastChat messages={messages} me={me} onSubmit={sendChat} onClose={() => setChatOpen(false)}/>
     </div>
@@ -305,24 +370,38 @@ function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, can
       {!isListener && <button className={muted ? "off" : ""} onClick={toggleMute}>{muted ? <MicOff/> : <Mic/>}<span>{muted ? "Unmute" : "Mute"}</span></button>}
       {isListener && <button className={`request-mic ${requested ? "requested" : ""}`} onClick={() => stageAction(requested ? "cancel_request" : "request_speak")}>{requested ? <X/> : <Podcast/>}<span>{requested ? "Cancel request" : "Request to speak"}</span></button>}
       {!isListener && <button onClick={openSettings}><Settings2/><span>Devices</span></button>}
-      <button onClick={() => setChatOpen(!chatOpen)}><MessageCircle/><span>Chat</span></button>
+      <button className="chat-toggle" onClick={() => setChatOpen(!chatOpen)}><MessageCircle/><span>Chat</span>{!chatOpen && unreadChat > 0 && <b>{unreadChat > 99 ? "99+" : unreadChat}</b>}</button>
       <button className="hangup" onClick={leave}><PhoneOff/><span>Leave</span></button>
     </footer>
+    {participantPanelOpen && <ParticipantPanel people={people} currentUserId={me?.id} connectedIds={connectedIds} connectionStates={connectionStates} onClose={() => setParticipantPanelOpen(false)} onProfile={person => { setParticipantPanelOpen(false); onProfile(person); }}/>}
   </main>;
 }
 
-function PodcastCard({ person, stream, muted, active, onSpeaking, canModerate, onDismiss, onMute }: { person: Person; stream?: MediaStream; muted: boolean; active: boolean; onSpeaking: (speaking: boolean) => void; canModerate: boolean; onDismiss: () => void; onMute: () => void }) {
-  useSpeaking(stream, !muted, onSpeaking);
+function PodcastCard({ person, stream, status, muted, active, onSpeaking, canModerate, onDismiss, onMute, onProfile }: { person: Person; stream?: MediaStream; status: ConnectionStatus; muted: boolean; active: boolean; onSpeaking: (speaking: boolean) => void; canModerate: boolean; onDismiss: () => void; onMute: () => void; onProfile: () => void }) {
+  useSpeaking(stream, status === "connected" && !muted, onSpeaking);
   const label = person.role === "host" ? "HOST" : person.role === "cohost" ? "CO-HOST" : person.role === "audience_speaker" ? "AUDIENCE SPEAKER" : "GUEST SPEAKER";
-  return <article className={`podcast-card role-${person.role} ${active ? "speaking" : ""}`}>
-    <div className="podcast-avatar-wrap"><img src={person.image || fallbackAvatar} alt=""/></div>
-    <div className="podcast-identity"><span><b>{person.name ?? "n2 member"}</b><small>{person.profession || "n2 member"}</small></span><em>{label}</em><div className={`podcast-mic ${muted ? "muted" : ""}`}>{muted ? <MicOff/> : <Podcast/>}</div></div>
-    {canModerate && <div className="podcast-member-actions"><button onClick={onMute}><MicOff size={14}/>Mute</button><button onClick={onDismiss}><UserMinus size={14}/>Dismiss</button></div>}
+  const statusLabel = status === "awaiting" ? "Awaiting to join" : status === "connecting" ? "Connecting" : status === "disconnected" ? "Disconnected" : "";
+  return <article className={`podcast-card role-${person.role} status-${status} ${active ? "speaking" : ""}`}>
+    <button className="podcast-avatar-wrap" onClick={onProfile} aria-label={`View ${person.name ?? "member"} profile`}>{status === "connected" ? <img src={person.image || fallbackAvatar} alt=""/> : <span>{statusLabel}</span>}</button>
+    <button className="podcast-identity" onClick={onProfile}><span><b>{person.name ?? "n2 member"}</b><small>{person.profession || person.professionalHeadline || "n2 member"}</small></span><em>{label}</em><div className={`podcast-mic ${muted ? "muted" : ""}`}>{muted ? <MicOff/> : <Podcast/>}</div></button>
+    {canModerate && status === "connected" && <div className="podcast-member-actions"><button onClick={onMute}><MicOff size={14}/>Mute</button><button onClick={onDismiss}><UserMinus size={14}/>Dismiss</button></div>}
   </article>;
 }
 
 function PodcastChat({ messages, me, onSubmit, onClose }: { messages: ChatMessage[]; me: Person | null; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onClose: () => void }) {
-  return <aside className="podcast-chat"><header><div><span>ROOM CHAT</span><b>Live conversation</b></div><button onClick={onClose}><X/></button></header><div className="podcast-chat-feed">{messages.length ? messages.map(message => <article className={message.author.id === me?.id ? "mine" : ""} key={message.id}><img src={message.author.image || fallbackAvatar} alt=""/><div><strong>{message.author.name ?? "n2 member"}</strong><p>{message.body}</p><time>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div></article>) : <div className="chat-empty"><MessageCircle/><b>Start the room chat</b><span>Listeners and speakers share one conversation.</span></div>}</div><form onSubmit={onSubmit}><input name="message" maxLength={1200} placeholder="Say something useful…"/><button aria-label="Send"><Send/></button></form></aside>;
+  const [draft, setDraft] = useState("");
+  const isQuestion = draft.trim().endsWith("?");
+  return <aside className="podcast-chat"><header><div><span>ROOM CHAT</span><b>Live conversation</b></div><button onClick={onClose}><X/></button></header><div className="podcast-chat-feed">{messages.length ? messages.map(message => <article className={`${message.author.id === me?.id ? "mine" : ""} ${message.kind === "question" ? "question" : ""}`} key={message.id}><img src={message.author.image || fallbackAvatar} alt=""/><div><strong>{message.author.name ?? "n2 member"}{message.kind === "question" && <em>Question</em>}</strong><p>{message.body}</p><time>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div></article>) : <div className="chat-empty"><MessageCircle/><b>Start the room chat</b><span>Listeners and speakers share one conversation.</span></div>}</div><form onSubmit={event => { onSubmit(event); setDraft(""); }}><input name="message" value={draft} onChange={event => setDraft(event.target.value)} maxLength={1200} placeholder="Say something useful…"/><button className={isQuestion ? "question-send" : ""} aria-label={isQuestion ? "Send question to the hosts" : "Send to room"}>{isQuestion ? <b>?</b> : <Send/>}</button></form></aside>;
+}
+
+function ParticipantPanel({ people, currentUserId, connectedIds, connectionStates, onClose, onProfile }: { people: Person[]; currentUserId?: string; connectedIds: Set<string>; connectionStates: Record<string, ConnectionStatus>; onClose: () => void; onProfile: (person: Person) => void }) {
+  const unique = [...new Map(people.map(person => [person.id, person])).values()];
+  const statusFor = (person: Person): ConnectionStatus => person.id === currentUserId || connectedIds.has(person.id) ? (connectionStates[person.id] ?? "connected") : connectionStates[person.id] ?? (person.status === "left" ? "disconnected" : "awaiting");
+  return <div className="meet-panel-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}><aside className="meeting-participant-panel"><header><div><span>IN THIS ROOM</span><h2>{unique.length} people</h2></div><button onClick={onClose}><X/></button></header><div>{unique.map(person => { const status = statusFor(person); return <button key={person.id} onClick={() => onProfile(person)}><span className={`panel-avatar status-${status}`}>{status === "connected" ? <img src={person.image || fallbackAvatar} alt=""/> : <small>{status === "awaiting" ? "Awaiting to join" : status === "connecting" ? "Connecting" : "Disconnected"}</small>}</span><span><strong>{person.name ?? "n2 member"}{person.id === currentUserId ? " (you)" : ""}</strong><small>{person.role ? person.role.replace("_", " ") : person.profession || "participant"}</small></span><em className={`status-dot ${status}`}>{status === "connected" ? "Connected" : status === "awaiting" ? "Awaiting" : status}</em></button>; })}</div></aside></div>;
+}
+
+function MeetProfilePreview({ person, onClose }: { person: Person; onClose: () => void }) {
+  return <div className="meet-profile-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="meet-profile-preview"><button className="meet-profile-close" onClick={onClose}><X/></button><div className="meet-profile-cover"><span>n2</span></div><img src={person.image || fallbackAvatar} alt=""/><span>n2 PROFILE</span><h2>{person.name ?? "n2 member"}</h2><p>{person.professionalHeadline || person.profession || "n2 member"}</p>{person.city && <small>{person.city}</small>}<a href={`/profile/${person.id}`}>View full profile</a></section></div>;
 }
 
 function useSpeaking(stream: MediaStream | undefined, enabled: boolean, onSpeaking: (speaking: boolean) => void) {
