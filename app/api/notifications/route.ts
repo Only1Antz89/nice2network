@@ -4,10 +4,14 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { notificationPreferences, notifications, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
+import { sendDueMeetingReminders } from "@/lib/meet-reminders";
 
 export async function GET() {
   try {
     const member = await requireMember(), db = getDb();
+    // Vercel Hobby runs scheduled jobs daily. Checking due reminders when an
+    // active member opens notifications keeps short reminders timely.
+    await sendDueMeetingReminders().catch(() => undefined);
     const [items, [unread], [preferences]] = await Promise.all([
       db.select({ id: notifications.id, type: notifications.type, title: notifications.title, body: notifications.body, href: notifications.href, readAt: notifications.readAt, createdAt: notifications.createdAt, actorName: users.name, actorImage: users.image })
         .from(notifications).leftJoin(users, eq(users.id, notifications.actorId)).where(eq(notifications.userId, member.id)).orderBy(desc(notifications.createdAt)).limit(40),
