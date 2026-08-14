@@ -1,5 +1,8 @@
 "use client";
 
+/* PasswordInput renders the nested input; the static label rule cannot follow the component boundary. */
+/* eslint-disable jsx-a11y/label-has-associated-control */
+
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, KeyRound } from "lucide-react";

@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: nice2_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nice2_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/nice2_test
+      AUTH_SECRET: nice2-ci-auth-secret-at-least-32-characters
+      INTEGRATION_ENCRYPTION_KEY: nice2-ci-encryption-key-32-characters
+      SIGNUP_VERIFICATION_MODE: instant
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3100
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.20.0
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+      - run: npx playwright install chromium --with-deps
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v5
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

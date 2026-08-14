@@ -16,10 +16,8 @@ function savedSkinTone(): SkinTones {
 
 export default function EmojiPicker({ onSelect, align = "left" }: { onSelect: (emoji: string) => void; align?: "left" | "right" }) {
   const [open, setOpen] = useState(false);
-  const [skinTone, setSkinTone] = useState<SkinTones>(SkinTones.NEUTRAL);
   const root = useRef<HTMLDivElement>(null);
 
-  useEffect(() => setSkinTone(savedSkinTone()), []);
   useEffect(() => {
     if (!open) return;
     function close(event: PointerEvent) {
@@ -42,7 +40,6 @@ export default function EmojiPicker({ onSelect, align = "left" }: { onSelect: (e
   }
 
   function changeSkinTone(next: SkinTones) {
-    setSkinTone(next);
     window.localStorage.setItem(SKIN_TONE_KEY, next);
   }
 
@@ -52,7 +49,7 @@ export default function EmojiPicker({ onSelect, align = "left" }: { onSelect: (e
       <FullEmojiPicker
         onEmojiClick={choose}
         onSkinToneChange={changeSkinTone}
-        defaultSkinTone={skinTone}
+        defaultSkinTone={savedSkinTone()}
         skinTonePickerLocation={SkinTonePickerLocation.SEARCH}
         emojiStyle={EmojiStyle.NATIVE}
         theme={Theme.LIGHT}

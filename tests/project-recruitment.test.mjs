@@ -32,6 +32,8 @@ test("owners can choose manual profession recruitment or an AI project review", 
   ]) assert.match(page, new RegExp(copy));
   assert.match(page, /fetch\(`\/api\/projects\/\$\{project\.id\}\/roles`/);
   assert.match(page, /fetch\(`\/api\/projects\/\$\{project\.id\}\/blueprint`/);
+  assert.match(page, /import N2OrbitMark from "@\/components\/n2-orbit-mark"/);
+  assert.doesNotMatch(page, /Sparkles/);
   assert.match(blueprint, /requireProjectOwner/);
   assert.match(blueprint, /generateProjectBlueprint/);
 });

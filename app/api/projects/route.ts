@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
-import { getDb } from "@/db";
+import { getDb, isDatabaseConfigured } from "@/db";
 import { adminAssignments, follows, projectFollows, projectMembers, projectRecommendations, projectRoles, projects, recommendationEvents, savedItems, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
@@ -62,6 +62,7 @@ function enforceOwnerDiversity(rows: FeedProject[]) {
 }
 
 export async function GET(request: Request) {
+  if (!isDatabaseConfigured()) return NextResponse.json({ projects: [], nextCursor: null, algorithmMode: "public" });
   try {
     const session=await auth(),member=session?.user,db = getDb(), url = new URL(request.url), scope = url.searchParams.get("scope") ?? "discover", filter = (url.searchParams.get("filter") ?? "for_you").toLowerCase().replaceAll(" ", "_");
     if(scope==="mine"&&!member?.id)throw new ApiError(401,"Sign in required");

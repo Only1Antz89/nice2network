@@ -32,6 +32,16 @@ npm run lint
 npm test
 ```
 
+Authenticated browser smoke testing uses an isolated PostgreSQL container:
+
+```bash
+docker compose -f compose.test.yml up -d --wait
+POSTGRES_URL=postgresql://postgres:postgres@127.0.0.1:55432/nice2_test \
+AUTH_SECRET=nice2-local-e2e-secret-at-least-32-characters \
+SIGNUP_VERIFICATION_MODE=instant npm run test:e2e
+docker compose -f compose.test.yml down
+```
+
 ## Production configuration
 
 1. Link a Neon PostgreSQL resource to the Vercel project and expose its connection string as `POSTGRES_URL`.

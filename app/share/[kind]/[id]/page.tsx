@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSharedContent, previewDescription } from "@/lib/shared-content";
@@ -20,5 +21,5 @@ export async function generateMetadata({params}:{params:Promise<{kind:string;id:
 export default async function SharedContentPage({params}:{params:Promise<{kind:string;id:string}>}){
   const {kind,id}=await params,content=await getSharedContent(kind,id);if(!content)notFound();
   const destination=`/?${content.kind}=${content.id}`;
-  return <main className="shared-content-page"><header><Link href="/" className="shared-logo"><b>n2</b><span>nice 2 network</span></Link><div><Link href="/signin">Sign in</Link><Link href="/signin?mode=register">Join n2</Link></div></header><article style={{"--share-accent":content.accent} as React.CSSProperties}><span className="share-content-kind">{content.kind}</span><h1>{content.kind==="post"?content.description:content.title}</h1>{content.kind==="project"&&<p>{content.description}</p>}{content.image&&<img src={content.image} alt="Shared post attachment"/>}<footer><span><b>{content.authorName}</b><small>{content.authorProfession??"n2 member"}</small></span><Link href={destination}>Open on n2 →</Link></footer></article><section><b>Ideas need good people.</b><p>Discover useful people, practical projects and conversations worth joining.</p><Link href="/signin?mode=register">Join the network</Link></section></main>;
+  return <main className="shared-content-page"><header><Link href="/" className="shared-logo"><b>n2</b><span>nice 2 network</span></Link><div><Link href="/signin">Sign in</Link><Link href="/signin?mode=register">Join n2</Link></div></header><article style={{"--share-accent":content.accent} as React.CSSProperties}><span className="share-content-kind">{content.kind}</span><h1>{content.kind==="post"?content.description:content.title}</h1>{content.kind==="project"&&<p>{content.description}</p>}{content.image&&<Image src={content.image} alt="Shared post attachment" width={1200} height={630} sizes="(max-width: 760px) 100vw, 760px" unoptimized/>}<footer><span><b>{content.authorName}</b><small>{content.authorProfession??"n2 member"}</small></span><Link href={destination}>Open on n2 →</Link></footer></article><section><b>Ideas need good people.</b><p>Discover useful people, practical projects and conversations worth joining.</p><Link href="/signin?mode=register">Join the network</Link></section></main>;
 }

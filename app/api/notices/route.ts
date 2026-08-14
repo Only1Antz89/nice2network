@@ -1,10 +1,11 @@
 import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getDb } from "@/db";
+import { getDb, isDatabaseConfigured } from "@/db";
 import { adminAssignments, officialNotices, users } from "@/db/schema";
 import { apiError } from "@/lib/api";
 
 export async function GET() {
+  if (!isDatabaseConfigured()) return NextResponse.json({ notices: [] });
   try {
     const now = new Date();
     const notices = await getDb().select({

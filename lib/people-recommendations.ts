@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { blocks, follows, memberRecommendations, privacySettings, projectMembers, projectRoles, projects, sanctions, users } from "@/db/schema";
+import { blocks, follows, memberRecommendations, privacySettings, projectMembers, projectRoles, projects, users } from "@/db/schema";
 
 const norm=(value:string|null|undefined)=>(value??"").trim().toLowerCase();
 const words=(values:Array<string|null|undefined>)=>new Set(values.flatMap(value=>norm(value).split(/[^a-z0-9+#.]+/).filter(part=>part.length>1)));

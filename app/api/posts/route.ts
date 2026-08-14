@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getDb } from "@/db";
+import { getDb, isDatabaseConfigured } from "@/db";
 import { adminAssignments, follows, postLikes, postReplies, postReposts, projects, timelinePosts, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
@@ -21,6 +21,7 @@ const postSchema = z.object({
 }).refine(input => !input.attachmentType || Boolean(input.attachmentUrl), "Attachment data is missing");
 
 export async function GET(request: Request) {
+  if (!isDatabaseConfigured()) return NextResponse.json({ posts: [] });
   try {
     const db = getDb(), session = await auth(), viewerId = session?.user?.id, scope = new URL(request.url).searchParams.get("scope") ?? "for_you";
     const followedIds = viewerId ? (await db.select({ id: follows.followingId }).from(follows).where(eq(follows.followerId, viewerId))).map(row=>row.id) : [];

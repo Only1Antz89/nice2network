@@ -22,6 +22,10 @@ providers.push(Credentials({
 }));
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // With no database there are no accounts to authenticate; a fixed preview-only
+  // secret lets the public shell read an empty session without weakening a
+  // configured deployment, where AUTH_SECRET remains mandatory.
+  secret: process.env.AUTH_SECRET ?? (!isDatabaseConfigured() ? "nice-2-network-unconfigured-preview" : undefined),
   trustHost: Boolean(process.env.VERCEL || process.env.AUTH_TRUST_HOST === "true" || process.env.NODE_ENV !== "production"),
   adapter: isDatabaseConfigured() ? DrizzleAdapter(getDb(), { usersTable: users, accountsTable: accounts, sessionsTable: sessions, verificationTokensTable: verificationTokens, authenticatorsTable: authenticators }) : undefined,
   providers,

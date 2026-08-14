@@ -16,13 +16,11 @@ import {
   ChevronDown,
   CircleHelp,
   CircleAlert,
-  Circle,
   Clock3,
   Ellipsis,
   Eye,
   Image as ImageIcon,
   Italic,
-  GraduationCap,
   Globe2,
   Home,
   Lightbulb,
@@ -41,8 +39,6 @@ import {
   Search,
   Send,
   Share2,
-  SmilePlus,
-  Sparkles,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -57,10 +53,11 @@ import {
   Archive,
   X,
 } from "lucide-react";
-import { FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { signIn, signOut } from "next-auth/react";
 import PasswordInput from "@/components/password-input";
 import EmojiPicker from "@/components/emoji-picker";
+import N2OrbitMark from "@/components/n2-orbit-mark";
 import { sanitizeRichText } from "@/lib/rich-text";
 
 type View =
@@ -574,6 +571,8 @@ function FreeChoiceInput({
   return (
     <div className="free-choice">
       <input
+        id={id}
+        role="combobox"
         value={value}
         onFocus={() => setOpen(true)}
         onChange={(event) => {
@@ -622,7 +621,7 @@ function FreeChoiceInput({
   );
 }
 
-function RichTextEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function RichTextEditor({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const selectionRef = useRef<Range | null>(null);
 
@@ -673,11 +672,13 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
         </select>
       </div>
       <div
+        id={id}
         ref={editorRef}
         className="rich-text-editor"
         contentEditable
         suppressContentEditableWarning
         role="textbox"
+        tabIndex={0}
         aria-multiline="true"
         aria-label="Role description"
         data-placeholder="Describe what you did, achieved and contributed."
@@ -707,7 +708,6 @@ function Avatar({
   size?: "sm" | "md" | "lg" | "xl";
   ring?: boolean;
 }) {
-  // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
       className={`avatar avatar-${size} ${ring ? "avatar-ring" : ""}`}
@@ -934,212 +934,6 @@ function InterestButton({
       <Eye size={18} />
       <span>{total} views</span>
     </button>
-  );
-}
-
-function LegacyProjectMenu({
-  project,
-  onChanged,
-  onToast,
-}: {
-  project: ProjectRecord;
-  onChanged?: (project: ProjectRecord | null) => void;
-  onToast?: (message: string) => void;
-}) {
-  const [open, setOpen] = useState(false),
-    [pinned, setPinned] = useState(Boolean(project.isPinned)),
-    [bookmarked, setBookmarked] = useState(Boolean(project.isBookmarked));
-  async function followProject() {
-    const response = await fetch(`/api/projects/${project.id}/follow`, {
-        method: project.isFollowingProject ? "DELETE" : "POST",
-      }),
-      result = await response.json();
-    if (response.ok) {
-      onChanged?.({ ...project, isFollowingProject: result.following });
-      onToast?.(
-        result.following
-          ? "You are following this project."
-          : "You stopped following this project.",
-      );
-    } else onToast?.(result.error ?? "Could not update this project follow.");
-    setOpen(false);
-  }
-  async function getInvolved() {
-    const message = window.prompt(
-      "Tell the project owner how you would like to contribute",
-    );
-    if (!message) return;
-    const services =
-      window
-        .prompt("Skills or services you can offer (comma separated)", "")
-        ?.split(",")
-        .map((value) => value.trim())
-        .filter(Boolean) ?? [];
-    const response = await fetch(`/api/projects/${project.id}/involvement`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message, services }),
-      }),
-      result = await response.json();
-    onToast?.(result.message ?? result.error ?? "Could not send your offer.");
-    setOpen(false);
-  }
-  async function leaveProject() {
-    if (!window.confirm(`Leave ${project.title}?`)) return;
-    const response = await fetch(`/api/projects/${project.id}/leave`, {
-        method: "DELETE",
-      }),
-      result = await response.json();
-    if (response.ok) {
-      onChanged?.({ ...project, isMember: false });
-      onToast?.("You left the project.");
-    } else onToast?.(result.error ?? "Could not leave this project.");
-    setOpen(false);
-  }
-  async function preference(action: "pin" | "bookmark") {
-    const response = await fetch(`/api/projects/${project.id}/preferences`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action }),
-    });
-    const result = await response.json();
-    if (response.ok) {
-      setPinned(result.pinned);
-      setBookmarked(result.bookmarked);
-      onToast?.(
-        action === "pin"
-          ? result.pinned
-            ? "Project pinned."
-            : "Project unpinned."
-          : result.bookmarked
-            ? "Project bookmarked."
-            : "Bookmark removed.",
-      );
-    } else onToast?.(result.error ?? "Could not update this item.");
-    setOpen(false);
-  }
-  async function edit() {
-    const title = window.prompt("Project title", project.title);
-    if (!title) return;
-    const summary = window.prompt("Project summary", project.summary);
-    if (!summary) return;
-    const stage = window
-      .prompt(
-        "Project stage: idea, planning, building or launching",
-        project.stage,
-      )
-      ?.trim()
-      .toLowerCase();
-    if (!stage) return;
-    const allowed = ["idea", "planning", "building", "launching"];
-    if (!allowed.includes(stage)) {
-      onToast?.("Choose idea, planning, building or launching.");
-      return;
-    }
-    const response = await fetch(`/api/projects/${project.id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title, summary, stage }),
-    });
-    const result = await response.json();
-    if (response.ok) {
-      onChanged?.({ ...project, ...result.project });
-      onToast?.("Project updated.");
-    } else onToast?.(result.error ?? "Could not update this project.");
-    setOpen(false);
-  }
-  async function visibility() {
-    const next = project.visibility === "private" ? "network" : "private";
-    const response = await fetch(`/api/projects/${project.id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ visibility: next }),
-    });
-    if (response.ok) {
-      const result = await response.json();
-      onChanged?.({ ...project, ...result.project });
-      onToast?.(`Project is now ${next === "private" ? "private" : "public"}.`);
-    }
-    setOpen(false);
-  }
-  async function remove() {
-    if (
-      !window.confirm(
-        "Delete this project? It will be removed from the network.",
-      )
-    )
-      return;
-    const response = await fetch(`/api/projects/${project.id}`, {
-      method: "DELETE",
-    });
-    if (response.ok) {
-      onChanged?.(null);
-      onToast?.("Project deleted.");
-    }
-    setOpen(false);
-  }
-  return (
-    <div className="project-menu-wrap">
-      <button
-        className="icon-button"
-        aria-label="Project options"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        <Ellipsis size={20} />
-      </button>
-      {open && (
-        <div className="project-menu">
-          <button onClick={() => preference("pin")}>
-            <Pin size={15} />
-            {pinned ? "Unpin" : "Pin"}
-          </button>
-          <button onClick={() => preference("bookmark")}>
-            <Bookmark size={15} fill={bookmarked ? "currentColor" : "none"} />
-            {bookmarked ? "Remove bookmark" : "Bookmark"}
-          </button>
-          <button onClick={followProject}>
-            <Eye size={15} />
-            {project.isFollowingProject
-              ? "Stop following project"
-              : "Follow project"}
-          </button>
-          {!project.isOwner && !project.isMember && (
-            <button onClick={getInvolved}>
-              <UserPlus size={15} />
-              Get involved
-            </button>
-          )}
-          {project.isMember && !project.isOwner && (
-            <button className="danger" onClick={leaveProject}>
-              <LogOut size={15} />
-              Leave project
-            </button>
-          )}
-          {project.isOwner && (
-            <>
-              <hr />
-              <button onClick={edit}>
-                <Pencil size={15} />
-                Edit project
-              </button>
-              <button onClick={visibility}>
-                {project.visibility === "private" ? (
-                  <Globe2 size={15} />
-                ) : (
-                  <ShieldCheck size={15} />
-                )}
-                Make {project.visibility === "private" ? "public" : "private"}
-              </button>
-              <button className="danger" onClick={remove}>
-                <Trash2 size={15} />
-                Delete project
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -2051,7 +1845,7 @@ function CreateProject({
                   <option value="launching">Launching</option>
                 </select>
               </label>
-              <label>
+              <label htmlFor="project-industry">
                 Industry
                 <FreeChoiceInput
                   id="project-industry"
@@ -2789,17 +2583,13 @@ function TimelinePostCard({
           )}
         </div>
       </header>
-      <p
+      <button
+        type="button"
         className="post-thread-trigger"
-        role="button"
-        tabIndex={0}
         onClick={onThread}
-        onKeyDown={(event) =>
-          (event.key === "Enter" || event.key === " ") && onThread()
-        }
       >
         <LinkifiedText text={post.body} />
-      </p>
+      </button>
       <RichLinkPreview text={post.body} url={!embed ? post.videoUrl : null} />
       {post.linkedProjects.length > 0 && (
         <div className="post-project-links">
@@ -3214,12 +3004,12 @@ function NetworkPulse({ onProjects }: { onProjects: () => void }) {
     if (active >= slides.length) setActive(0);
   }, [active, slides.length]);
   const slide = slides[active] ?? {
-    id: "loading",
+    id: "empty",
     kind: "connections",
     label: "NETWORK ACTIVITY",
     value: "—",
-    title: "Reading the network pulse…",
-    detail: "Live activity will appear here",
+    title: "Live network activity will appear here.",
+    detail: "No recent activity to show yet",
     progress: 0,
   };
   function move(direction: number) {
@@ -3533,7 +3323,7 @@ function Feed({
     window.addEventListener("n2:post-updated", sync);
     return () => window.removeEventListener("n2:post-updated", sync);
   }, []);
-  function projectQuery(cursor?: string) {
+  const projectQuery = useCallback((cursor?: string) => {
     const params = new URLSearchParams({
       scope: "discover",
       filter: filter.toLowerCase().replaceAll(" ", "_"),
@@ -3547,7 +3337,7 @@ function Feed({
       params.set("location", projectFilters.location);
     if (cursor) params.set("cursor", cursor);
     return `/api/projects?${params}`;
-  }
+  }, [filter, projectFilters]);
   useEffect(() => {
     const controller = new AbortController();
     fetch(projectQuery(), { signal: controller.signal })
@@ -3559,7 +3349,7 @@ function Feed({
       })
       .catch(() => undefined);
     return () => controller.abort();
-  }, [filter, authenticated, projectFilters]);
+  }, [authenticated, projectQuery]);
   async function loadMore() {
     if (!nextCursor) return;
     setLoadingMore(true);
@@ -3666,7 +3456,7 @@ function Feed({
             authenticated ? setFiltersOpen(true) : onRequireAuth()
           }
         >
-          <SlidersHorizontal size={14} /> Filters
+          <SlidersHorizontal size={14} /> {authenticated ? "Filters" : "Join to filter"}
           {filterCount > 0 && <b>{filterCount}</b>}
         </button>
       </div>
@@ -3858,225 +3648,6 @@ function Feed({
         />
       )}
     </>
-  );
-}
-
-function LegacyRoadmapPanel({
-  project,
-  setProject,
-  onToast,
-}: {
-  project: ProjectDetailRecord;
-  setProject: (project: ProjectDetailRecord) => void;
-  onToast: (message: string) => void;
-}) {
-  async function refresh() {
-    const response = await fetch(`/api/projects/${project.id}`),
-      data = await response.json();
-    if (response.ok) setProject(data.project);
-  }
-  async function action(
-    item: ProjectDetailRecord["milestones"][number],
-    next:
-      | "edit"
-      | "start"
-      | "block"
-      | "complete"
-      | "reopen"
-      | "move_up"
-      | "move_down",
-  ) {
-    let payload: Record<string, unknown> = { action: next };
-    if (next === "edit") {
-      const title = window.prompt("Roadmap step title", item.title);
-      if (!title) return;
-      payload = {
-        ...payload,
-        title,
-        description:
-          window.prompt("Description", item.description ?? "") ??
-          item.description,
-        dueAt: item.dueAt,
-      };
-    }
-    if (next === "block") {
-      const summary = window.prompt("Explain what is blocking this step");
-      if (!summary) return;
-      payload.summary = summary;
-    }
-    if (next === "complete") {
-      const summary = window.prompt(
-        "Summarise what was completed and the contribution made",
-      );
-      if (!summary) return;
-      payload.summary = summary;
-      const stage = window.prompt(
-        "Headline project stage after this step: idea, planning, building or launching. Leave blank to keep it unchanged.",
-        project.stage,
-      );
-      if (
-        stage &&
-        ["idea", "planning", "building", "launching"].includes(stage)
-      )
-        payload.projectStage = stage;
-    }
-    const response = await fetch(`/api/milestones/${item.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      }),
-      data = await response.json();
-    if (!response.ok) {
-      onToast(data.error ?? "Could not update this roadmap step.");
-      return;
-    }
-    onToast(
-      next === "complete"
-        ? "Step completed and the next step is now active."
-        : "Roadmap updated.",
-    );
-    await refresh();
-  }
-  async function add() {
-    const title = window.prompt("New roadmap step title");
-    if (!title) return;
-    const description = window.prompt("What should this step achieve?") ?? "";
-    const response = await fetch(`/api/projects/${project.id}/milestones`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, description, phase: "later" }),
-      }),
-      data = await response.json();
-    if (!response.ok) {
-      onToast(data.error ?? "Could not add the roadmap step.");
-      return;
-    }
-    await refresh();
-  }
-  async function remove(item: ProjectDetailRecord["milestones"][number]) {
-    if (!window.confirm(`Remove “${item.title}”?`)) return;
-    const response = await fetch(`/api/milestones/${item.id}`, {
-        method: "DELETE",
-      }),
-      data = await response.json();
-    if (!response.ok) {
-      onToast(data.error ?? "Could not remove this step.");
-      return;
-    }
-    await refresh();
-  }
-  return (
-    <section className="project-roadmap">
-      <header className="project-section-actions">
-        <div>
-          <span className="eyebrow">PROJECT ROADMAP</span>
-          <p>
-            Completed steps include the owner’s summary and linked team
-            contributions.
-          </p>
-        </div>
-        {project.isOwner && (
-          <button className="secondary-button" onClick={add}>
-            <Plus size={14} /> Add step
-          </button>
-        )}
-      </header>
-      {project.milestones.map((item, index) => {
-        const linked = project.updates.filter(
-          (update) => update.milestoneId === item.id,
-        );
-        return (
-          <article
-            key={item.id}
-            className={item.status === "complete" ? "complete" : item.status}
-          >
-            <b>{index + 1}</b>
-            <div>
-              <span>
-                {item.status.replace("_", " ")} · {item.phase}
-              </span>
-              <h3>{item.title}</h3>
-              {item.description && <p>{item.description}</p>}
-              {item.completionSummary && (
-                <blockquote>
-                  <strong>Step summary</strong>
-                  {item.completionSummary}
-                </blockquote>
-              )}
-              <small>
-                {item.completedAt
-                  ? `Completed ${new Date(item.completedAt).toLocaleDateString()}`
-                  : item.dueAt
-                    ? `Due ${new Date(item.dueAt).toLocaleDateString()}`
-                    : "Date to be agreed"}
-              </small>
-              {linked.length > 0 && (
-                <div className="roadmap-contributions">
-                  <strong>
-                    {linked.length} contribution{linked.length === 1 ? "" : "s"}
-                  </strong>
-                  {linked.slice(0, 3).map((update) => (
-                    <p key={update.id}>
-                      {update.authorName}: {update.body}
-                    </p>
-                  ))}
-                </div>
-              )}
-              {project.isOwner && (
-                <div className="roadmap-actions">
-                  <button onClick={() => action(item, "edit")}>Edit</button>
-                  <button
-                    disabled={index === 0}
-                    onClick={() => action(item, "move_up")}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    disabled={index === project.milestones.length - 1}
-                    onClick={() => action(item, "move_down")}
-                  >
-                    ↓
-                  </button>
-                  {item.status === "planned" && (
-                    <button onClick={() => action(item, "start")}>Start</button>
-                  )}
-                  {item.status === "in_progress" && (
-                    <>
-                      <button onClick={() => action(item, "block")}>
-                        Block
-                      </button>
-                      <button onClick={() => action(item, "complete")}>
-                        Complete step
-                      </button>
-                    </>
-                  )}
-                  {item.status === "blocked" && (
-                    <button onClick={() => action(item, "complete")}>
-                      Resolve & complete
-                    </button>
-                  )}
-                  {item.status === "complete" && (
-                    <button onClick={() => action(item, "reopen")}>
-                      Reopen
-                    </button>
-                  )}
-                  {item.status === "planned" && (
-                    <button className="danger" onClick={() => remove(item)}>
-                      Remove
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </article>
-        );
-      })}
-      {!project.milestones.length && (
-        <p className="profile-empty">
-          The project roadmap has not been published yet.
-        </p>
-      )}
-    </section>
   );
 }
 
@@ -5124,7 +4695,7 @@ function RecruitmentDialog({
     setBlueprint(data.blueprint);
   }
 
-  function useRecommendation(role: BlueprintRole) {
+  function chooseRecommendation(role: BlueprintRole) {
     setDraft({
       title: role.title,
       profession: role.professions[0] ?? role.title,
@@ -5180,7 +4751,7 @@ function RecruitmentDialog({
             className={tab === "ai" ? "active" : ""}
             onClick={() => { setTab("ai"); setError(""); }}
           >
-            <Sparkles size={17} />
+            <N2OrbitMark compact />
             <span><strong>Ai Assist</strong><small>Review the project and next steps</small></span>
             <b>AI</b>
           </button>
@@ -5293,7 +4864,7 @@ function RecruitmentDialog({
           <div className="recruitment-ai-panel">
             {!blueprint ? (
               <div className="ai-review-start">
-                <span className="ai-review-orb"><Sparkles size={24} /></span>
+                <N2OrbitMark />
                 <span className="eyebrow">AI PROJECT ADVISER</span>
                 <h3>Find the most useful next teammate.</h3>
                 <p>AI will assess the project brief, stage, current team and owner expertise. It recommends abstract roles only—never named people.</p>
@@ -5304,7 +4875,7 @@ function RecruitmentDialog({
                 </div>
                 {error && <div className="recruitment-error"><CircleAlert size={16} /> {error}</div>}
                 <button type="button" className="primary-button" disabled={busy} onClick={reviewProject}>
-                  <Sparkles size={14} /> {busy ? "Reviewing project…" : "Review this project"}
+                  <N2OrbitMark compact /> {busy ? "Reviewing project…" : "Review this project"}
                 </button>
               </div>
             ) : (
@@ -5329,13 +4900,13 @@ function RecruitmentDialog({
                         <p>{role.reason}</p>
                         <small>{role.professions.join(" · ")}</small>
                       </div>
-                      <button type="button" onClick={() => useRecommendation(role)}>Request this role <ArrowUpRight size={13} /></button>
+                      <button type="button" onClick={() => chooseRecommendation(role)}>Request this role <ArrowUpRight size={13} /></button>
                     </article>
                   ))}
                 </div>
                 <footer>
                   <button type="button" className="secondary-button" onClick={reviewProject} disabled={busy}>
-                    <Sparkles size={13} /> {busy ? "Reviewing…" : "Review again"}
+                    <N2OrbitMark compact /> {busy ? "Reviewing…" : "Review again"}
                   </button>
                 </footer>
               </div>
@@ -5630,7 +5201,7 @@ function ProjectDetailView({
       )}
       {tab === "ai_assist" && canRecruit && (
         <section className="project-ai-assist-panel">
-          <span className="ai-review-orb"><Sparkles size={24} /></span>
+          <N2OrbitMark />
           <span className="eyebrow">AI PROJECT ADVISER</span>
           <h2>Work out what this project needs next.</h2>
           <p>Ai Assist reviews the project brief, stage, current team and your expertise to recommend the most useful next roles and milestones.</p>
@@ -5645,7 +5216,7 @@ function ProjectDetailView({
             <span><strong>{project.milestones.length}</strong><small>roadmap milestones</small></span>
           </div>
           <button type="button" className="primary-button" onClick={() => { setRecruitmentInitialTab("ai"); setRecruitmentOpen(true); }}>
-            <Sparkles size={14} /> Start Ai Assist
+            <N2OrbitMark compact /> Start Ai Assist
           </button>
           <small>Suggestions are advisory. You choose and edit every role before publishing.</small>
         </section>
@@ -5716,6 +5287,7 @@ function ProjectDetailView({
       {fundingOpen && (
         <div
           className="modal-backdrop"
+          role="presentation"
           onMouseDown={(event) =>
             event.target === event.currentTarget && setFundingOpen(false)
           }
@@ -7208,6 +6780,7 @@ function MeetView() {
     [meetProjectId, setMeetProjectId] = useState(""),
     [meetProjects, setMeetProjects] = useState<ProjectRecord[]>([]),
     [meetStep, setMeetStep] = useState<1 | 2>(1),
+    [meetTitle, setMeetTitle] = useState(""),
     [meetLocation, setMeetLocation] = useState(""),
     [meetThumbnail, setMeetThumbnail] = useState<string | null>(null);
   const [showAllPastMeets, setShowAllPastMeets] = useState(false);
@@ -7244,6 +6817,7 @@ function MeetView() {
     setMeetVisibility("public");
     setMeetProjectId("");
     setMeetStep(1);
+    setMeetTitle("");
     setMeetLocation("");
     setMeetThumbnail(null);
     setError("");
@@ -7280,6 +6854,7 @@ function MeetView() {
     setMeetVisibility(currentMeet.visibility ?? "public");
     setMeetProjectId(currentMeet.projectId ?? "");
     setMeetStep(1);
+    setMeetTitle(currentMeet.title);
     setMeetLocation(currentMeet.location ?? "");
     setMeetThumbnail(currentMeet.thumbnailUrl ?? null);
     setDetail(null);
@@ -7290,6 +6865,7 @@ function MeetView() {
     setEditing(null);
     setInvitees([]);
     setMeetStep(1);
+    setMeetTitle("");
     setMeetLocation("");
     setMeetThumbnail(null);
     setError("");
@@ -7601,7 +7177,7 @@ function MeetView() {
                   <div className="meet-core-fields">
                     <label>
                       Title
-                      <input name="title" required minLength={3} defaultValue={editing?.title ?? ""} placeholder="Give this meet a clear name" />
+                      <input name="title" required minLength={3} value={meetTitle} onChange={(event) => setMeetTitle(event.target.value)} placeholder="Give this meet a clear name" />
                     </label>
                     <label>
                       Description
@@ -7713,7 +7289,7 @@ function MeetView() {
                 {error && <p className="form-error">{error}</p>}
               </section>
               <section className="meet-editor-step meet-invite-step" hidden={meetStep !== 2}>
-                <div className="meet-step-summary">{meetThumbnail ? <img src={meetThumbnail} alt="" /> : <span>{meetMode === "audio" ? <Mic size={20}/> : meetMode === "in_person" ? <MapPin size={20}/> : <Video size={20}/>}</span>}<div><span className="eyebrow">{meetMode === "audio" ? "PODCAST" : meetMode === "in_person" ? "IN PERSON" : "VIDEO MEET"}</span><strong>{(meetFormRef.current?.elements.namedItem("title") as HTMLInputElement | null)?.value || editing?.title || "Untitled meet"}</strong><small>{meetVisibility === "project" ? "Project visibility" : `${meetVisibility[0].toUpperCase()}${meetVisibility.slice(1)} visibility`}{meetLocation ? ` · ${meetLocation}` : ""}</small></div><button type="button" onClick={() => setMeetStep(1)}>Edit details</button></div>
+                <div className="meet-step-summary">{meetThumbnail ? <img src={meetThumbnail} alt="" /> : <span>{meetMode === "audio" ? <Mic size={20}/> : meetMode === "in_person" ? <MapPin size={20}/> : <Video size={20}/>}</span>}<div><span className="eyebrow">{meetMode === "audio" ? "PODCAST" : meetMode === "in_person" ? "IN PERSON" : "VIDEO MEET"}</span><strong>{meetTitle || "Untitled meet"}</strong><small>{meetVisibility === "project" ? "Project visibility" : `${meetVisibility[0].toUpperCase()}${meetVisibility.slice(1)} visibility`}{meetLocation ? ` · ${meetLocation}` : ""}</small></div><button type="button" onClick={() => setMeetStep(1)}>Edit details</button></div>
                 <MeetAttendeePicker selected={invitees} onChange={setInvitees} max={meetMode === "video" ? 7 : meetMode === "audio" ? 15 : 100} podcast={meetMode === "audio"} />
                 {error && <p className="form-error">{error}</p>}
               </section>
@@ -7805,773 +7381,6 @@ function MeetView() {
           </section>
         </div>
       )}
-    </div>
-  );
-}
-
-function LegacyProfileView({
-  member,
-  userId,
-  onEdit,
-}: {
-  member: MemberPerson;
-  userId?: string | null;
-  onEdit: () => void;
-}) {
-  const [profile, setProfile] = useState<ProfileRecord | null>(null),
-    [loading, setLoading] = useState(Boolean(userId)),
-    [section, setSection] = useState<
-      "profile" | "projects" | "media" | "bookmarks"
-    >("profile"),
-    [media, setMedia] = useState<
-      Array<{
-        id: string;
-        body: string;
-        attachmentType: string | null;
-        attachmentUrl: string | null;
-        videoUrl: string | null;
-        createdAt: string;
-      }>
-    >([]),
-    [saved, setSaved] = useState<
-      Array<{
-        id: string;
-        entityType: string;
-        entityId: string;
-        pinned: boolean;
-        bookmarked: boolean;
-        details: Record<string, unknown>;
-      }>
-    >([]);
-  useEffect(() => {
-    if (!userId) return;
-    fetch(`/api/profiles/${userId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setProfile(data?.profile ?? null))
-      .finally(() => setLoading(false));
-  }, [userId]);
-  useEffect(() => {
-    if (!userId || section === "profile" || section === "projects") return;
-    if (section === "media")
-      fetch(`/api/profiles/${userId}/media`)
-        .then((r) => (r.ok ? r.json() : { media: [] }))
-        .then((data) => setMedia(data.media ?? []));
-    else if (profile?.isCurrent)
-      fetch("/api/saved-items")
-        .then((r) => (r.ok ? r.json() : { items: [] }))
-        .then((data) => setSaved(data.items ?? []));
-  }, [section, userId, profile?.isCurrent]);
-  if (loading)
-    return (
-      <div className="profile-loading">
-        <span />
-        <p>Loading member profile…</p>
-      </div>
-    );
-  const person: MemberPerson = profile
-    ? {
-        id: profile.id,
-        name: profile.name ?? "n2 member",
-        role: profile.headline ?? profile.profession ?? "n2 member",
-        img: profile.image,
-        isN2Admin: profile.isN2Admin,
-      }
-    : member;
-  const skills = profile?.rankedSkills?.slice(0, 3) ?? [
-    "Collaboration",
-    "Strategy",
-    "Projects",
-  ];
-  async function toggleFollow() {
-    if (!profile || profile.isCurrent) return;
-    if (
-      profile.isFollowing &&
-      !window.confirm(`Stop following ${profile.name ?? "this member"}?`)
-    )
-      return;
-    const response = await fetch(`/api/users/${profile.id}/follow`, {
-        method: profile.isFollowing ? "DELETE" : "POST",
-      }),
-      result = await response.json();
-    if (response.ok) {
-      signalNetworkChanged();
-      setProfile({
-        ...profile,
-        isFollowing: result.following,
-        isMutual: result.mutual,
-        followers: Math.max(0, profile.followers + (result.following ? 1 : -1)),
-      });
-    }
-  }
-  return (
-    <div className="subpage profile-page">
-      <div
-        className="profile-cover"
-        style={
-          profile?.coverImage
-            ? { backgroundImage: `url(${profile.coverImage})` }
-            : undefined
-        }
-      >
-        <span>{profile?.coverImage ? "" : "n2"}</span>
-      </div>
-      <div className="profile-main">
-        <Avatar person={person} size="xl" ring />
-        <button
-          className="secondary-button"
-          onClick={profile?.isCurrent ? onEdit : undefined}
-        >
-          {profile?.isCurrent !== false ? "Edit profile" : "Connect"}
-        </button>
-        <h1>
-          {person.name} {person.isN2Admin && <N2AdminBadge />}
-        </h1>
-        <p className="profile-role">
-          {person.role}
-          {profile?.location ? ` · ${profile.location}` : ""}
-        </p>
-        <nav className="profile-tabs">
-          <button
-            className={section === "profile" ? "active" : ""}
-            onClick={() => setSection("profile")}
-          >
-            Profile
-          </button>
-          <button
-            className={section === "projects" ? "active" : ""}
-            onClick={() => setSection("projects")}
-          >
-            Projects
-          </button>
-          <button
-            className={section === "media" ? "active" : ""}
-            onClick={() => setSection("media")}
-          >
-            Media
-          </button>
-          {profile?.isCurrent && (
-            <button
-              className={section === "bookmarks" ? "active" : ""}
-              onClick={() => setSection("bookmarks")}
-            >
-              <Bookmark size={14} /> Bookmarks
-            </button>
-          )}
-        </nav>
-        {section === "projects" ? (
-          <section className="profile-library">
-            <div className="profile-section-head">
-              <span className="eyebrow">PROJECT HISTORY</span>
-              <small>
-                Projects{" "}
-                {profile?.isCurrent ? "you have" : person.name + " has"} started
-                or contributed to
-              </small>
-            </div>
-            <div className="profile-project-grid">
-              {profile?.projects?.map((project) => (
-                <article
-                  key={project.id}
-                  style={
-                    {
-                      "--profile-project-accent": project.accent,
-                    } as React.CSSProperties
-                  }
-                >
-                  <header>
-                    <span>
-                      {project.isOwner
-                        ? "FOUNDER"
-                        : (
-                            project.department || project.membershipRole
-                          ).toUpperCase()}
-                    </span>
-                    <i>{project.status}</i>
-                  </header>
-                  <h3>{project.title}</h3>
-                  <p>{project.summary}</p>
-                  <footer>
-                    <span>{project.industry}</span>
-                    <span>{project.stage}</span>
-                  </footer>
-                </article>
-              ))}
-              {!profile?.projects?.length && (
-                <p className="profile-empty">No public project history yet.</p>
-              )}
-            </div>
-          </section>
-        ) : section === "media" ? (
-          <section className="profile-library">
-            <div className="profile-section-head">
-              <span className="eyebrow">MEDIA</span>
-              <small>
-                Images and videos shared by{" "}
-                {profile?.isCurrent ? "you" : person.name}
-              </small>
-            </div>
-            <div className="media-grid">
-              {media.map((item) =>
-                item.attachmentType === "image" && item.attachmentUrl ? (
-                  <article key={item.id}>
-                    <img src={item.attachmentUrl} alt={item.body} />
-                    <p>{item.body}</p>
-                  </article>
-                ) : item.attachmentType === "video" && item.attachmentUrl ? (
-                  <article key={item.id}>
-                    <video src={item.attachmentUrl} controls />
-                    <p>{item.body}</p>
-                  </article>
-                ) : item.videoUrl ? (
-                  <article key={item.id} className="media-link">
-                    <Video size={24} />
-                    <a href={item.videoUrl} target="_blank" rel="noreferrer">
-                      {item.body || "Open shared video"}
-                    </a>
-                  </article>
-                ) : null,
-              )}
-              {!media.length && (
-                <p className="profile-empty">No public media shared yet.</p>
-              )}
-            </div>
-          </section>
-        ) : section === "bookmarks" ? (
-          <section className="profile-library">
-            <div className="profile-section-head">
-              <span className="eyebrow">BOOKMARKS</span>
-              <small>
-                {saved.filter((item) => item.pinned).length}/3 items pinned
-              </small>
-            </div>
-            <div className="saved-list">
-              {saved.map((item) => (
-                <article key={item.id}>
-                  <span className="saved-kind">{item.entityType}</span>
-                  <div>
-                    <strong>
-                      {String(
-                        item.details.title ??
-                          item.details.projectTitle ??
-                          "Saved comment",
-                      )}
-                    </strong>
-                    <p>
-                      {String(
-                        item.details.summary ??
-                          item.details.body ??
-                          (item.details.startsAt
-                            ? new Date(
-                                String(item.details.startsAt),
-                              ).toLocaleString()
-                            : "Saved for later"),
-                      )}
-                    </p>
-                  </div>
-                  {item.pinned && <Pin size={15} />}
-                </article>
-              ))}
-              {!saved.length && (
-                <p className="profile-empty">
-                  Your bookmarked projects, comments and meets will appear here.
-                </p>
-              )}
-            </div>
-          </section>
-        ) : (
-          <>
-            <section className="profile-section bio-section">
-              <span className="eyebrow">ABOUT</span>
-              <p className="profile-bio">
-                {profile?.bio || "This member hasn’t added a bio yet."}
-              </p>
-            </section>
-            <section className="profile-section">
-              <div className="profile-section-head">
-                <span className="eyebrow">CAREER SKILLS</span>
-                <small>Ranked by strength</small>
-              </div>
-              <div className="ranked-skills">
-                {skills.map((skill, index) => (
-                  <div key={skill}>
-                    <b>{index + 1}</b>
-                    <span>
-                      <small>
-                        {["PRIMARY", "SECONDARY", "TERTIARY"][index]}
-                      </small>
-                      <strong>{skill}</strong>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-            <section className="profile-section">
-              <div className="profile-section-head">
-                <span className="eyebrow">CAREER HISTORY</span>
-                <BriefcaseBusiness size={16} />
-              </div>
-              <div className="timeline-list">
-                {profile?.career.length ? (
-                  profile.career.map((item) => (
-                    <article key={item.id}>
-                      <i />
-                      <div>
-                        <strong>{item.title}</strong>
-                        <span>
-                          {item.company}
-                          {item.location ? ` · ${item.location}` : ""}
-                        </span>
-                        <small>
-                          {item.startDate?.slice(0, 4) ?? ""} —{" "}
-                          {item.current
-                            ? "Present"
-                            : (item.endDate?.slice(0, 4) ?? "")}
-                        </small>
-                        {item.description && <div className="rich-role-description" dangerouslySetInnerHTML={{ __html: sanitizeRichText(item.description) }} />}
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <p className="profile-empty">No career history added yet.</p>
-                )}
-              </div>
-            </section>
-            <section className="profile-section">
-              <div className="profile-section-head">
-                <span className="eyebrow">EDUCATION</span>
-                <GraduationCap size={16} />
-              </div>
-              <div className="timeline-list">
-                {profile?.education.length ? (
-                  profile.education.map((item) => (
-                    <article key={item.id}>
-                      <i />
-                      <div>
-                        <strong>
-                          {item.qualification}
-                          {item.fieldOfStudy ? ` · ${item.fieldOfStudy}` : ""}
-                        </strong>
-                        <span>{item.institution}</span>
-                        <small>
-                          {item.startYear ?? ""}
-                          {item.endYear ? ` — ${item.endYear}` : ""}
-                        </small>
-                        {item.description && <div className="rich-role-description" dangerouslySetInnerHTML={{ __html: sanitizeRichText(item.description) }} />}
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <p className="profile-empty">No education added yet.</p>
-                )}
-              </div>
-            </section>
-            <div className="profile-numbers">
-              <div>
-                <strong>
-                  {String(profile?.projectCount ?? 4).padStart(2, "0")}
-                </strong>
-                <span>Projects started</span>
-              </div>
-              <div>
-                <strong>
-                  {String(profile?.involvedCount ?? 0).padStart(2, "0")}
-                </strong>
-                <span>Projects involved</span>
-              </div>
-              <div>
-                <strong>{profile?.interests.length ?? 0}</strong>
-                <span>Interests</span>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function LegacyProfileView2({
-  member,
-  userId,
-  onEdit,
-}: {
-  member: MemberPerson;
-  userId?: string | null;
-  onEdit: () => void;
-}) {
-  const [profile, setProfile] = useState<ProfileRecord | null>(null),
-    [loading, setLoading] = useState(true),
-    [section, setSection] = useState<
-      "profile" | "projects" | "media" | "bookmarks"
-    >("profile"),
-    [media, setMedia] = useState<
-      Array<{
-        id: string;
-        body: string;
-        attachmentType: string | null;
-        attachmentUrl: string | null;
-        videoUrl: string | null;
-      }>
-    >([]),
-    [saved, setSaved] = useState<
-      Array<{
-        id: string;
-        entityType: string;
-        pinned: boolean;
-        details: Record<string, unknown>;
-      }>
-    >([]),
-    [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (!userId) {
-      setLoading(false);
-      return;
-    }
-    fetch(`/api/profiles/${userId}`)
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => setProfile(data?.profile ?? null))
-      .finally(() => setLoading(false));
-  }, [userId]);
-  useEffect(() => {
-    if (!userId) return;
-    if (section === "media")
-      fetch(`/api/profiles/${userId}/media`)
-        .then((response) => (response.ok ? response.json() : { media: [] }))
-        .then((data) => setMedia(data.media ?? []));
-    if (section === "bookmarks" && profile?.isCurrent)
-      fetch("/api/saved-items")
-        .then((response) => (response.ok ? response.json() : { items: [] }))
-        .then((data) => setSaved(data.items ?? []));
-  }, [section, userId, profile?.isCurrent]);
-  async function connect() {
-    if (!profile || profile.isCurrent || busy) return;
-    if (
-      profile.isFollowing &&
-      !window.confirm(`Stop following ${profile.name ?? "this member"}?`)
-    )
-      return;
-    setBusy(true);
-    const response = await fetch(`/api/users/${profile.id}/follow`, {
-        method: profile.isFollowing ? "DELETE" : "POST",
-      }),
-      result = await response.json();
-    if (response.ok) {
-      signalNetworkChanged();
-      setProfile((current) =>
-        current
-          ? {
-              ...current,
-              isFollowing: result.following,
-              isMutual: result.mutual,
-              followers: Math.max(
-                0,
-                current.followers + (result.following ? 1 : -1),
-              ),
-            }
-          : current,
-      );
-    }
-    setBusy(false);
-  }
-  if (loading)
-    return (
-      <div className="profile-loading">
-        <span />
-        <p>Loading member profile…</p>
-      </div>
-    );
-  const person: MemberPerson = profile
-      ? {
-          id: profile.id,
-          name: profile.name ?? "n2 member",
-          role: profile.isFounder
-            ? "n2 Founder"
-            : profile.headline ?? profile.profession ?? "n2 member",
-          img: profile.image,
-          isN2Admin: profile.isN2Admin,
-        }
-      : member,
-    skills = profile?.rankedSkills?.slice(0, 3) ?? [];
-  return (
-    <div className="subpage profile-page">
-      <div
-        className="profile-cover"
-        style={
-          profile?.coverImage
-            ? { backgroundImage: `url(${profile.coverImage})` }
-            : undefined
-        }
-      >
-        <span>{profile?.coverImage ? "" : "n2"}</span>
-      </div>
-      <div className="profile-main">
-        <Avatar person={person} size="xl" ring />
-        <button
-          className={`secondary-button ${profile?.isMutual ? "connected" : ""}`}
-          disabled={busy}
-          onClick={profile?.isCurrent ? onEdit : connect}
-        >
-          {profile?.isCurrent !== false
-            ? "Edit profile"
-            : busy
-              ? "Updating…"
-              : profile?.isMutual
-                ? "Connected"
-                : profile?.isFollowing
-                  ? "Following"
-                  : "Connect"}
-        </button>
-        <h1>
-          {person.name} {person.isN2Admin && <N2AdminBadge />}
-        </h1>
-        <p className="profile-role">
-          {profile?.isFounder ? <N2FounderLabel /> : person.role}
-          {profile?.location ? ` · ${profile.location}` : ""}
-        </p>
-        {profile && (
-          <div className="profile-network-counts">
-            <span>
-              <strong>{profile.followers}</strong> followers
-            </span>
-            <span>
-              <strong>{profile.following}</strong> following
-            </span>
-            {profile.isMutual && <b>Mutual connection</b>}
-          </div>
-        )}
-        <nav className="profile-tabs">
-          <button
-            className={section === "profile" ? "active" : ""}
-            onClick={() => setSection("profile")}
-          >
-            Profile
-          </button>
-          <button
-            className={section === "projects" ? "active" : ""}
-            onClick={() => setSection("projects")}
-          >
-            Projects
-          </button>
-          <button
-            className={section === "media" ? "active" : ""}
-            onClick={() => setSection("media")}
-          >
-            Media
-          </button>
-          {profile?.isCurrent && (
-            <button
-              className={section === "bookmarks" ? "active" : ""}
-              onClick={() => setSection("bookmarks")}
-            >
-              <Bookmark size={14} /> Bookmarks
-            </button>
-          )}
-        </nav>
-        {section === "projects" ? (
-          <section className="profile-library">
-            <div className="profile-section-head">
-              <span className="eyebrow">PROJECT HISTORY</span>
-              <small>Started and contributed projects</small>
-            </div>
-            <div className="profile-project-grid">
-              {profile?.projects?.map((project) => (
-                <article
-                  key={project.id}
-                  style={
-                    {
-                      "--profile-project-accent": project.accent,
-                    } as React.CSSProperties
-                  }
-                >
-                  <header>
-                    <span>
-                      {project.isOwner
-                        ? "FOUNDER"
-                        : (
-                            project.department || project.membershipRole
-                          ).toUpperCase()}
-                    </span>
-                    <i>{project.status}</i>
-                  </header>
-                  <h3>{project.title}</h3>
-                  <p>{project.summary}</p>
-                  <footer>
-                    <span>{project.industry}</span>
-                    <span>{project.stage}</span>
-                  </footer>
-                </article>
-              ))}
-              {!profile?.projects?.length && (
-                <p className="profile-empty">No public project history yet.</p>
-              )}
-            </div>
-          </section>
-        ) : section === "media" ? (
-          <section className="profile-library">
-            <div className="profile-section-head">
-              <span className="eyebrow">MEDIA</span>
-              <small>
-                Images and videos shared by{" "}
-                {profile?.isCurrent ? "you" : person.name}
-              </small>
-            </div>
-            <div className="media-grid">
-              {media.map((item) =>
-                item.attachmentType === "image" && item.attachmentUrl ? (
-                  <article key={item.id}>
-                    <img src={item.attachmentUrl} alt={item.body} />
-                    <p>{item.body}</p>
-                  </article>
-                ) : item.attachmentType === "video" && item.attachmentUrl ? (
-                  <article key={item.id}>
-                    <video src={item.attachmentUrl} controls />
-                    <p>{item.body}</p>
-                  </article>
-                ) : item.videoUrl ? (
-                  <article key={item.id} className="media-link">
-                    <Video size={24} />
-                    <a href={item.videoUrl} target="_blank" rel="noreferrer">
-                      {item.body || "Open shared video"}
-                    </a>
-                  </article>
-                ) : null,
-              )}
-              {!media.length && (
-                <p className="profile-empty">No public media shared yet.</p>
-              )}
-            </div>
-          </section>
-        ) : section === "bookmarks" ? (
-          <section className="profile-library">
-            <div className="profile-section-head">
-              <span className="eyebrow">BOOKMARKS</span>
-              <small>
-                {saved.filter((item) => item.pinned).length}/3 items pinned
-              </small>
-            </div>
-            <div className="saved-list">
-              {saved.map((item) => (
-                <article key={item.id}>
-                  <span className="saved-kind">{item.entityType}</span>
-                  <div>
-                    <strong>
-                      {String(
-                        item.details.title ??
-                          item.details.projectTitle ??
-                          "Saved item",
-                      )}
-                    </strong>
-                    <p>
-                      {String(
-                        item.details.summary ??
-                          item.details.body ??
-                          "Saved for later",
-                      )}
-                    </p>
-                  </div>
-                  {item.pinned && <Pin size={15} />}
-                </article>
-              ))}
-              {!saved.length && (
-                <p className="profile-empty">
-                  Your saved projects, comments and meets will appear here.
-                </p>
-              )}
-            </div>
-          </section>
-        ) : (
-          <>
-            <section className="profile-section bio-section">
-              <span className="eyebrow">ABOUT</span>
-              <p className="profile-bio">
-                {profile?.bio || "This member hasn’t added a bio yet."}
-              </p>
-            </section>
-            <section className="profile-section">
-              <div className="profile-section-head">
-                <span className="eyebrow">CAREER SKILLS</span>
-                <small>Ranked by strength</small>
-              </div>
-              <div className="ranked-skills">
-                {skills.map((skill, index) => (
-                  <div key={skill}>
-                    <b>{index + 1}</b>
-                    <span>
-                      <small>
-                        {["PRIMARY", "SECONDARY", "TERTIARY"][index]}
-                      </small>
-                      <strong>{skill}</strong>
-                    </span>
-                  </div>
-                ))}
-                {!skills.length && (
-                  <p className="profile-empty">No career skills added yet.</p>
-                )}
-              </div>
-            </section>
-            <section className="profile-section">
-              <div className="profile-section-head">
-                <span className="eyebrow">CAREER HISTORY</span>
-                <BriefcaseBusiness size={16} />
-              </div>
-              <div className="timeline-list">
-                {profile?.career.length ? (
-                  profile.career.map((item) => (
-                    <article key={item.id}>
-                      <i />
-                      <div>
-                        <strong>{item.title}</strong>
-                        <span>
-                          {item.company}
-                          {item.location ? ` · ${item.location}` : ""}
-                        </span>
-                        <small>
-                          {item.startDate?.slice(0, 4) ?? ""} —{" "}
-                          {item.current
-                            ? "Present"
-                            : (item.endDate?.slice(0, 4) ?? "")}
-                        </small>
-                        {item.description && <p>{item.description}</p>}
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <p className="profile-empty">No career history added yet.</p>
-                )}
-              </div>
-            </section>
-            <section className="profile-section">
-              <div className="profile-section-head">
-                <span className="eyebrow">EDUCATION</span>
-                <GraduationCap size={16} />
-              </div>
-              <div className="timeline-list">
-                {profile?.education.length ? (
-                  profile.education.map((item) => (
-                    <article key={item.id}>
-                      <i />
-                      <div>
-                        <strong>
-                          {item.qualification}
-                          {item.fieldOfStudy ? ` · ${item.fieldOfStudy}` : ""}
-                        </strong>
-                        <span>{item.institution}</span>
-                        <small>
-                          {item.startYear ?? ""}
-                          {item.endYear ? ` — ${item.endYear}` : ""}
-                        </small>
-                        {item.description && <p>{item.description}</p>}
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <p className="profile-empty">No education added yet.</p>
-                )}
-              </div>
-            </section>
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -9336,103 +8145,6 @@ function ProjectComments({
   );
 }
 
-function LegacyMatchPanel({
-  onClose,
-  onMessage,
-}: {
-  onClose: () => void;
-  onMessage: () => void;
-}) {
-  const [feedback, setFeedback] = useState<"helpful" | "not_relevant" | null>(
-    null,
-  );
-  function rate(signal: "helpful" | "not_relevant") {
-    setFeedback(signal);
-  }
-  return (
-    <div
-      className="modal-backdrop"
-      role="presentation"
-      onMouseDown={(e) => e.currentTarget === e.target && onClose()}
-    >
-      <section className="match-panel" role="dialog" aria-modal="true">
-        <div className="modal-head">
-          <button className="icon-button" onClick={onClose}>
-            <X size={20} />
-          </button>
-          <span>Why this match</span>
-          <span className="match-score">94%</span>
-        </div>
-        <div className="match-body">
-          <span className="eyebrow">A USEFUL CONNECTION</span>
-          <div className="match-person">
-            <Avatar person={people.lena} size="xl" ring />
-            <div>
-              <h2>Lena Vogt</h2>
-              <p>Brand strategist · Climate and public good</p>
-              <span>
-                <MapPin size={13} /> London · 2 mutual connections
-              </span>
-            </div>
-          </div>
-          <div className="reason-grid">
-            <div>
-              <N2Mark />
-              <strong>Project fit</strong>
-              <p>Lena has launched two neighbourhood climate programmes.</p>
-            </div>
-            <div>
-              <UsersRound size={16} />
-              <strong>Working style</strong>
-              <p>You both prefer small pilots before scaling.</p>
-            </div>
-            <div>
-              <Bookmark size={16} />
-              <strong>Shared interest</strong>
-              <p>Community ownership and accessible services.</p>
-            </div>
-          </div>
-          <div className="warm-intro">
-            <Avatar person={people.marcus} size="sm" />
-            <p>
-              <strong>Marcus can introduce you.</strong>
-              <br />A warm introduction makes this connection 3× more likely to
-              lead somewhere useful.
-            </p>
-          </div>
-          <div className="match-feedback">
-            <span>
-              {feedback
-                ? "Thanks — your matches will adapt."
-                : "Is this match useful?"}
-            </span>
-            <button
-              className={feedback === "helpful" ? "active" : ""}
-              onClick={() => rate("helpful")}
-            >
-              <ThumbsUp size={14} />
-            </button>
-            <button
-              className={feedback === "not_relevant" ? "active" : ""}
-              onClick={() => rate("not_relevant")}
-            >
-              <ThumbsDown size={14} />
-            </button>
-          </div>
-          <div className="match-actions">
-            <button className="secondary-button" onClick={onClose}>
-              Maybe later
-            </button>
-            <button className="primary-button" onClick={onMessage}>
-              <MessageCircle size={16} /> Ask for intro
-            </button>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function MatchPanel({
   onClose,
   onMessage,
@@ -9914,10 +8626,10 @@ function NotificationPanel({
     if (permission === "granted")
       localStorage.setItem("n2-system-message-notifications", "enabled");
   }
-  // eslint-disable-next-line jsx-a11y/no-static-element-interactions
   return (
     <div
       className="panel-backdrop"
+      role="presentation"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <aside
@@ -9931,7 +8643,7 @@ function NotificationPanel({
             <span className="eyebrow">YOUR NETWORK</span>
             <h2>Notifications {unread > 0 && <b>{unread}</b>}</h2>
           </div>
-          <button className="icon-button" onClick={onClose}>
+          <button type="button" className="icon-button" aria-label="Close notifications" onClick={onClose}>
             <X size={19} />
           </button>
         </header>
@@ -10073,7 +8785,7 @@ function HelpPanel({
             <span className="eyebrow">N2 SUPPORT</span>
             <h2>How can we help?</h2>
           </div>
-          <button className="icon-button" onClick={onClose}>
+          <button type="button" className="icon-button" aria-label="Close help centre" onClick={onClose}>
             <X size={19} />
           </button>
         </header>
@@ -10215,7 +8927,7 @@ function GuestAuthPrompt({
       >
         <header>
           <Logo />
-          <button className="icon-button" onClick={onClose}>
+          <button type="button" className="icon-button" aria-label="Close account dialog" onClick={onClose}>
             <X size={19} />
           </button>
         </header>
@@ -10236,6 +8948,7 @@ function GuestAuthPrompt({
         </div>
         <div className="guest-auth-tabs">
           <button
+            type="button"
             className={mode === "register" ? "active" : ""}
             onClick={() => {
               setMode("register");
@@ -10245,6 +8958,7 @@ function GuestAuthPrompt({
             Create account
           </button>
           <button
+            type="button"
             className={mode === "signin" ? "active" : ""}
             onClick={() => {
               setMode("signin");
@@ -11139,7 +9853,7 @@ function SettingsView({
                   }
                 />
               </label>
-              <label>
+              <label htmlFor="profile-industry">
                 Industry
                 <FreeChoiceInput
                   id="profile-industry"
@@ -11328,9 +10042,10 @@ function SettingsView({
                         }
                       />
                     </label>
-                    <label className="full">
+                    <label className="full" htmlFor={`career-description-${index}`}>
                       Role description
                       <RichTextEditor
+                        id={`career-description-${index}`}
                         value={item.description}
                         onChange={(description) =>
                           setProfile({

@@ -1,9 +1,10 @@
 import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getDb } from "@/db";
+import { getDb, isDatabaseConfigured } from "@/db";
 import { apiError } from "@/lib/api";
 
 export async function GET() {
+  if (!isDatabaseConfigured()) return NextResponse.json({ slides: [] });
   try {
     const db = getDb();
     const progress = await db.execute(sql`select p.id, p.title, count(m.id)::int as total, count(m.id) filter (where m.status = 'completed')::int as completed from projects p left join milestones m on m.project_id = p.id where p.status = 'active' and p.visibility = 'network' group by p.id, p.title order by p.updated_at desc limit 12`);
