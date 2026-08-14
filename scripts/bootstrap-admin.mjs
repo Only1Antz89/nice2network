@@ -17,11 +17,11 @@ try {
     const [existing] = await transaction`SELECT id FROM users WHERE email = ${email} LIMIT 1`;
     created = !existing;
     const [member] = existing ? await transaction`
-      UPDATE users SET email_verified = COALESCE(email_verified, NOW()), status = 'active', updated_at = NOW()
+      UPDATE users SET email_verified = COALESCE(email_verified, NOW()), onboarding_completed_at = COALESCE(onboarding_completed_at, NOW()), status = 'active', updated_at = NOW()
       WHERE id = ${existing.id} RETURNING id
     ` : await transaction`
-      INSERT INTO users (name, first_name, last_name, email, email_verified, password_hash, role, status, force_password_change, age_band, created_at, updated_at)
-      VALUES ('Anthony Osei', 'Anthony', 'Osei', ${email}, NOW(), ${passwordHash}, 'member', 'active', TRUE, 'adult_25_plus', NOW(), NOW())
+      INSERT INTO users (name, first_name, last_name, email, email_verified, onboarding_completed_at, password_hash, role, status, force_password_change, age_band, created_at, updated_at)
+      VALUES ('Anthony Osei', 'Anthony', 'Osei', ${email}, NOW(), NOW(), ${passwordHash}, 'member', 'active', TRUE, 'adult_25_plus', NOW(), NOW())
       RETURNING id
     `;
     await transaction`
@@ -31,8 +31,8 @@ try {
     `;
     await transaction`
       INSERT INTO admin_assignments (user_id, role, status, created_at, updated_at)
-      VALUES (${member.id}, 'super_admin', 'active', NOW(), NOW())
-      ON CONFLICT (user_id) DO UPDATE SET role = 'super_admin', status = 'active', expires_at = NULL, updated_at = NOW()
+      VALUES (${member.id}, 'master_admin', 'active', NOW(), NOW())
+      ON CONFLICT (user_id) DO UPDATE SET role = 'master_admin', status = 'active', expires_at = NULL, updated_at = NOW()
     `;
     await transaction`
       INSERT INTO audit_log (actor_id, action, target_type, target_id, permission, reason, severity, metadata, created_at)

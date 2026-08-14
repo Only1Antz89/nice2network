@@ -6,21 +6,10 @@ import { getDb } from "@/db";
 import { adminAssignments, users } from "@/db/schema";
 import { ApiError } from "@/lib/api";
 import { verifyAdminCookie } from "@/lib/admin-mfa";
-
-export const adminRoles = ["super_admin", "safety_admin", "support_admin", "analyst"] as const;
-export type AdminRole = typeof adminRoles[number];
-export type AdminPermission = "admin.view" | "members.read" | "members.manage" | "projects.manage" | "reports.manage" | "sanctions.manage" | "appeals.manage" | "safety.manage" | "analytics.view" | "audit.view" | "admins.manage" | "system.view" | "system.manage" | "notices.manage";
-
-const permissions: Record<AdminRole, AdminPermission[]> = {
-  super_admin: ["admin.view", "members.read", "members.manage", "projects.manage", "reports.manage", "sanctions.manage", "appeals.manage", "safety.manage", "analytics.view", "audit.view", "admins.manage", "system.view", "system.manage", "notices.manage"],
-  safety_admin: ["admin.view", "members.read", "projects.manage", "reports.manage", "sanctions.manage", "appeals.manage", "safety.manage", "audit.view", "notices.manage"],
-  support_admin: ["admin.view", "members.read", "members.manage", "system.view"],
-  analyst: ["admin.view", "analytics.view"],
-};
-
-export function roleAllows(role: string, permission: AdminPermission) {
-  return adminRoles.includes(role as AdminRole) && permissions[role as AdminRole].includes(permission);
-}
+import { roleAllows } from "@/lib/admin-roles";
+import type { AdminPermission, AdminRole } from "@/lib/admin-roles";
+export { adminRoles, canAssignAdminRole, canManageAdminRole, roleAllows } from "@/lib/admin-roles";
+export type { AdminPermission, AdminRole } from "@/lib/admin-roles";
 
 export async function getAdminIdentity() {
   const session = await auth();

@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import { adminAssignments, follows, privacySettings, projectMembers, projectRoles, projects, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
 import { trackProductEvent } from "@/lib/analytics";
+import { getMessageEligibility } from "@/lib/messaging-permissions";
 
 export async function GET(request: Request) {
   try {
@@ -11,7 +12,7 @@ export async function GET(request: Request) {
     const query = new URL(request.url).searchParams.get("q")?.trim().slice(0, 80) ?? "";
     if (query.length < 2) return NextResponse.json({ people: [], projects: [], roles: [] });
     const db = getDb(), term = `%${query}%`;
-    const [viewer] = await db.select({ ageBand: users.ageBand }).from(users).where(eq(users.id, member.id)).limit(1);
+    const [viewer] = await db.select({ ageBand: users.ageBand, isN2Admin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end` }).from(users).leftJoin(adminAssignments, eq(adminAssignments.userId, users.id)).where(eq(users.id, member.id)).limit(1);
     const discoverableAgeBands = viewer?.ageBand === "teen_16_17" ? ["teen_16_17"] : ["adult", "adult_18_24", "adult_25_plus"];
     const isFollowing=sql<boolean>`exists(select 1 from ${follows} mine where mine.follower_id=${member.id} and mine.following_id=${users.id})`,followsViewer=sql<boolean>`exists(select 1 from ${follows} back where back.follower_id=${users.id} and back.following_id=${member.id})`,sharesProject=sql<boolean>`exists(select 1 from ${projectMembers} mine join ${projectMembers} theirs on theirs.project_id=mine.project_id where mine.user_id=${member.id} and theirs.user_id=${users.id})`;
     const [people, projectRows, roles] = await Promise.all([
@@ -24,6 +25,6 @@ export async function GET(request: Request) {
         .from(projectRoles).innerJoin(projects, eq(projects.id, projectRoles.projectId)).where(and(eq(projectRoles.status, "open"), eq(projects.status, "active"), or(ilike(projectRoles.title, term), ilike(projectRoles.department, term), sql`array_to_string(${projectRoles.skills}, ' ') ilike ${term}`))).limit(8),
     ]);
     await trackProductEvent({ actorId: member.id, ageBand: viewer?.ageBand, event: "search_performed", properties: { result: people.length + projectRows.length + roles.length } });
-    return NextResponse.json({ people: people.map(person=>{const mutual=Boolean(person.isFollowing&&person.followsViewer),shared=Boolean(person.sharesProject),permission=person.messagePermission??"connections",canMessage=permission!=="nobody"&&(shared||(permission==="everyone")||mutual);return {...person,isMutual:mutual,canMessage,messageReason:canMessage?(shared?"Shared project":mutual?"Mutual connection":"Messages open"):permission==="nobody"?"Not accepting new messages":person.isFollowing?"Waiting for follow-back":"Connect with each other first"}}), projects: projectRows, roles });
+    return NextResponse.json({ people: people.map(person=>{const mutual=Boolean(person.isFollowing&&person.followsViewer),shared=Boolean(person.sharesProject),eligibility=getMessageEligibility({permission:person.messagePermission,sharedProject:shared,mutual,senderIsAdmin:Boolean(viewer?.isN2Admin),recipientIsAdmin:Boolean(person.isN2Admin)});return {...person,isMutual:mutual,canMessage:eligibility.canMessage,messageReason:eligibility.canMessage?eligibility.reason:person.isFollowing&&eligibility.reason==="Connect with each other first"?"Waiting for follow-back":eligibility.reason}}), projects: projectRows, roles });
   } catch (error) { return apiError(error); }
 }

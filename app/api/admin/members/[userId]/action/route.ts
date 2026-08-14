@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { adminAssignments, sanctions, sessions, users, verificationTokens } from "@/db/schema";
-import { requirePermission } from "@/lib/admin";
+import { canManageAdminRole, requirePermission } from "@/lib/admin";
 import { ApiError, apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { sendPasswordResetEmail, sendVerificationEmail } from "@/lib/email";
@@ -20,9 +20,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ use
     const db = getDb();
     const [target] = await db.select({ status: users.status, email: users.email, firstName: users.firstName, name: users.name, emailVerified: users.emailVerified }).from(users).where(eq(users.id, userId)).limit(1);
     if (!target) throw new ApiError(404, "Member not found");
+    const [targetAssignment] = await db.select().from(adminAssignments).where(and(eq(adminAssignments.userId, userId), eq(adminAssignments.status, "active"))).limit(1);
+    if (userId === admin.user.id) throw new ApiError(403, "Administrators cannot apply member actions to their own account");
+    if (targetAssignment && !canManageAdminRole(admin.role, targetAssignment.role)) throw new ApiError(403, "Only the Master Admin can manage this administrator's account");
     if (["suspend", "ban"].includes(input.action)) {
-      const [assignment] = await db.select().from(adminAssignments).where(and(eq(adminAssignments.userId, userId), eq(adminAssignments.status, "active"))).limit(1);
-      if (assignment?.role === "super_admin") {
+      if (targetAssignment?.role === "master_admin") {
+        const [active] = await db.select({ value: count() }).from(adminAssignments).where(and(eq(adminAssignments.role, "master_admin"), eq(adminAssignments.status, "active")));
+        if (active.value <= 1) throw new ApiError(409, "The final Master Admin cannot be suspended or banned");
+      }
+      if (targetAssignment?.role === "super_admin") {
         const [active] = await db.select({ value: count() }).from(adminAssignments).where(and(eq(adminAssignments.role, "super_admin"), eq(adminAssignments.status, "active")));
         if (active.value <= 1) throw new ApiError(409, "The final super administrator cannot be suspended or banned. Activate another super administrator first");
       }
