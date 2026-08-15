@@ -4554,22 +4554,20 @@ const emptyRecruitmentDraft: RecruitmentDraft = {
   capacity: 1,
 };
 
-function RecruitmentDialog({
+function RequestProfessionDialog({
   project,
-  initialTab = "manual",
+  initialDraft = emptyRecruitmentDraft,
   onClose,
   onRoleCreated,
   onToast,
 }: {
   project: ProjectDetailRecord;
-  initialTab?: "manual" | "ai";
+  initialDraft?: RecruitmentDraft;
   onClose: () => void;
   onRoleCreated: (role: ProjectRoleRecord) => void;
   onToast: (message: string) => void;
 }) {
-  const [tab, setTab] = useState<"manual" | "ai">(initialTab),
-    [draft, setDraft] = useState<RecruitmentDraft>(emptyRecruitmentDraft),
-    [blueprint, setBlueprint] = useState<BlueprintRecord | null>(null),
+  const [draft, setDraft] = useState<RecruitmentDraft>(initialDraft),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
 
@@ -4616,36 +4614,6 @@ function RecruitmentDialog({
     onClose();
   }
 
-  async function reviewProject() {
-    setBusy(true);
-    setError("");
-    const response = await fetch(`/api/projects/${project.id}/blueprint`, {
-      method: "POST",
-    });
-    const data = await response.json();
-    setBusy(false);
-    if (!response.ok) {
-      setError(data.error ?? "The project review could not be completed.");
-      return;
-    }
-    setBlueprint(data.blueprint);
-  }
-
-  function chooseRecommendation(role: BlueprintRole) {
-    setDraft({
-      title: role.title,
-      profession: role.professions[0] ?? role.title,
-      department: role.department,
-      description: role.reason,
-      requiredSkills: role.requiredSkills.join(", "),
-      usefulSkills: role.usefulSkills.join(", "),
-      workMode: role.workMode,
-      capacity: role.headcount,
-    });
-    setTab("manual");
-    setError("");
-  }
-
   return (
     <div
       className="modal-backdrop"
@@ -4653,48 +4621,22 @@ function RecruitmentDialog({
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <section
-        className="n2-editor-modal recruitment-modal"
+        className="n2-editor-modal recruitment-modal profession-request-modal"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="recruitment-title"
+        aria-labelledby="profession-request-title"
       >
         <header>
           <div>
-            <span className="eyebrow">TEAM RECRUITMENT</span>
-            <h2 id="recruitment-title">Who does {project.title} need next?</h2>
-            <p>Request a profession directly or let AI review the next steps.</p>
+            <span className="eyebrow">Request a profession</span>
+            <h2 id="profession-request-title">Add expertise to {project.title}</h2>
+            <p>Create a focused open role for the profession your project needs.</p>
           </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Close recruitment">
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close profession request">
             <X size={19} />
           </button>
         </header>
-
-        <div className="recruitment-tabs" role="tablist" aria-label="Recruitment method">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "manual"}
-            className={tab === "manual" ? "active" : ""}
-            onClick={() => { setTab("manual"); setError(""); }}
-          >
-            <UserPlus size={17} />
-            <span><strong>Request a profession</strong><small>I know the expertise we need</small></span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "ai"}
-            className={tab === "ai" ? "active" : ""}
-            onClick={() => { setTab("ai"); setError(""); }}
-          >
-            <N2OrbitMark compact />
-            <span><strong>Ai Assist</strong><small>Review the project and next steps</small></span>
-            <b>AI</b>
-          </button>
-        </div>
-
-        {tab === "manual" ? (
-          <form onSubmit={requestRole}>
+        <form onSubmit={requestRole}>
             <div className="recruitment-intro">
               <span className="eyebrow">MANUAL REQUEST</span>
               <h3>Create an open role</h3>
@@ -4795,60 +4737,126 @@ function RecruitmentDialog({
                 {busy ? "Publishing…" : "Publish role request"} <ArrowUpRight size={14} />
               </button>
             </footer>
-          </form>
-        ) : (
-          <div className="recruitment-ai-panel">
-            {!blueprint ? (
-              <div className="ai-review-start">
-                <N2OrbitMark />
-                <span className="eyebrow">AI PROJECT ADVISER</span>
-                <h3>Find the most useful next teammate.</h3>
-                <p>AI will assess the project brief, stage, current team and owner expertise. It recommends abstract roles only—never named people.</p>
-                <div className="ai-review-scope">
-                  <span><b>01</b> Project clarity</span>
-                  <span><b>02</b> Capability gaps</span>
-                  <span><b>03</b> Next milestones</span>
-                </div>
-                {error && <div className="recruitment-error"><CircleAlert size={16} /> {error}</div>}
-                <button type="button" className="primary-button" disabled={busy} onClick={reviewProject}>
-                  <N2OrbitMark compact /> {busy ? "Reviewing project…" : "Review this project"}
-                </button>
-              </div>
-            ) : (
-              <div className="ai-review-results">
-                <div className="ai-result-heading">
-                  <div><span className="eyebrow">AI PROJECT REVIEW</span><h3>{blueprint.outcome}</h3></div>
-                  <span className="ai-confidence">{blueprint.usedFallback ? "GUIDED REVIEW" : "AI REVIEW"}</span>
-                </div>
-                {blueprint.usedFallback && <p className="ai-fallback-note">The AI provider was unavailable, so this review uses n2’s industry framework. Review each suggestion before publishing.</p>}
-                <section className="ai-next-steps">
-                  <strong>Recommended next steps</strong>
-                  <ol>{blueprint.milestones.map((milestone) => <li key={`${milestone.phase}-${milestone.title}`}><span>{milestone.phase}</span>{milestone.title}</li>)}</ol>
-                </section>
-                <div className="ai-role-recommendations">
-                  <div><span className="eyebrow">TEAM GAPS</span><p>Choose a suggestion to turn it into an editable role request.</p></div>
-                  {blueprint.roles.map((role, index) => (
-                    <article key={`${role.phase}-${role.title}-${index}`} className={index === 0 ? "featured" : ""}>
-                      <b>{String(index + 1).padStart(2, "0")}</b>
-                      <div>
-                        <span>{role.phase} · {role.criticality}</span>
-                        <h4>{role.title}</h4>
-                        <p>{role.reason}</p>
-                        <small>{role.professions.join(" · ")}</small>
-                      </div>
-                      <button type="button" onClick={() => chooseRecommendation(role)}>Request this role <ArrowUpRight size={13} /></button>
-                    </article>
-                  ))}
-                </div>
-                <footer>
-                  <button type="button" className="secondary-button" onClick={reviewProject} disabled={busy}>
-                    <N2OrbitMark compact /> {busy ? "Reviewing…" : "Review again"}
-                  </button>
-                </footer>
-              </div>
-            )}
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function AiAssistDialog({
+  project,
+  onClose,
+  onRequestRole,
+}: {
+  project: ProjectDetailRecord;
+  onClose: () => void;
+  onRequestRole: (draft: RecruitmentDraft) => void;
+}) {
+  const [blueprint, setBlueprint] = useState<BlueprintRecord | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+
+  async function reviewProject() {
+    setBusy(true);
+    setError("");
+    const response = await fetch(`/api/projects/${project.id}/blueprint`, {
+      method: "POST",
+    });
+    const data = await response.json();
+    setBusy(false);
+    if (!response.ok) {
+      setError(data.error ?? "The project review could not be completed.");
+      return;
+    }
+    setBlueprint(data.blueprint);
+  }
+
+  function chooseRecommendation(role: BlueprintRole) {
+    onRequestRole({
+      title: role.title,
+      profession: role.professions[0] ?? role.title,
+      department: role.department,
+      description: role.reason,
+      requiredSkills: role.requiredSkills.join(", "),
+      usefulSkills: role.usefulSkills.join(", "),
+      workMode: role.workMode,
+      capacity: role.headcount,
+    });
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <section
+        className="n2-editor-modal recruitment-modal ai-assist-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ai-assist-title"
+      >
+        <header>
+          <div>
+            <span className="eyebrow">AI PROJECT ADVISER</span>
+            <h2 id="ai-assist-title">Ai Assist for {project.title}</h2>
+            <p>Review the project’s next steps, capability gaps and recommended roles.</p>
           </div>
-        )}
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close Ai Assist">
+            <X size={19} />
+          </button>
+        </header>
+        <div className="recruitment-ai-panel">
+          {!blueprint ? (
+            <div className="ai-review-start">
+              <N2OrbitMark />
+              <span className="eyebrow">AI PROJECT ADVISER</span>
+              <h3>Find the most useful next teammate.</h3>
+              <p>AI will assess the project brief, stage, current team and owner expertise. It recommends abstract roles only—never named people.</p>
+              <div className="ai-review-scope">
+                <span><b>01</b> Project clarity</span>
+                <span><b>02</b> Capability gaps</span>
+                <span><b>03</b> Next milestones</span>
+              </div>
+              {error && <div className="recruitment-error"><CircleAlert size={16} /> {error}</div>}
+              <button type="button" className="primary-button" disabled={busy} onClick={reviewProject}>
+                <N2OrbitMark compact /> {busy ? "Reviewing project…" : "Review this project"}
+              </button>
+            </div>
+          ) : (
+            <div className="ai-review-results">
+              <div className="ai-result-heading">
+                <div><span className="eyebrow">AI PROJECT REVIEW</span><h3>{blueprint.outcome}</h3></div>
+                <span className="ai-confidence">{blueprint.usedFallback ? "GUIDED REVIEW" : "AI REVIEW"}</span>
+              </div>
+              {blueprint.usedFallback && <p className="ai-fallback-note">The AI provider was unavailable, so this review uses n2’s industry framework. Review each suggestion before publishing.</p>}
+              <section className="ai-next-steps">
+                <strong>Recommended next steps</strong>
+                <ol>{blueprint.milestones.map((milestone) => <li key={`${milestone.phase}-${milestone.title}`}><span>{milestone.phase}</span>{milestone.title}</li>)}</ol>
+              </section>
+              <div className="ai-role-recommendations">
+                <div><span className="eyebrow">TEAM GAPS</span><p>Choose a suggestion to open it in the separate profession request.</p></div>
+                {blueprint.roles.map((role, index) => (
+                  <article key={`${role.phase}-${role.title}-${index}`} className={index === 0 ? "featured" : ""}>
+                    <b>{String(index + 1).padStart(2, "0")}</b>
+                    <div>
+                      <span>{role.phase} · {role.criticality}</span>
+                      <h4>{role.title}</h4>
+                      <p>{role.reason}</p>
+                      <small>{role.professions.join(" · ")}</small>
+                    </div>
+                    <button type="button" onClick={() => chooseRecommendation(role)}>Request this role <ArrowUpRight size={13} /></button>
+                  </article>
+                ))}
+              </div>
+              <footer>
+                <button type="button" className="secondary-button" onClick={reviewProject} disabled={busy}>
+                  <N2OrbitMark compact /> {busy ? "Reviewing…" : "Review again"}
+                </button>
+              </footer>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );
@@ -4874,8 +4882,9 @@ function ProjectDetailView({
     [fundingType, setFundingType] = useState<
       "invest" | "donate" | "contribute" | "share_request"
     >("contribute"),
-    [recruitmentOpen, setRecruitmentOpen] = useState(false),
-    [recruitmentInitialTab, setRecruitmentInitialTab] = useState<"manual" | "ai">("manual"),
+    [professionRequestOpen, setProfessionRequestOpen] = useState(false),
+    [aiAssistOpen, setAiAssistOpen] = useState(false),
+    [professionDraft, setProfessionDraft] = useState<RecruitmentDraft>(emptyRecruitmentDraft),
     [busy, setBusy] = useState(false);
   useEffect(() => {
     fetch(`/api/projects/${projectId}`)
@@ -5098,7 +5107,7 @@ function ProjectDetailView({
               <p>{canRecruit ? "Add the expertise needed to reach the next milestone." : `${project.team.length} people are contributing to this project.`}</p>
             </div>
             {canRecruit && (
-              <button className="primary-button" onClick={() => { setRecruitmentInitialTab("manual"); setRecruitmentOpen(true); }}>
+              <button className="primary-button" onClick={() => { setProfessionDraft(emptyRecruitmentDraft); setProfessionRequestOpen(true); }}>
                 <UserPlus size={15} /> Add member
               </button>
             )}
@@ -5126,7 +5135,7 @@ function ProjectDetailView({
               </button>
             ))}
             {canRecruit && (
-              <button className="project-team-recruit" onClick={() => { setRecruitmentInitialTab("manual"); setRecruitmentOpen(true); }}>
+              <button className="project-team-recruit" onClick={() => { setProfessionDraft(emptyRecruitmentDraft); setProfessionRequestOpen(true); }}>
                 <span><Plus size={18} /></span>
                 <div><strong>Grow your team</strong><small>Request the profession this project needs next</small></div>
                 <ArrowUpRight size={15} />
@@ -5151,7 +5160,7 @@ function ProjectDetailView({
             <span><strong>{project.roles.filter((role) => role.status === "open").length}</strong><small>open roles</small></span>
             <span><strong>{project.milestones.length}</strong><small>roadmap milestones</small></span>
           </div>
-          <button type="button" className="primary-button" onClick={() => { setRecruitmentInitialTab("ai"); setRecruitmentOpen(true); }}>
+          <button type="button" className="primary-button" onClick={() => setAiAssistOpen(true)}>
             <N2OrbitMark compact /> Start Ai Assist
           </button>
           <small>Suggestions are advisory. You choose and edit every role before publishing.</small>
@@ -5267,17 +5276,28 @@ function ProjectDetailView({
           </form>
         </div>
       )}
-      {recruitmentOpen && canRecruit && (
-        <RecruitmentDialog
+      {professionRequestOpen && canRecruit && (
+        <RequestProfessionDialog
           project={project}
-          initialTab={recruitmentInitialTab}
-          onClose={() => setRecruitmentOpen(false)}
+          initialDraft={professionDraft}
+          onClose={() => setProfessionRequestOpen(false)}
           onToast={onToast}
           onRoleCreated={(role) =>
             setProject((current) =>
               current ? { ...current, roles: [...current.roles, role] } : current,
             )
           }
+        />
+      )}
+      {aiAssistOpen && canRecruit && (
+        <AiAssistDialog
+          project={project}
+          onClose={() => setAiAssistOpen(false)}
+          onRequestRole={(draft) => {
+            setProfessionDraft(draft);
+            setAiAssistOpen(false);
+            setProfessionRequestOpen(true);
+          }}
         />
       )}
     </div>
@@ -9796,46 +9816,89 @@ export default function HomePage() {
   useEffect(() => {
     if (!authenticated) return;
     let mounted = true;
-    async function poll() {
-      const response = await fetch("/api/notifications");
-      if (!response.ok) return;
-      const data = await response.json();
-      if (!mounted) return;
-      setUnreadNotifications(data.unread ?? 0);
-      const message = (data.notifications ?? []).find(
-        (item: NotificationRecord) => item.type === "message" && !item.readAt,
-      ) as NotificationRecord | undefined;
-      if (latestSystemMessage.current === false) {
-        latestSystemMessage.current = message?.id ?? null;
-        return;
-      }
-      if (!message || latestSystemMessage.current === message.id) return;
-      latestSystemMessage.current = message.id;
-      if (
-        typeof Notification !== "undefined" &&
-        Notification.permission === "granted" &&
-        localStorage.getItem("n2-system-message-notifications") === "enabled"
-      ) {
-        const notice = new Notification(message.title, {
-          body: message.body,
-          icon: "/brand/nice-2-network-mark.svg",
-          tag: `n2-message-${message.id}`,
-        });
-        notice.onclick = () => {
-          window.focus();
-          setView("messages");
-          notice.close();
-        };
+    let inFlight = false;
+    let retryDelay = 15_000;
+    let timer: number | undefined;
+    let controller: AbortController | undefined;
+
+    function schedule(delay = retryDelay) {
+      window.clearTimeout(timer);
+      if (mounted && navigator.onLine && document.visibilityState === "visible") {
+        timer = window.setTimeout(poll, delay);
       }
     }
-    poll().catch(() => undefined);
-    const timer = window.setInterval(
-      () => poll().catch(() => undefined),
-      15000,
-    );
+
+    async function poll() {
+      if (
+        !mounted ||
+        inFlight ||
+        !navigator.onLine ||
+        document.visibilityState === "hidden"
+      )
+        return;
+      inFlight = true;
+      controller = new AbortController();
+      try {
+        const response = await fetch("/api/notifications", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Notifications returned ${response.status}`);
+        const data = await response.json();
+        if (!mounted) return;
+        retryDelay = 15_000;
+        setUnreadNotifications(data.unread ?? 0);
+        const message = (data.notifications ?? []).find(
+          (item: NotificationRecord) => item.type === "message" && !item.readAt,
+        ) as NotificationRecord | undefined;
+        if (latestSystemMessage.current === false) {
+          latestSystemMessage.current = message?.id ?? null;
+          return;
+        }
+        if (!message || latestSystemMessage.current === message.id) return;
+        latestSystemMessage.current = message.id;
+        if (
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted" &&
+          localStorage.getItem("n2-system-message-notifications") === "enabled"
+        ) {
+          const notice = new Notification(message.title, {
+            body: message.body,
+            icon: "/brand/nice-2-network-mark.svg",
+            tag: `n2-message-${message.id}`,
+          });
+          notice.onclick = () => {
+            window.focus();
+            setView("messages");
+            notice.close();
+          };
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          retryDelay = Math.min(retryDelay * 2, 5 * 60_000);
+        }
+      } finally {
+        inFlight = false;
+        controller = undefined;
+        schedule();
+      }
+    }
+
+    const resume = () => {
+      retryDelay = 15_000;
+      window.clearTimeout(timer);
+      void poll();
+    };
+
+    void poll();
+    window.addEventListener("online", resume);
+    document.addEventListener("visibilitychange", resume);
     return () => {
       mounted = false;
-      window.clearInterval(timer);
+      controller?.abort();
+      window.clearTimeout(timer);
+      window.removeEventListener("online", resume);
+      document.removeEventListener("visibilitychange", resume);
     };
   }, [authenticated]);
   useEffect(() => {

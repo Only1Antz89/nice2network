@@ -41,6 +41,7 @@ export default function NotificationPanel({
         setUnread(data.unread ?? 0);
         onUnread(data.unread ?? 0);
       })
+      .catch(() => undefined)
       .finally(() => setLoading(false));
   }, [onUnread]);
   async function read(item?: NotificationRecord) {
