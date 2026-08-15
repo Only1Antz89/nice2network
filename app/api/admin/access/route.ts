@@ -9,6 +9,7 @@ import { createAdminCookie, createTotpSecret, verifyAdminCookie, verifyTotp } fr
 import { ApiError, apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { decrypt, encrypt } from "@/lib/integrations";
+import { isSecureRequest } from "@/lib/http";
 
 export async function GET() {
   try {
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     await db.update(adminMfa).set({ enabledAt: record.enabledAt ?? new Date(), lastUsedAt: new Date() }).where(eq(adminMfa.userId, identity.user.id));
     await db.update(users).set({ mfaEnrolledAt: new Date(), updatedAt: new Date() }).where(eq(users.id, identity.user.id));
     const cookieStore = await cookies();
-    cookieStore.set("n2_admin_verified", createAdminCookie(identity.user.id), { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", maxAge: 12 * 60 * 60, path: "/" });
+    cookieStore.set("n2_admin_verified", createAdminCookie(identity.user.id), { httpOnly: true, sameSite: "strict", secure: isSecureRequest(request), maxAge: 12 * 60 * 60, path: "/" });
     await audit(identity.user.id, record.enabledAt ? "admin.mfa_verified" : "admin.mfa_enrolled", "user", identity.user.id, {}, { permission: "admin.view", severity: "high" });
     return NextResponse.json({ verified: true });
   } catch (error) { return apiError(error); }

@@ -39,8 +39,8 @@ jobs:
       - run: npm test
       - run: npm run lint
       - run: npm run build
-      - run: npx playwright install chromium --with-deps
-      - run: npm run test:e2e
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:e2e:ci
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:

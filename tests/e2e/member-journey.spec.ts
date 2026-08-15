@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("a new member can register, onboard, sign in, and reach protected features", async ({ page }) => {
+test("a new member can register, onboard, sign in, and reach protected features", async ({ page }, testInfo) => {
   const email = `e2e-${Date.now()}-${Math.random().toString(16).slice(2)}@nice2.test`;
   const password = "UsefulPeople!2026";
 
@@ -40,8 +40,16 @@ test("a new member can register, onboard, sign in, and reach protected features"
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL("/");
-  await expect(page.getByRole("button", { name: "Projects" })).toBeEnabled();
+  const mobile = testInfo.project.name.startsWith("mobile-");
+  await expect(page.locator(mobile ? ".mobile-nav" : ".sidebar")).toBeVisible();
+  const viewport = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.clientWidth + 1);
+  const projectsButton = page.getByRole("button", { name: "Projects", exact: true });
+  await expect(projectsButton).toBeEnabled();
   await expect(page.getByRole("button", { name: "Filters" })).toBeVisible();
-  await page.getByRole("button", { name: "Projects" }).click();
+  await projectsButton.click();
   await expect(page.getByRole("heading", { name: /Projects/ })).toBeVisible();
 });

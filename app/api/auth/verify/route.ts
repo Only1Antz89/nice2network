@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { users, verificationTokens } from "@/db/schema";
 import { trackProductEvent } from "@/lib/analytics";
+import { isSecureRequest } from "@/lib/http";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -25,6 +26,6 @@ export async function GET(request: Request) {
   await db.delete(verificationTokens).where(eq(verificationTokens.identifier, `onboarding:${email}`));
   await db.insert(verificationTokens).values({ identifier: `onboarding:${email}`, token: createHash("sha256").update(onboardingToken).digest("hex"), expires: new Date(Date.now() + 24 * 60 * 60 * 1000) });
   const response = NextResponse.redirect(new URL("/onboarding?verified=1", url.origin));
-  response.cookies.set("n2_onboarding", onboardingToken, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 24 * 60 * 60, path: "/" });
+  response.cookies.set("n2_onboarding", onboardingToken, { httpOnly: true, sameSite: "lax", secure: isSecureRequest(request), maxAge: 24 * 60 * 60, path: "/" });
   return response;
 }

@@ -42,6 +42,9 @@ SIGNUP_VERIFICATION_MODE=instant npm run test:e2e
 docker compose -f compose.test.yml down
 ```
 
+The browser suite runs the authenticated member journey in desktop Chromium,
+mobile Chromium, and mobile WebKit.
+
 ## Production configuration
 
 1. Link a Neon PostgreSQL resource to the Vercel project and expose its connection string as `POSTGRES_URL`.

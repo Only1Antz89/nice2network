@@ -28,10 +28,13 @@ test("unconfigured writes return an actionable service response", async () => {
 });
 
 test("interactive feed controls use native semantics and controlled summaries", async () => {
-  const page = await read("app/page.tsx");
+  const [page, guestAuth] = await Promise.all([
+    read("app/page.tsx"),
+    read("components/guest-auth-prompt.tsx"),
+  ]);
   assert.match(page, /<button\s+type="button"\s+className="post-thread-trigger"/);
   assert.match(page, /<strong>\{meetTitle \|\| "Untitled meet"\}<\/strong>/);
   assert.doesNotMatch(page, /meetFormRef\.current\?\.elements\.namedItem\("title"\)/);
-  assert.match(page, /aria-label="Close account dialog"/);
+  assert.match(guestAuth, /aria-label="Close account dialog"/);
   assert.match(page, /authenticated \? "Filters" : "Join to filter"/);
 });

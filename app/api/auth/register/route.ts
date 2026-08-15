@@ -8,6 +8,7 @@ import { sendVerificationEmail } from "@/lib/email";
 import { eq } from "drizzle-orm";
 import { ageBand, ageFromDateOfBirth } from "@/lib/age";
 import { trackProductEvent } from "@/lib/analytics";
+import { isSecureRequest } from "@/lib/http";
 
 const schema = z.object({
   title: z.enum(["Mr", "Ms", "Mrs", "Miss", "Mx", "Dr", "Prof"]),
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
       const onboardingToken = randomBytes(32).toString("base64url");
       await db.insert(verificationTokens).values({ identifier: `onboarding:${email}`, token: createHash("sha256").update(onboardingToken).digest("hex"), expires: new Date(Date.now() + 24 * 60 * 60 * 1000) });
       const response = NextResponse.json({ id: member.id, email, onboarding: true, verificationRequired: false }, { status: 201 });
-      response.cookies.set("n2_onboarding", onboardingToken, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 24 * 60 * 60, path: "/" });
+      response.cookies.set("n2_onboarding", onboardingToken, { httpOnly: true, sameSite: "lax", secure: isSecureRequest(request), maxAge: 24 * 60 * 60, path: "/" });
       return response;
     }
     await db.delete(verificationTokens).where(eq(verificationTokens.identifier, `verify:${email}`));

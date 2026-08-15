@@ -143,9 +143,10 @@ test("limits raw analytics retention and excludes direct identifiers", async () 
 });
 
 test("ships durable notifications, search, projects and sharing", async () => {
-  const [schema, notifications, search, projects, eyes, page] = await Promise.all([
+  const [schema, notifications, search, projects, eyes, page, shareSheet] = await Promise.all([
     read("db/schema.ts"), read("app/api/notifications/route.ts"), read("app/api/search/route.ts"),
     read("app/api/projects/route.ts"), read("app/api/projects/[projectId]/eyes/route.ts"), read("app/page.tsx"),
+    read("components/share-sheet.tsx"),
   ]);
   for (const table of ["notifications", "notificationPreferences", "projectEyes"]) assert.match(schema, new RegExp(`export const ${table} = pgTable`));
   assert.match(notifications, /read_all/);
@@ -155,8 +156,8 @@ test("ships durable notifications, search, projects and sharing", async () => {
   assert.match(projects, /scope === "mine"/);
   assert.match(eyes, /project_eye_added/);
   assert.match(page, /ShareSheet/);
-  assert.match(page, /WhatsApp/);
-  assert.match(page, /LinkedIn/);
+  assert.match(shareSheet, /WhatsApp/);
+  assert.match(shareSheet, /LinkedIn/);
 });
 
 test("ships durable project-team recommendations and owner approval", async () => {
@@ -249,10 +250,10 @@ test("uses stored project creation time instead of a live-project placeholder", 
 });
 
 test("uses the n2 share box for internal and external destinations", async () => {
-  const page = await read("app/page.tsx");
-  for (const option of ["Send in messages", "Share to a project", "Copy link", "External sharing options"]) assert.match(page, new RegExp(option));
-  assert.match(page, /api\/conversations\/\$\{conversation\.id\}\/messages/);
-  assert.match(page, /api\/projects\/\$\{project\.id\}\/updates/);
+  const shareSheet = await read("components/share-sheet.tsx");
+  for (const option of ["Send in messages", "Share to a project", "Copy link", "External sharing options"]) assert.match(shareSheet, new RegExp(option));
+  assert.match(shareSheet, /api\/conversations\/\$\{conversation\.id\}\/messages/);
+  assert.match(shareSheet, /api\/projects\/\$\{project\.id\}\/updates/);
 });
 
 test("ships durable post threads, likes, reposts and purgeable demo activity", async () => {
@@ -272,14 +273,14 @@ test("ships durable post threads, likes, reposts and purgeable demo activity", a
 });
 
 test("shares clean public URLs with rich social preview metadata", async () => {
-  const [page, sharedPage, image, content] = await Promise.all([
-    read("app/page.tsx"), read("app/share/[kind]/[id]/page.tsx"),
+  const [shareSheet, sharedPage, image, content] = await Promise.all([
+    read("components/share-sheet.tsx"), read("app/share/[kind]/[id]/page.tsx"),
     read("app/share/[kind]/[id]/opengraph-image.tsx"), read("lib/shared-content.ts"),
   ]);
-  assert.match(page, /\/share\/\$\{kind\}\/\$\{item\.id\}/);
-  assert.match(page, /wa\.me\/\?text=\$\{encoded\}/);
-  assert.doesNotMatch(page, /wa\.me\/\?text=\$\{text\}/);
-  for (const platform of ["LinkedIn", "Facebook", "Telegram"]) assert.match(page, new RegExp(platform));
+  assert.match(shareSheet, /\/share\/\$\{kind\}\/\$\{item\.id\}/);
+  assert.match(shareSheet, /wa\.me\/\?text=\$\{encoded\}/);
+  assert.doesNotMatch(shareSheet, /wa\.me\/\?text=\$\{text\}/);
+  for (const platform of ["LinkedIn", "Facebook", "Telegram"]) assert.match(shareSheet, new RegExp(platform));
   assert.match(sharedPage, /openGraph/);
   assert.match(sharedPage, /summary_large_image/);
   assert.match(image, /ImageResponse/);
@@ -418,16 +419,16 @@ test("ships a role-aware branded podcast stage with private questions and playab
 });
 
 test("uses the brand orange for project highlights and server-owned founder identity", async () => {
-  const [page, profile, styles] = await Promise.all([
-    read("app/page.tsx"),
+  const [brand, profile, styles] = await Promise.all([
+    read("components/network-brand.tsx"),
     read("app/api/profiles/[userId]/route.ts"),
     read("app/globals.css"),
   ]);
   assert.match(styles, /--orange:#ff6b35/);
   assert.match(styles, /project-kicker span:first-child\{background:var\(--orange\)!important/);
   assert.match(profile, /isFounder: sql<boolean>`\$\{users\.role\} = 'founder'`/);
-  assert.match(page, /function N2FounderLabel/);
-  assert.match(page, /className="n2-founder-label">n2 Founder/);
+  assert.match(brand, /function N2FounderLabel/);
+  assert.match(brand, /className="n2-founder-label">n2 Founder/);
   assert.match(styles, /\.n2-founder-label\{color:var\(--orange\)/);
 });
 
