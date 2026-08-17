@@ -10486,14 +10486,14 @@ export default function HomePage() {
             <div>
               <a href="/about">About</a>
               <a href="/privacy">Privacy</a>
-              <a href="/terms">T&amp;C</a>
+              <a href="/terms">Terms</a>
               <a href="/community">Community</a>
               <button className="rail-help-link" onClick={() => setHelpOpen(true)}>
                 <CircleHelp size={10} />
                 <span>Help</span>
               </button>
             </div>
-            <small>© 2026 nice 2 network · Built by IntAillium</small>
+            <small>© 2026 nice 2 network · Built in partnership with IntAillium</small>
           </footer>
         </aside>
       )}

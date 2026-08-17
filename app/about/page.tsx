@@ -1,31 +1,48 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
-import { and, eq } from "drizzle-orm";
-import { getDb, isDatabaseConfigured } from "@/db";
-import { privacySettings, users } from "@/db/schema";
-import { Avatar } from "@/components/network-brand";
+import { ArrowUpRight } from "lucide-react";
 import { PublicSiteShell } from "@/components/public-site-shell";
 
-export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "About — nice 2 network",
   description: "Why nice 2 network exists, how it works, and the people behind it.",
 };
 
-type Founder = { id: string; name: string | null; profession: string | null; headline: string | null; bio: string | null; image: string | null; city: string | null; country: string | null; skills: string[] };
+const founders = [
+  {
+    name: "Phillip Joseph",
+    role: "Leadership and management",
+    focus: "People, purpose and possibility",
+    image: "/founders/phillip-joseph-founder-v2.png",
+    bio: "Phillip works where leadership, education and social mobility meet. Across mainstream and alternative provision, he has built his career around improving outcomes for young people who have too often been overlooked. At nice 2 network, he keeps the human purpose in view: creating genuine routes to confidence, capability and community leadership.",
+  },
+  {
+    name: "Nathan Baiden",
+    role: "Business and regulatory analysis",
+    focus: "Clarity, structure and forward motion",
+    image: "/founders/nathan-baiden-founder-v2.png",
+    bio: "Nathan brings more than nine years of financial-services experience to the founding team. His work in regulatory change and complex delivery has taught him how to turn ambiguity into a route forward. For nice 2 network, that means giving promising ideas the structure, momentum and practical thinking they need to become real projects.",
+  },
+  {
+    name: "Nicholas Wright",
+    role: "Operations and performance",
+    focus: "Potential, performance and execution",
+    image: "/founders/nicholas-wright-founder-v1.png",
+    bio: "Nicholas brings an operator’s discipline and a coach’s belief in human potential. After more than five years in professional football coaching, he moved into operations without leaving that performance mindset behind. His role in the founding vision is to help people move beyond intent—towards contribution, progress and their best work.",
+  },
+] as const;
 
-async function getFounders(): Promise<Founder[]> {
-  if (!isDatabaseConfigured()) return [];
-  try {
-    return await getDb().select({ id: users.id, name: users.name, profession: users.profession, headline: users.headline, bio: users.bio, image: users.image, city: users.city, country: users.country, skills: users.skills })
-      .from(users)
-      .innerJoin(privacySettings, eq(privacySettings.userId, users.id))
-      .where(and(eq(users.role, "founder"), eq(users.status, "active"), eq(privacySettings.profileVisibility, "public")));
-  } catch { return []; }
+function FounderProfile({ founder, index }: { founder: (typeof founders)[number]; index: number }) {
+  return (
+    <article className="founder-card">
+      <div className="founder-portrait"><Image src={founder.image} alt={`Editorial representation of ${founder.name}`} fill sizes="(max-width: 800px) 100vw, 48vw" /></div>
+      <div className="founder-copy"><div className="founder-meta"><span>0{index + 1} / N2 FOUNDER</span><small>{founder.role}</small></div><h3>{founder.name}</h3><strong>{founder.focus}</strong><p>{founder.bio}</p></div>
+    </article>
+  );
 }
 
-export default async function AboutPage() {
-  const founders = await getFounders();
+export default function AboutPage() {
   return (
     <PublicSiteShell tone="noir">
       <main className="about-page">
@@ -53,31 +70,36 @@ export default async function AboutPage() {
         <section className="about-system">
           <div><span className="about-index">03 / THE SYSTEM</span><h2>From a loose idea<br/>to a working circle.</h2></div>
           <div className="system-diagram" aria-label="A project owner connected to design, engineering, community and an open role">
+            <span className="system-status">LIVE NETWORK / 04 CONNECTIONS</span>
+            <svg className="system-connections" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <g>
+                <line x1="50" y1="50" x2="13" y2="20"/>
+                <line x1="50" y1="50" x2="87" y2="17"/>
+                <line x1="50" y1="50" x2="16" y2="82"/>
+                <line x1="50" y1="50" x2="86" y2="80"/>
+              </g>
+              <g className="connection-points">
+                <circle cx="13" cy="20" r=".65"/><circle cx="87" cy="17" r=".65"/><circle cx="16" cy="82" r=".65"/><circle cx="86" cy="80" r=".65"/>
+              </g>
+            </svg>
             <span className="system-node system-owner">YOU<small>OWNER</small></span>
-            <i className="system-line line-a"/><i className="system-line line-b"/><i className="system-line line-c"/><i className="system-line line-d"/>
             <span className="system-node node-a">DESIGN</span><span className="system-node node-b">BUILD</span><span className="system-node node-c">COMMUNITY</span><span className="system-node node-d open">OPEN ROLE</span>
           </div>
         </section>
 
         <section className="founders-section">
-          <header><span className="about-index">04 / FOUNDERS</span><h2>The people behind<br/>the network.</h2><p>The founding profiles come from the same network they are building.</p></header>
+          <header><span className="about-index">04 / FOUNDERS</span><h2>Three founders.<br/>One useful network.</h2><p>nice 2 network was founded by Phillip Joseph, Nathan Baiden and Nicholas Wright—three perspectives united by a belief in what people can make possible together.</p></header>
           <div className="founder-grid">
-            {founders.length ? founders.map((founder, index) => (
-              <article className="founder-card" key={founder.id}>
-                <div className="founder-number">0{index + 1}</div>
-                <Avatar person={{ name: founder.name ?? "n2 founder", role: founder.profession ?? "Founder", img: founder.image }} size="xl"/>
-                <div><span>N2 FOUNDER</span><h3>{founder.name ?? "n2 founder"}</h3><strong>{founder.headline ?? founder.profession ?? "Building useful networks"}</strong><p>{founder.bio ?? "Building a more useful way for people and ideas to find one another."}</p>{founder.skills.length > 0 && <small>{founder.skills.slice(0, 3).join(" · ")}</small>}</div>
-              </article>
-            )) : (
-              <article className="founder-card founder-studio">
-                <div className="founder-number">01</div><div className="studio-mark">IA</div>
-                <div><span>FOUNDING STUDIO</span><h3>IntAillium</h3><strong>Product, systems and the intelligence between them.</strong><p>IntAillium built nice 2 network around one practical belief: technology should make human collaboration clearer, warmer and more useful.</p><small>STRATEGY · DESIGN · ENGINEERING</small></div>
-              </article>
-            )}
+            <div className="founder-column"><FounderProfile founder={founders[0]} index={0}/><FounderProfile founder={founders[2]} index={2}/></div>
+            <div className="founder-column founder-column--right"><FounderProfile founder={founders[1]} index={1}/></div>
           </div>
+          <aside className="build-partner">
+            <div><span>05 / BUILD PARTNER</span><Link className="build-partner-logo" href="https://www.intaillium.com/" target="_blank" rel="noreferrer" aria-label="Visit IntAillium"><Image src="/brand/intaillium-icon.png" alt="" width={64} height={64}/><b>INTAILLIUM</b><small>INTELLIGENT SYSTEMS</small></Link></div>
+            <div><small>BUILT IN PARTNERSHIP</small><h3>IntAillium</h3><strong>Working with the founders to build nice 2 network.</strong><p>IntAillium brings product strategy, design and engineering to the founders’ vision—shaping the systems and technology that help useful human collaboration happen.</p></div>
+          </aside>
         </section>
 
-        <section className="about-cta"><span>THE NEXT USEFUL PERSON</span><h2>might already be here.</h2><div><Link href="/signin?mode=register">Join nice 2 network ↗</Link><Link href="/community">Read our community code</Link></div></section>
+        <section className="about-cta"><span>THE NEXT USEFUL PERSON</span><h2>might already be here.</h2><div><Link href="/signin?mode=register">Join nice 2 network <ArrowUpRight size={14} strokeWidth={1.8} aria-hidden="true" /></Link><Link href="/community">Read our community code</Link></div></section>
       </main>
     </PublicSiteShell>
   );
