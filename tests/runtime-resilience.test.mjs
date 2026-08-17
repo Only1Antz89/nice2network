@@ -78,14 +78,17 @@ test("dark mode separates text, surface and solid-action colours", () => {
   assert.match(styles, /html\[data-colour-theme="dark"\]\[data-contrast="high"\]/);
 });
 
-test("profile navigation uses member identity without a profile banner", () => {
+test("profile navigation stays compact while full profiles retain banners", () => {
   const page = read("app/page.tsx");
   const styles = read("app/globals.css");
   const publicStyles = read("app/public.css");
   assert.match(page, /\{ id: "feed" as View, label: "Home", icon: Home \},\s+\{ id: "profile" as View, label: "Profile", icon: UserRound \},\s+\{ id: "projects"/);
   assert.match(page, /isProfile && authenticated\s+\? <Avatar person=\{currentMember\} size="sm"/);
-  assert.doesNotMatch(page, /className="profile-cover"/);
-  assert.doesNotMatch(page, /className="banner-upload"/);
+  assert.match(page, /className="profile-cover"/);
+  assert.match(page, /profile\?\.coverImage/);
+  assert.match(page, /className="banner-upload"/);
+  assert.match(page, /uploadProfileMedia\("banner"/);
+  assert.doesNotMatch(page, /className="profile-chip"/);
   assert.match(page, /className="admin-nav-link admin-profile-slot"/);
   assert.match(page, /className="sidebar-account-divider"/);
   assert.match(page, /className="rail-help-link"/);

@@ -251,6 +251,7 @@ type ProfileRecord = {
   id: string;
   name: string | null;
   image: string | null;
+  coverImage?: string | null;
   profession: string | null;
   headline: string | null;
   bio: string | null;
@@ -7706,7 +7707,17 @@ function ProfileView({
       {unfollowOpen && (
         <ActionDialog eyebrow="UNFOLLOW MEMBER" title={`Stop following ${profile?.name ?? "this member"}?`} description="Their updates will no longer be prioritised in your network feed. You can follow them again later." confirmLabel="Stop following" cancelLabel="Keep following" danger onClose={() => setUnfollowOpen(false)} onConfirm={updateFollow} />
       )}
-      <div className="profile-main profile-main-no-cover">
+      <div
+        className="profile-cover"
+        style={
+          profile?.coverImage
+            ? { backgroundImage: `url(${profile.coverImage})` }
+            : undefined
+        }
+      >
+        <span>{profile?.coverImage ? "" : "n2"}</span>
+      </div>
+      <div className="profile-main">
         <Avatar person={person} size="xl" ring />
         <button
           className={`secondary-button ${profile?.isMutual ? "connected" : ""}`}
@@ -8631,7 +8642,8 @@ function SettingsView({
       description: string;
     }>,
   });
-  const [profileImage, setProfileImage] = useState("");
+  const [profileImage, setProfileImage] = useState(""),
+    [coverImage, setCoverImage] = useState("");
   const [notifications, setNotifications] = useState({
     messages: true,
     projects: true,
@@ -8658,9 +8670,9 @@ function SettingsView({
   const [accessibility, setAccessibility] = useState<AccessibilityPreferences>(
     DEFAULT_ACCESSIBILITY_PREFERENCES,
   );
-  async function uploadProfileMedia(file?: File) {
+  async function uploadProfileMedia(type: "avatar" | "banner", file?: File) {
     if (!file || !profileUserId) return;
-    if (file.size > 650_000) {
+    if (file.size > (type === "avatar" ? 650_000 : 1_100_000)) {
       return;
     }
     const reader = new FileReader();
@@ -8669,9 +8681,12 @@ function SettingsView({
       const response = await fetch(`/api/profiles/${profileUserId}/media`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "avatar", data }),
+        body: JSON.stringify({ type, data }),
       });
-      if (response.ok) setProfileImage(data);
+      if (response.ok) {
+        if (type === "avatar") setProfileImage(data);
+        else setCoverImage(data);
+      }
     };
     reader.readAsDataURL(file);
   }
@@ -8705,6 +8720,7 @@ function SettingsView({
           if (!response.ok) return;
           const { profile: record } = await response.json();
           setProfileImage(record.image ?? "");
+          setCoverImage(record.coverImage ?? "");
           setProfile({
             name: record.name ?? "",
             headline: record.headline ?? "",
@@ -9020,6 +9036,25 @@ function SettingsView({
         {panel === "profile" && (
           <div className="settings-form">
             <div className="profile-media-editor">
+              <label
+                className="banner-upload"
+                style={
+                  coverImage
+                    ? { backgroundImage: `url(${coverImage})` }
+                    : undefined
+                }
+              >
+                <span>
+                  <ImageIcon size={16} /> Change banner
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(e) =>
+                    uploadProfileMedia("banner", e.target.files?.[0])
+                  }
+                />
+              </label>
               <div className="profile-settings-lead">
                 <Avatar
                   person={{
@@ -9040,7 +9075,9 @@ function SettingsView({
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
-                    onChange={(e) => uploadProfileMedia(e.target.files?.[0])}
+                    onChange={(e) =>
+                      uploadProfileMedia("avatar", e.target.files?.[0])
+                    }
                   />
                 </label>
               </div>
