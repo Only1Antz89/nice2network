@@ -15,6 +15,10 @@ test("direct messages use a thin circle, pill, circle composer", () => {
   assert.match(page, /<ArrowUpRight size=\{20\}/);
   assert.match(styles, /\.dm-composer\{[\s\S]*?grid-template-columns:44px minmax\(0,1fr\) 44px/);
   assert.match(styles, /\.dm-composer-main\{[\s\S]*?border:0/);
+  assert.match(styles, /\.conversation-composer-dock\{[\s\S]*?background:transparent/);
+  assert.doesNotMatch(styles, /\.conversation-composer-dock\{[\s\S]*?background:linear-gradient/);
+  assert.doesNotMatch(styles, /data-colour-theme="dark"\] (?:input|select|textarea)/);
+  assert.doesNotMatch(styles, /data-colour-theme="system"\] (?:input|select|textarea)/);
 });
 
 test("direct messages expose empty, sending, attachment, and error states", () => {
@@ -39,7 +43,9 @@ test("message hover controls and participant activity stay attached to chat mess
   assert.match(page, /onPlay=\{\(\) => setSpeakingMessageId\(message\.id\)\}/);
   assert.match(styles, /\.chat-message-row:hover \.message-actions/);
   assert.match(styles, /Message actions stay contextual[\s\S]*?\.message-footer \.message-actions\{opacity:0;visibility:hidden/);
-  assert.match(styles, /\.nudge-mark em:first-child[\s\S]*?font-size:15px[\s\S]*?\.nudge-mark em:last-child[\s\S]*?font-size:9px/);
+  assert.match(page, /<span><em>⚡<\/em><\/span>/);
+  assert.doesNotMatch(page, /<em>⚡<\/em><em>⚡<\/em>/);
+  assert.match(styles, /\.nudge-mark>span\{[^}]*display:grid;place-items:center/);
 });
 
 test("the edit-message field uses a neutral focus treatment", () => {

@@ -6589,7 +6589,7 @@ type ChatMessage = {
   senderImage: string | null;
 };
 function NudgeMark() {
-  return <span className="nudge-mark" aria-hidden="true"><b>(</b><i>(</i><span><em>⚡</em><em>⚡</em></span><i>)</i><b>)</b></span>;
+  return <span className="nudge-mark" aria-hidden="true"><b>(</b><i>(</i><span><em>⚡</em></span><i>)</i><b>)</b></span>;
 }
 function MessagesView({
   currentMember,
