@@ -59,9 +59,8 @@ import { signOut } from "next-auth/react";
 import EmojiPicker from "@/components/emoji-picker";
 import GuestAuthPrompt from "@/components/guest-auth-prompt";
 import HelpPanel from "@/components/help-panel";
-import NotificationPanel, {
-  type NotificationRecord,
-} from "@/components/notification-panel";
+import type { NotificationRecord } from "@/components/notification-panel";
+import NotificationsPage from "@/components/notifications-page";
 import SearchOverlay from "@/components/search-overlay";
 import ShareSheet from "@/components/share-sheet";
 import N2OrbitMark from "@/components/n2-orbit-mark";
@@ -93,6 +92,7 @@ type View =
   | "projects"
   | "network"
   | "messages"
+  | "notifications"
   | "meet"
   | "profile"
   | "settings";
@@ -737,8 +737,11 @@ const nav = [
   { id: "projects" as View, label: "Projects", icon: BriefcaseBusiness },
   { id: "network" as View, label: "Networks", icon: NetworkGraphIcon },
   { id: "messages" as View, label: "Messages", icon: MessageCircle },
+  { id: "notifications" as View, label: "Notifications", icon: Bell },
   { id: "meet" as View, label: "Meet", icon: CalendarDays },
 ];
+
+const mobileNav = nav.filter((item) => item.id !== "profile" && item.id !== "network");
 
 
 function TeamTrail({
@@ -3275,9 +3278,7 @@ function Feed({
   onProfile,
   onProject,
   onShare,
-  onNotifications,
   onToast,
-  unread,
   currentMember,
   newPost,
   authenticated,
@@ -3296,9 +3297,7 @@ function Feed({
     summary: string;
     kind?: "project" | "post";
   }) => void;
-  onNotifications: () => void;
   onToast: (message: string) => void;
-  unread: number;
   currentMember: MemberPerson;
   newPost: TimelinePost | null;
   authenticated: boolean;
@@ -3443,22 +3442,13 @@ function Feed({
     <>
       <div className="mobile-topbar">
         <Logo />
-        <div className="public-mobile-actions">
-          <button
-            className="icon-button notification-button"
-            onClick={authenticated ? onNotifications : onRequireAuth}
-            aria-label={authenticated && unread > 0 ? `Open notifications, ${unread} unread` : "Open notifications"}
-          >
-            {authenticated && unread > 0
-              ? <NotificationUnreadIndicator unread={unread} />
-              : <Bell size={20} />}
-          </button>
-          {!authenticated && (
+        {!authenticated && (
+          <div className="public-mobile-actions">
             <a className="public-mobile-signin" href="/signin?mode=register">
               Join n2
             </a>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       <header className="feed-intro">
         <div>
@@ -9067,6 +9057,7 @@ function SettingsView({
     matches: true,
     meets: true,
     officialNotices: true,
+    followedUpdates: true,
     digest: "weekly",
   });
   const [calendarPrefs, setCalendarPrefs] = useState({
@@ -9196,6 +9187,7 @@ function SettingsView({
               matches: data.preferences.matches,
               meets: data.preferences.meets,
               officialNotices: data.preferences.officialNotices,
+              followedUpdates: data.preferences.followedUpdates ?? true,
               digest: data.preferences.emailDigest,
             });
         })
@@ -9340,6 +9332,7 @@ function SettingsView({
           matches: notifications.matches,
           meets: notifications.meets,
           officialNotices: notifications.officialNotices,
+          followedUpdates: notifications.followedUpdates,
           emailDigest: notifications.digest,
         }),
         });
@@ -9954,6 +9947,11 @@ function SettingsView({
                 "Important product and community announcements",
                 "officialNotices",
               ],
+              [
+                "Updates from people you follow",
+                "New posts and public project updates from followed members",
+                "followedUpdates",
+              ],
             ].map(([title, copy, key]) => (
               <div className="preference-row" key={key}>
                 <span>
@@ -10490,7 +10488,6 @@ export default function HomePage() {
   const [guestAuthMode, setGuestAuthMode] = useState<
     "register" | "signin" | null
   >(null);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [toast, setToast] = useState("");
   const [peopleSuggestions, setPeopleSuggestions] = useState<
@@ -10771,6 +10768,7 @@ export default function HomePage() {
                     ? <Avatar person={currentMember} size="sm" />
                     : <Icon size={20} />}
                   <span>{item.label}</span>
+                  {authenticated && item.id === "notifications" && unreadNotifications > 0 && <b className="nav-unread-count">{unreadNotifications > 9 ? "9+" : unreadNotifications}</b>}
                   {!authenticated && item.id !== "feed" && (
                     <i className="preview-lock" aria-label="Sign in required" />
                   )}
@@ -10824,21 +10822,6 @@ export default function HomePage() {
         >
           {menuOpen ? <ArrowLeft /> : <Menu />}
         </button>
-        {authenticated && view !== "feed" && (
-          <button
-            className="mobile-page-notification notification-button"
-            onClick={() => setNotificationsOpen(true)}
-            aria-label={
-              unreadNotifications > 0
-                ? `Open notifications, ${unreadNotifications} unread`
-                : "Open notifications"
-            }
-          >
-            {unreadNotifications > 0
-              ? <NotificationUnreadIndicator unread={unreadNotifications} />
-              : <Bell size={20} />}
-          </button>
-        )}
         <div className="content-column">
           {selectedProjectId ? (
             <ProjectDetailView
@@ -10869,8 +10852,6 @@ export default function HomePage() {
                   onProject={() => go("projects")}
                   onShare={setShareProject}
                   onToast={setToast}
-                  onNotifications={() => setNotificationsOpen(true)}
-                  unread={unreadNotifications}
                 />
               )}
               {authenticated && view === "projects" && (
@@ -10892,6 +10873,9 @@ export default function HomePage() {
               )}
               {authenticated && view === "messages" && (
                 <MessagesView currentMember={currentMember} />
+              )}
+              {authenticated && view === "notifications" && (
+                <NotificationsPage onUnread={setUnreadNotifications} />
               )}
               {authenticated && view === "meet" && <MeetView />}
               {authenticated && view === "profile" && (
@@ -10930,10 +10914,8 @@ export default function HomePage() {
             </button>
             <button
               className="icon-button border notification-button"
-              onClick={() =>
-                authenticated ? setNotificationsOpen(true) : requireSignIn()
-              }
-              aria-label={authenticated && unreadNotifications > 0 ? `Open notifications, ${unreadNotifications} unread` : "Open notifications"}
+              onClick={() => authenticated ? go("notifications") : requireSignIn()}
+              aria-label={authenticated && unreadNotifications > 0 ? `Open notifications page, ${unreadNotifications} unread` : "Open notifications page"}
             >
               {authenticated && unreadNotifications > 0
                 ? <NotificationUnreadIndicator unread={unreadNotifications} />
@@ -11029,17 +11011,15 @@ export default function HomePage() {
         </aside>
       )}
       <nav className="mobile-nav" aria-label="Mobile navigation">
-        {nav.map((item) => {
+        {mobileNav.filter((item) => item.id !== view).map((item) => {
             const Icon = item.icon;
-            const isProfile = item.id === "profile";
             return (
               <button
                 key={item.id}
-                className={view === item.id ? "active" : ""}
-                onClick={() => isProfile ? openOwnProfile() : go(item.id)}
+                onClick={() => go(item.id)}
               >
-                {isProfile && authenticated
-                  ? <Avatar person={currentMember} size="sm" />
+                {authenticated && item.id === "notifications" && unreadNotifications > 0
+                  ? <NotificationUnreadIndicator unread={unreadNotifications} />
                   : <Icon size={21} />}
                 <span>{item.label}</span>
               </button>
@@ -11087,12 +11067,6 @@ export default function HomePage() {
           onProfile={openProfile}
           onToast={setToast}
           onNetworkChanged={signalNetworkChanged}
-        />
-      )}
-      {authenticated && notificationsOpen && (
-        <NotificationPanel
-          onClose={() => setNotificationsOpen(false)}
-          onUnread={setUnreadNotifications}
         />
       )}
       {helpOpen && (

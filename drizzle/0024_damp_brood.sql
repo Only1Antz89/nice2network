@@ -1,0 +1,1 @@
+ALTER TABLE "notification_preferences" ADD COLUMN "followed_updates" boolean DEFAULT true NOT NULL;

@@ -14,6 +14,8 @@ export type NotificationRecord = {
   createdAt: string;
   actorName?: string | null;
   actorImage?: string | null;
+  entityType?: string | null;
+  entityId?: string | null;
 };
 
 export default function NotificationPanel({

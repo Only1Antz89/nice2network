@@ -6,6 +6,7 @@ import { adminAssignments, follows, postLikes, postReplies, postReposts, project
 import { apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
+import { createNotifications } from "@/lib/notifications";
 import { auth } from "@/auth";
 
 const imageData = z.string().max(2_900_000).refine(value => /^data:image\/(jpeg|png|webp|gif);base64,/i.test(value), "Choose a JPEG, PNG, WebP or GIF image");
@@ -58,6 +59,10 @@ export async function POST(request: Request) {
       if (visible.length !== input.linkedProjectIds.length) return NextResponse.json({ error: "One of the linked projects is no longer available" }, { status: 400 });
     }
     const [post] = await db.insert(timelinePosts).values({ authorId: member.id, body: input.body, linkedProjectIds: input.linkedProjectIds, attachmentType: input.attachmentType ?? null, attachmentUrl: input.attachmentUrl ?? null, videoUrl: input.videoUrl ?? null, visibility: input.visibility }).returning();
+    if (input.visibility === "network") {
+      const followers = await db.select({ userId: follows.followerId }).from(follows).where(eq(follows.followingId, member.id));
+      await createNotifications(followers.map(({ userId }) => ({ userId, actorId: member.id, type: "following" as const, title: `${member.name ?? "A member you follow"} shared a post`, body: input.body.slice(0, 120), entityType: "post", entityId: post.id, href: `/?post=${post.id}` })));
+    }
     await audit(member.id, "timeline.post_created", "post", post.id, { linkedProjectCount: input.linkedProjectIds.length, hasMedia: Boolean(input.attachmentUrl || input.videoUrl) });
     await trackProductEvent({ actorId: member.id, event: "timeline_post_created", properties: { linkedProjects: input.linkedProjectIds.length, media: input.attachmentType ?? (input.videoUrl ? "video_link" : "none") } });
     return NextResponse.json({ post: { ...post, authorId: member.id, authorName: member.name, authorImage: member.image, authorProfession: null, authorIsAdmin: member.isN2Admin, linkedProjects: [], replyCount:0, likeCount:0, repostCount:0, liked:false, reposted:false } }, { status: 201 });

@@ -78,7 +78,7 @@ test("dark mode separates text, surface and solid-action colours", () => {
   assert.match(styles, /html\[data-colour-theme="dark"\]\[data-contrast="high"\]/);
 });
 
-test("profile navigation stays compact while full profiles retain banners", () => {
+test("mobile navigation omits the current page while full profiles retain banners", () => {
   const page = read("app/page.tsx");
   const styles = read("app/globals.css");
   const publicStyles = read("app/public.css");
@@ -92,8 +92,35 @@ test("profile navigation stays compact while full profiles retain banners", () =
   assert.match(page, /className="admin-nav-link admin-profile-slot"/);
   assert.match(page, /className="sidebar-account-divider"/);
   assert.match(page, /className="rail-help-link"/);
-  assert.match(styles, /grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
+  assert.match(page, /const mobileNav = nav\.filter\(\(item\) => item\.id !== "profile" && item\.id !== "network"\)/);
+  assert.match(page, /mobileNav\.filter\(\(item\) => item\.id !== view\)\.map/);
+  assert.match(page, /item\.id === "notifications" && unreadNotifications > 0\s+\? <NotificationUnreadIndicator unread=\{unreadNotifications\}/);
+  assert.match(styles, /grid-auto-columns:minmax\(0,1fr\)/);
   assert.match(publicStyles, /\.rail-help-link/);
+});
+
+test("notifications use a dedicated responsive page instead of a mobile floating control", () => {
+  const page = read("app/page.tsx");
+  const styles = read("app/globals.css");
+  const notificationsPage = read("components/notifications-page.tsx");
+  const api = read("app/api/notifications/route.ts");
+  const schema = read("db/schema.ts");
+  const notificationService = read("lib/notifications.ts");
+  const posts = read("app/api/posts/route.ts");
+  const projectUpdates = read("app/api/projects/[projectId]/updates/route.ts");
+  const migration = read("drizzle/0024_damp_brood.sql");
+  assert.doesNotMatch(page, /className="mobile-page-notification/);
+  assert.doesNotMatch(styles, /\.mobile-page-notification/);
+  assert.match(page, /label: "Notifications", icon: Bell/);
+  assert.match(page, /<NotificationsPage onUnread=\{setUnreadNotifications\}/);
+  for (const section of ["LATEST NOTIFICATION", "Reactions to projects", "Reactions to posts", "New followers", "Updates from people you follow"]) assert.match(notificationsPage, new RegExp(section));
+  assert.match(notificationsPage, /followedUpdates/);
+  assert.match(api, /entityType: notifications\.entityType/);
+  assert.match(schema, /followedUpdates: boolean\("followed_updates"\)/);
+  assert.match(notificationService, /if\(item\.type==="following"\)return preference\.followedUpdates/);
+  assert.match(posts, /type: "following" as const/);
+  assert.match(projectUpdates, /type:"following" as const/);
+  assert.match(migration, /ADD COLUMN "followed_updates" boolean DEFAULT true NOT NULL/);
 });
 
 test("dark mode uses one semantic surface system across core product areas", () => {

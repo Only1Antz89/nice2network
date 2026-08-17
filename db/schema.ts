@@ -228,6 +228,7 @@ export const notificationPreferences = pgTable("notification_preferences", {
   matches: boolean("matches").notNull().default(true),
   meets: boolean("meets").notNull().default(true),
   officialNotices: boolean("official_notices").notNull().default(true),
+  followedUpdates: boolean("followed_updates").notNull().default(true),
   emailDigest: text("email_digest").notNull().default("weekly"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
