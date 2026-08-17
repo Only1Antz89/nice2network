@@ -32,7 +32,13 @@ export default function AccessibilityController() {
     };
     window.addEventListener(ACCESSIBILITY_EVENT, onChange);
     colourScheme.addEventListener("change", onSystemThemeChange);
-    const mediaObserver = new MutationObserver(() => applyAccessibilityPreferencesToMedia());
+    const mediaObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node instanceof Element) applyAccessibilityPreferencesToMedia(node);
+        }
+      }
+    });
     mediaObserver.observe(document.body, { childList: true, subtree: true });
     let announcedHeading = "";
     const headingObserver = new MutationObserver(() => {

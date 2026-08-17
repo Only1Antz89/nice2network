@@ -52,7 +52,11 @@ async function requestPage(value: string) {
     const send = target.url.protocol === "https:" ? httpsRequest : httpRequest;
     const req = send(target.url, {
       headers: { accept: "text/html,application/xhtml+xml", "user-agent": "nice2network-link-preview/1.0" },
-      lookup: (_hostname, _options, callback) => callback(null, target.address, target.family),
+      lookup: (_hostname, options, callback) => {
+        const address = { address: target.address, family: target.family };
+        if (typeof options === "object" && options.all) callback(null, [address]);
+        else callback(null, address.address, address.family);
+      },
     }, (response) => {
       const status = response.statusCode ?? 500;
       const location = response.headers.location;
@@ -102,6 +106,6 @@ export async function GET(request: NextRequest) {
     if (imageValue) { try { image = (await safeTarget(new URL(imageValue, current).toString())).url.toString(); } catch { image = null; } }
     return NextResponse.json({ url: current.toString(), title: title.slice(0, 180), description: description.slice(0, 320), image, siteName: meta(html, ["og:site_name"]).slice(0, 80), domain: current.hostname.replace(/^www\./, "") }, { headers: { "cache-control": "private, max-age=3600" } });
   } catch {
-    return NextResponse.json({ error: "Preview unavailable" }, { status: 422 });
+    return new NextResponse(null, { status: 204, headers: { "cache-control": "private, no-store" } });
   }
 }

@@ -17,7 +17,8 @@ test("pins link preview requests to a validated public DNS result", async () => 
   const route = await read("app/api/link-preview/route.ts");
   assert.match(route, /requireMember/);
   assert.match(route, /addresses\.some\(\(\{ address \}\) => isPrivateAddress\(address\)\)/);
-  assert.match(route, /lookup: \(_hostname, _options, callback\) => callback\(null, target\.address, target\.family\)/);
+  assert.match(route, /options\.all\) callback\(null, \[address\]\)/);
+  assert.match(route, /callback\(null, address\.address, address\.family\)/);
   assert.match(route, /MAX_HTML_BYTES/);
 });
 

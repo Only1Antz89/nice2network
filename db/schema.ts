@@ -500,6 +500,7 @@ export const algorithmSettings = pgTable("algorithm_settings", {
   embeddingModel: text("embedding_model").notNull(),
   embeddingDimensions: integer("embedding_dimensions").notNull().default(768),
   rolloutStage: integer("rollout_stage").notNull().default(1),
+  similarProjectSuggestionsEnabled: boolean("similar_project_suggestions_enabled").notNull().default(true),
   weights: jsonb("weights").$type<Record<string, number>>().notNull(),
   createdBy: uuid("created_by").references(() => users.id),
   activatedAt: timestamp("activated_at", { withTimezone: true }),
@@ -527,6 +528,18 @@ export const projectBlueprints = pgTable("project_blueprints", {
   approvedAt: timestamp("approved_at", { withTimezone: true }),
   approvedBy: uuid("approved_by").references(() => users.id),
 }, (table) => [uniqueIndex("project_blueprint_version_unique").on(table.projectId, table.version), index("project_blueprints_status_idx").on(table.projectId, table.status)]);
+
+export const projectEmbeddings = pgTable("project_embeddings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  contentHash: text("content_hash").notNull(),
+  dimensions: integer("dimensions").notNull().default(768),
+  embedding: vector("embedding", { dimensions: 768 }).notNull(),
+  status: text("status").notNull().default("ready"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [uniqueIndex("project_embedding_provider_unique").on(table.projectId, table.provider, table.model), index("project_embeddings_provider_idx").on(table.provider, table.status)]);
 
 export const memberEmbeddings = pgTable("member_embeddings", {
   id: uuid("id").defaultRandom().primaryKey(),

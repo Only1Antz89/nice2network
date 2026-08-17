@@ -23,7 +23,7 @@ export const DEFAULT_ALGORITHM_WEIGHTS = {
 
 export type ActiveAlgorithmSettings = {
   id: string | null; version: number; provider: "openai" | "gemini"; blueprintModel: string; embeddingModel: string;
-  embeddingDimensions: number; rolloutStage: number; weights: Record<string, number>;
+  embeddingDimensions: number; rolloutStage: number; similarProjectSuggestionsEnabled: boolean; weights: Record<string, number>;
 };
 
 export async function getActiveAlgorithmSettings(): Promise<ActiveAlgorithmSettings> {
@@ -33,7 +33,7 @@ export async function getActiveAlgorithmSettings(): Promise<ActiveAlgorithmSetti
     id: null, version: 1, provider: "openai",
     blueprintModel: process.env.OPENAI_BLUEPRINT_MODEL || "gpt-4.1-mini",
     embeddingModel: process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
-    embeddingDimensions: 768, rolloutStage: 1, weights: DEFAULT_ALGORITHM_WEIGHTS,
+    embeddingDimensions: 768, rolloutStage: 1, similarProjectSuggestionsEnabled: true, weights: DEFAULT_ALGORITHM_WEIGHTS,
   };
 }
 
@@ -244,7 +244,7 @@ export async function createEmbeddingReindexJob(requestedBy: string, provider?: 
 export async function processEmbeddingReindex(jobId: string, batchSize = 20) {
   const db = getDb(), settings = await getActiveAlgorithmSettings();
   const [job] = await db.select().from(recommendationJobs).where(eq(recommendationJobs.id, jobId)).limit(1);
-  if (!job || !["queued", "running"].includes(job.status)) return job;
+  if (!job || job.type !== "embedding_reindex" || !["queued", "running"].includes(job.status)) return job;
   const provider = createBlueprintProvider(settings);
   await db.update(recommendationJobs).set({ status: "running", startedAt: job.startedAt ?? new Date() }).where(eq(recommendationJobs.id, jobId));
   const rows = await db.select().from(users).where(and(eq(users.status, "active"), sql`${users.onboardingCompletedAt} is not null`)).orderBy(asc(users.createdAt)).offset(job.processed).limit(batchSize);

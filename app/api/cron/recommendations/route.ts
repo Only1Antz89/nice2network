@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { projectBlueprints, projects, recommendationJobs } from "@/db/schema";
 import { generateProjectBlueprint, processEmbeddingReindex, recomputeProjectRecommendations } from "@/lib/recommendations/service";
+import { processProjectEmbeddingReindex } from "@/lib/recommendations/project-similarity";
 
 export async function GET(request: Request) {
   const expected = process.env.CRON_SECRET;
@@ -15,11 +16,18 @@ export async function GET(request: Request) {
     const target = job ?? queuedJob;
     if (target) await db.update(recommendationJobs).set({ status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "Reindex failed", completedAt: new Date() }).where(eq(recommendationJobs.id, target.id));
   }
+  const [projectJob] = await db.select().from(recommendationJobs).where(and(eq(recommendationJobs.type, "project_embedding_reindex"), eq(recommendationJobs.status, "running"))).orderBy(asc(recommendationJobs.createdAt)).limit(1);
+  const [queuedProjectJob] = projectJob ? [] : await db.select().from(recommendationJobs).where(and(eq(recommendationJobs.type, "project_embedding_reindex"), eq(recommendationJobs.status, "queued"))).orderBy(asc(recommendationJobs.createdAt)).limit(1);
+  let projectReindex = null;
+  try { if (projectJob || queuedProjectJob) projectReindex = await processProjectEmbeddingReindex((projectJob ?? queuedProjectJob).id, 20); } catch (error) {
+    const target = projectJob ?? queuedProjectJob;
+    if (target) await db.update(recommendationJobs).set({ status: "failed", error: error instanceof Error ? error.message.slice(0, 500) : "Project reindex failed", completedAt: new Date() }).where(eq(recommendationJobs.id, target.id));
+  }
   const missingBlueprints = await db.select({ id: projects.id, ownerId: projects.ownerId }).from(projects).leftJoin(projectBlueprints, eq(projectBlueprints.projectId, projects.id)).where(and(eq(projects.status, "active"), isNull(projectBlueprints.id))).orderBy(asc(projects.createdAt)).limit(3);
   let blueprints = 0;
   for (const project of missingBlueprints) { try { await generateProjectBlueprint(project.id, project.ownerId); blueprints++; } catch { /* The next daily batch can safely retry. */ } }
   const active = await db.select({ id: projects.id }).from(projects).where(eq(projects.status, "active")).orderBy(asc(projects.updatedAt)).limit(10);
   let recommendations = 0;
   for (const project of active) { try { recommendations += (await recomputeProjectRecommendations(project.id)).generated; } catch { /* One malformed legacy project must not stop the batch. */ } }
-  return NextResponse.json({ blueprints, recommendations, reindex });
+  return NextResponse.json({ blueprints, recommendations, reindex, projectReindex });
 }

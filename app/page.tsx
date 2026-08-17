@@ -29,6 +29,7 @@ import {
   Mic,
   Menu,
   MessageCircle,
+  Navigation,
   Pencil,
   Pin,
   Plus,
@@ -234,6 +235,18 @@ type BlueprintRecord = {
   provider: string;
   usedFallback?: boolean;
   failureStatus?: string | null;
+};
+type SimilarProjectSuggestion = {
+  projectId: string;
+  title: string;
+  summary: string;
+  stage: string;
+  location: string | null;
+  teamSize: number;
+  progress: number;
+  score: number;
+  reasons: string[];
+  matchingRole: { id: string; title: string; openings: number; fitScore: number };
 };
 type ProfileRecord = {
   id: string;
@@ -472,10 +485,7 @@ function RichLinkPreview({ text, url }: { text?: string | null; url?: string | n
       return;
     }
     const controller = new AbortController();
-    fetch(`/api/link-preview?url=${encodeURIComponent(target)}`, {
-      signal: controller.signal,
-    })
-      .then((response) => (response.ok ? response.json() : null))
+    loadLinkPreview(target, controller.signal)
       .then((data) => setPreview(data))
       .catch(() => undefined);
     return () => controller.abort();
@@ -492,6 +502,18 @@ function RichLinkPreview({ text, url }: { text?: string | null; url?: string | n
       </span>
     </a>
   );
+}
+
+const linkPreviewCache = new Map<string, LinkPreviewRecord | null>();
+
+async function loadLinkPreview(target: string, signal: AbortSignal) {
+  if (linkPreviewCache.has(target)) return linkPreviewCache.get(target) ?? null;
+  const response = await fetch(`/api/link-preview?url=${encodeURIComponent(target)}`, {
+    signal,
+  });
+  const preview = response.ok && response.status !== 204 ? await response.json() as LinkPreviewRecord : null;
+  linkPreviewCache.set(target, preview);
+  return preview;
 }
 
 const people = {
@@ -1567,7 +1589,7 @@ function CreateProject({
   onPublish: (project: ProjectRecord) => void;
   currentMember: MemberPerson;
 }) {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState<0 | 1 | 2>(0);
   const [form, setForm] = useState({
     title: "",
     summary: "",
@@ -1596,7 +1618,8 @@ function CreateProject({
       }>
     >([]);
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [similarProjects, setSimilarProjects] = useState<SimilarProjectSuggestion[]>([]);
   async function mapTeam() {
     setBusy(true);
     setError("");
@@ -1705,6 +1728,46 @@ function CreateProject({
     });
     onClose();
   }
+  async function checkSimilarityAndPublish() {
+    if (!projectId || !blueprint) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/projects/similarity/preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectId, roles, milestones: roadmap }),
+      });
+      if (response.ok) {
+        const result = await response.json();
+        const suggestions = Array.isArray(result.suggestions) ? result.suggestions as SimilarProjectSuggestion[] : [];
+        if (result.enabled !== false && suggestions.length) {
+          setSimilarProjects(suggestions);
+          setStep(2);
+          setBusy(false);
+          return;
+        }
+      }
+    } catch { /* Similarity checks are advisory and never block publication. */ }
+    await publish();
+  }
+  async function continueWithProject() {
+    setBusy(true);
+    fetch("/api/projects/similarity/event", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "continued_own_project", sourceProjectId: projectId }),
+    }).catch(() => undefined);
+    await publish();
+  }
+  function recordSimilarProjectView(targetProjectId: string) {
+    fetch("/api/projects/similarity/event", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "target_viewed", sourceProjectId: projectId, targetProjectId }),
+      keepalive: true,
+    }).catch(() => undefined);
+  }
   function chooseProjectImage(file?: File) {
     if (!file) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
@@ -1760,8 +1823,8 @@ function CreateProject({
           <button className="icon-button" onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
-          <span>{step === 0 ? "New project" : "Review your team map"}</span>
-          <span className="step-count">{step + 1}/2</span>
+          <span>{step === 0 ? "New project" : step === 1 ? "Review your team map" : "Similar projects"}</span>
+          <span className="step-count">{step === 0 ? "1/2" : step === 1 ? "2/2" : "Review"}</span>
         </div>
         {step === 0 ? (
           <div className="modal-content">
@@ -1944,6 +2007,34 @@ function CreateProject({
                 </>
               )}
             </button>
+          </div>
+        ) : step === 2 ? (
+          <div className="modal-content similar-project-review">
+            <div className="ai-orbit"><N2Mark /><span>n2 project check</span></div>
+            <span className="eyebrow">SIMILAR WORK FOUND</span>
+            <h2 id="modal-title">Similar work is already underway</h2>
+            <p>These projects share a very close purpose and have an open role that fits your profile. Joining is optional—you can still publish your own project.</p>
+            <div className="similar-project-list">
+              {similarProjects.map((project) => (
+                <article key={project.projectId}>
+                  <header><div><span>{project.score}% aligned</span><h3>{project.title}</h3></div><b>{project.stage}</b></header>
+                  <p>{project.summary}</p>
+                  <div className="similar-project-metrics">
+                    <span><UsersRound size={14}/><b>{project.teamSize}</b> people</span>
+                    <span><Clock3 size={14}/><b>{project.progress}%</b> progress</span>
+                    {project.location && <span><MapPin size={14}/>{project.location}</span>}
+                  </div>
+                  <div className="similar-project-role"><BriefcaseBusiness size={16}/><span><strong>{project.matchingRole.title}</strong><small>{project.matchingRole.openings} open · {project.matchingRole.fitScore}% profile fit</small></span></div>
+                  <ul>{project.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
+                  <a href={`/?project=${encodeURIComponent(project.projectId)}&role=${encodeURIComponent(project.matchingRole.id)}&sourceProject=${encodeURIComponent(projectId)}`} target="_blank" rel="noreferrer" onClick={() => recordSimilarProjectView(project.projectId)}>View matching role <ArrowUpRight size={15}/></a>
+                </article>
+              ))}
+            </div>
+            {error && <p className="form-error">{error}</p>}
+            <div className="similar-project-actions">
+              <button type="button" className="secondary-button" onClick={() => setStep(1)} disabled={busy}><ArrowLeft size={15}/> Back</button>
+              <button type="button" className="primary-button" onClick={continueWithProject} disabled={busy}>{busy ? "Publishing…" : "Continue with my project"}</button>
+            </div>
           </div>
         ) : (
           <div className="modal-content ai-result">
@@ -2216,7 +2307,7 @@ function CreateProject({
             <button
               className="primary-button wide"
               disabled={busy || roles.length === 0}
-              onClick={publish}
+              onClick={checkSimilarityAndPublish}
             >
               {busy ? (
                 "Publishing and matching…"
@@ -6251,9 +6342,13 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
           >
             <Clock3 size={16} />
           </button>
-          <button className="secondary-button" onClick={startCall}>
-            <Video size={15} />{" "}
-            {selected.members.length > 2 ? "Start meet" : "Video call"}
+          <button
+            className="icon-button border conversation-meet-button"
+            onClick={startCall}
+            aria-label={selected.members.length > 2 ? "Start meet" : "Start video call"}
+            title={selected.members.length > 2 ? "Start meet" : "Start video call"}
+          >
+            <Video size={16} />
           </button>
         </div>
         <div className="chat-flow" role="log" aria-live="polite">
@@ -6625,6 +6720,117 @@ type MeetInvitee = {
   podcastRole?: PodcastInviteRole;
 };
 type PodcastInviteRole = "cohost" | "speaker" | "listener";
+type MeetVenue = { latitude: number; longitude: number; displayName: string };
+type MeetRoute = { durationSeconds: number; distanceMeters: number };
+
+function InPersonMeetMap({ location }: { location: string }) {
+  const [venue, setVenue] = useState<MeetVenue | null>(null),
+    [route, setRoute] = useState<MeetRoute | null>(null),
+    [routeCalculatedAt, setRouteCalculatedAt] = useState<number | null>(null),
+    [origin, setOrigin] = useState<{ latitude: number; longitude: number } | null>(null),
+    [loadingVenue, setLoadingVenue] = useState(true),
+    [loadingRoute, setLoadingRoute] = useState(false),
+    [routeError, setRouteError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setVenue(null);
+    setRoute(null);
+    setRouteCalculatedAt(null);
+    setOrigin(null);
+    setRouteError("");
+    setLoadingVenue(true);
+    fetch(`/api/maps/route?destination=${encodeURIComponent(location)}`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error("Map unavailable");
+        return response.json();
+      })
+      .then(result => setVenue(result.venue ?? null))
+      .catch(error => {
+        if (error instanceof Error && error.name !== "AbortError") setRouteError("The venue map is temporarily unavailable. Directions will still open in Maps.");
+      })
+      .finally(() => setLoadingVenue(false));
+    return () => controller.abort();
+  }, [location]);
+
+  function requestRoute() {
+    if (!navigator.geolocation) {
+      setRouteError("Location sharing is not available in this browser.");
+      return;
+    }
+    setLoadingRoute(true);
+    setRouteError("");
+    navigator.geolocation.getCurrentPosition(async position => {
+      const current = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      setOrigin(current);
+      try {
+        const query = new URLSearchParams({
+          destination: location,
+          latitude: String(current.latitude),
+          longitude: String(current.longitude),
+        });
+        const response = await fetch(`/api/maps/route?${query}`, { cache: "no-store" });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.route) throw new Error(result.error ?? "Route unavailable");
+        setVenue(result.venue ?? null);
+        setRoute(result.route);
+        setRouteCalculatedAt(Date.now());
+      } catch {
+        setRouteError("We couldn't calculate an ETA. You can still open turn-by-turn directions.");
+      } finally {
+        setLoadingRoute(false);
+      }
+    }, error => {
+      setLoadingRoute(false);
+      setRouteError(error.code === error.PERMISSION_DENIED
+        ? "Location wasn't shared. Allow it in your browser to see a live ETA."
+        : "Your current location couldn't be found. Try opening directions instead.");
+    }, { enableHighAccuracy: false, maximumAge: 300_000, timeout: 10_000 });
+  }
+
+  const mapUrl = venue ? (() => {
+      const latitudeSpan = 0.008;
+      const longitudeSpan = 0.012;
+      const params = new URLSearchParams({
+        bbox: `${venue.longitude - longitudeSpan},${venue.latitude - latitudeSpan},${venue.longitude + longitudeSpan},${venue.latitude + latitudeSpan}`,
+        layer: "mapnik",
+        marker: `${venue.latitude},${venue.longitude}`,
+      });
+      return `https://www.openstreetmap.org/export/embed.html?${params}`;
+    })() : null,
+    directionsParams = new URLSearchParams({ api: "1", destination: location, travelmode: "driving" });
+  if (origin) directionsParams.set("origin", `${origin.latitude},${origin.longitude}`);
+  const directionsUrl = `https://www.google.com/maps/dir/?${directionsParams}`,
+    minutes = route ? Math.max(1, Math.round(route.durationSeconds / 60)) : null,
+    distance = route ? route.distanceMeters >= 1_000 ? `${(route.distanceMeters / 1_000).toFixed(1)} km` : `${Math.round(route.distanceMeters)} m` : null,
+    arrival = route && routeCalculatedAt ? new Date(routeCalculatedAt + route.durationSeconds * 1_000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
+
+  return (
+    <section className="meet-route-panel" aria-label="Venue map and directions">
+      <div className="meet-map-frame">
+        {mapUrl ? <iframe src={mapUrl} title={`Map of ${location}`} loading="lazy" referrerPolicy="no-referrer" /> : <div className="meet-map-placeholder"><MapPin size={22}/><strong>{loadingVenue ? "Loading venue map…" : location}</strong></div>}
+      </div>
+      <div className="meet-route-copy">
+        <div>
+          <span className="eyebrow">GETTING THERE</span>
+          <strong>{route ? `${minutes} min by car` : "Plan your journey"}</strong>
+          <small>{route ? `${distance} · estimated arrival ${arrival}` : "Share your current location once to calculate distance and ETA."}</small>
+        </div>
+        <div className="meet-route-actions">
+          <button type="button" className="secondary-button" onClick={requestRoute} disabled={loadingRoute}>
+            <Navigation size={14}/>{loadingRoute ? "Calculating…" : route ? "Refresh ETA" : "Use my location for ETA"}
+          </button>
+          <a className="primary-button" href={directionsUrl} target="_blank" rel="noreferrer">
+            Directions <ArrowUpRight size={14}/>
+          </a>
+        </div>
+        <small className="meet-route-privacy">Your current coordinates are used for this route only and are not saved.</small>
+        {routeError && <p className="meet-route-error" role="status">{routeError}</p>}
+      </div>
+    </section>
+  );
+}
+
 function MeetAttendeePicker({
   selected,
   onChange,
@@ -7103,6 +7309,7 @@ function MeetView() {
                 <p>
                   {meet.description || meet.location || "Open meeting details"}
                 </p>
+                {meet.provider === "in_person" && meet.location && <span className="meet-card-location"><MapPin size={11}/>{meet.location}</span>}
               </div>
               {meet.provider === "in_person" ? <button className="join-button" onClick={() => setDetail(meet)}>
                   <ArrowUpRight size={16} />
@@ -7312,6 +7519,7 @@ function MeetView() {
             </header>
             {detail.thumbnailUrl && <img className="meet-detail-cover" src={detail.thumbnailUrl} alt="" />}
             <p>{detail.description || "No description added."}</p>
+            {detail.provider === "in_person" && detail.location && <InPersonMeetMap location={detail.location} />}
             <div className="saved-actions">
               <button onClick={() => saveMeet(detail, "pin")}>
                 <Pin size={15} />
@@ -9750,6 +9958,7 @@ export default function HomePage() {
   });
   const [authenticated, setAuthenticated] = useState(false);
   const latestSystemMessage = useRef<string | null | false>(false);
+  const deepLinkHandled = useRef(false);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
@@ -9800,6 +10009,24 @@ export default function HomePage() {
       })
       .catch(() => undefined);
   }, []);
+  useEffect(() => {
+    if (!authenticated || deepLinkHandled.current) return;
+    const params = new URLSearchParams(window.location.search), projectId = params.get("project"), roleId = params.get("role");
+    if (!projectId) return;
+    deepLinkHandled.current = true;
+    setView("projects");
+    setSelectedProjectId(projectId);
+    if (!roleId) return;
+    fetch(`/api/projects/${encodeURIComponent(projectId)}`)
+      .then(async response => ({ response, data: await response.json() }))
+      .then(({ response, data }) => {
+        if (!response.ok || !data.project) return;
+        const roles = (data.project.roles ?? []) as ProjectRoleRecord[];
+        if (!roles.some(role => role.id === roleId && role.status === "open" && role.filled < role.capacity)) return;
+        setContributionTarget({ projectId, projectTitle: data.project.title, roles, initialRoleId: roleId });
+      })
+      .catch(() => undefined);
+  }, [authenticated]);
   useEffect(() => {
     if (!authenticated) return;
     let mounted = true;

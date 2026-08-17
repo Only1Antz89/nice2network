@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { getDb, isDatabaseConfigured } from "@/db";
@@ -9,6 +9,7 @@ import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
 import { canonicalTerm, feedScore } from "@/lib/recommendations/scoring";
 import { getActiveAlgorithmSettings, recomputeProjectRecommendations } from "@/lib/recommendations/service";
+import { ensureProjectEmbedding } from "@/lib/recommendations/project-similarity";
 
 const roleSchema = z.object({
   title: z.string().min(2).max(80), department: z.string().min(2).max(80), description: z.string().max(500).optional(),
@@ -64,15 +65,15 @@ function enforceOwnerDiversity(rows: FeedProject[]) {
 export async function GET(request: Request) {
   if (!isDatabaseConfigured()) return NextResponse.json({ projects: [], nextCursor: null, algorithmMode: "public" });
   try {
-    const session=await auth(),member=session?.user,db = getDb(), url = new URL(request.url), scope = url.searchParams.get("scope") ?? "discover", filter = (url.searchParams.get("filter") ?? "for_you").toLowerCase().replaceAll(" ", "_");
-    if(scope==="mine"&&!member?.id)throw new ApiError(401,"Sign in required");
+    const session=await auth(),member=session?.user,viewerId=member?.id || null,db = getDb(), url = new URL(request.url), scope = url.searchParams.get("scope") ?? "discover", filter = (url.searchParams.get("filter") ?? "for_you").toLowerCase().replaceAll(" ", "_");
+    if(scope==="mine"&&!viewerId)throw new ApiError(401,"Sign in required");
     const limit = Math.min(40, Math.max(1, Number(url.searchParams.get("limit") ?? 20))), cursor = url.searchParams.get("cursor");
     const industryFilter = url.searchParams.get("industry")?.trim().toLowerCase() ?? "";
     const stageFilter = url.searchParams.get("stage")?.trim().toLowerCase() ?? "";
     const workModeFilter = url.searchParams.get("workMode")?.trim().toLowerCase() ?? "";
     const locationFilter = url.searchParams.get("location")?.trim().toLowerCase() ?? "";
-    const memberId=member?.id??"00000000-0000-0000-0000-000000000000";
-    const memberships = member?.id?await db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, member.id)):[];
+    const memberId=viewerId??"00000000-0000-0000-0000-000000000000";
+    const memberships = viewerId?await db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, viewerId)):[];
     const memberProjectIds = memberships.map(row => row.projectId);
     const condition = scope === "mine"
       ? or(eq(projects.ownerId, memberId), memberProjectIds.length ? inArray(projects.id, memberProjectIds) : eq(projects.ownerId, memberId))
@@ -85,11 +86,11 @@ export async function GET(request: Request) {
       (!locationFilter || [row.city, row.country].filter(Boolean).join(" ").toLowerCase().includes(locationFilter))
     );
     if (scope === "discover") {
-      if(!member?.id){const start=cursor?Math.max(0,rows.findIndex(row=>row.id===cursor)+1):0,page=rows.slice(start,start+limit);return NextResponse.json({projects:page,nextCursor:start+limit<rows.length?page.at(-1)?.id:null,algorithmMode:"public"})}
+      if(!viewerId){const start=cursor?Math.max(0,rows.findIndex(row=>row.id===cursor)+1):0,page=rows.slice(start,start+limit);return NextResponse.json({projects:page,nextCursor:start+limit<rows.length?page.at(-1)?.id:null,algorithmMode:"public"})}
       const settings = await getActiveAlgorithmSettings();
       const [profile, recommendations] = await Promise.all([
-        db.select({ industry: users.industry, interests: users.interests, ageBand: users.ageBand }).from(users).where(eq(users.id, member.id)).limit(1).then(result => result[0]),
-        db.select({ recommendation: projectRecommendations, role: projectRoles }).from(projectRecommendations).innerJoin(projectRoles, eq(projectRoles.id, projectRecommendations.roleId)).where(and(eq(projectRecommendations.userId, member.id), eq(projectRecommendations.status, "active"))).orderBy(desc(projectRecommendations.score), asc(projectRecommendations.id)),
+        db.select({ industry: users.industry, interests: users.interests, ageBand: users.ageBand }).from(users).where(eq(users.id, viewerId)).limit(1).then(result => result[0]),
+        db.select({ recommendation: projectRecommendations, role: projectRoles }).from(projectRecommendations).innerJoin(projectRoles, eq(projectRoles.id, projectRecommendations.roleId)).where(and(eq(projectRecommendations.userId, viewerId), eq(projectRecommendations.status, "active"))).orderBy(desc(projectRecommendations.score), asc(projectRecommendations.id)),
       ]);
       const best = new Map<string, typeof recommendations[number]>();
       for (const item of recommendations) if (!best.has(item.recommendation.projectId)) best.set(item.recommendation.projectId, item);
@@ -107,7 +108,7 @@ export async function GET(request: Request) {
       });
       if (filter === "following") {
         const sharedOwnerIds = memberProjectIds.length ? new Set((await db.select({ userId: projectMembers.userId }).from(projectMembers).where(inArray(projectMembers.projectId, memberProjectIds))).map(item => item.userId)) : new Set<string>();
-        const followedOwnerIds = new Set((await db.select({ userId:follows.followingId }).from(follows).where(eq(follows.followerId,member.id))).map(item=>item.userId));
+        const followedOwnerIds = new Set((await db.select({ userId:follows.followingId }).from(follows).where(eq(follows.followerId,viewerId))).map(item=>item.userId));
         rows = rows.filter(row => sharedOwnerIds.has(row.ownerId)||followedOwnerIds.has(row.ownerId)||row.isFollowingProject).sort((a, b) => Number(followedOwnerIds.has(b.ownerId))-Number(followedOwnerIds.has(a.ownerId))||Number(b.isFollowingProject)-Number(a.isFollowingProject)||b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id));
       } else if (filter === "newest") rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id));
       else if (settings.rolloutStage >= 2 && profile?.ageBand !== "teen_16_17") {
@@ -118,8 +119,8 @@ export async function GET(request: Request) {
       } else rows.sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || (b.eyeMomentum ?? 0) - (a.eyeMomentum ?? 0) || b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id));
       const algorithmMode = settings.rolloutStage >= 2 && profile?.ageBand !== "teen_16_17" ? "live" : "shadow";
       const start = cursor ? Math.max(0, rows.findIndex(row => row.id === cursor) + 1) : 0, page = rows.slice(start, start + limit);
-      const impressions = page.filter(row => row.recommendationId).map(row => ({ recommendationId: row.recommendationId!, userId: member.id, event: "impression", signalWeight: 0, metadata: { source: filter } }));
-      if (impressions.length) await db.insert(recommendationEvents).values(impressions);
+      const impressions = page.filter(row => row.recommendationId).map(row => ({ recommendationId: row.recommendationId!, userId: viewerId, event: "impression", signalWeight: 0, metadata: { source: filter } }));
+      if (impressions.length) after(() => db.insert(recommendationEvents).values(impressions).catch(() => undefined));
       return NextResponse.json({ projects: page, nextCursor: start + limit < rows.length ? page.at(-1)?.id : null, algorithmMode, algorithmVersion: settings.version });
     }
     return NextResponse.json({ projects: rows.slice(0, limit), nextCursor: rows.length > limit ? rows[limit - 1]?.id : null });
@@ -136,6 +137,7 @@ export async function POST(request: Request) {
       return created;
     });
     await recomputeProjectRecommendations(project.id);
+    after(() => ensureProjectEmbedding(project.id).catch(() => undefined));
     await audit(member.id, "project.created", "project", project.id, { roleCount: input.roles.length });
     await trackProductEvent({ actorId: member.id, event: "project_created", entityType: "project", entityId: project.id, properties: { industry: input.industry, stage: input.stage, roleCount: input.roles.length } });
     return NextResponse.json(project, { status: 201 });

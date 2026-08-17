@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { accessibilitySettings } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
+import { auth } from "@/auth";
 import { audit } from "@/lib/audit";
 import { DEFAULT_ACCESSIBILITY_PREFERENCES } from "@/lib/accessibility-preferences";
 
@@ -20,12 +21,26 @@ const schema = z.object({
   preventAutoplay: z.boolean(),
 });
 
+function isMissingAccessibilityTable(error: unknown) {
+  let current: unknown = error;
+  while (current && typeof current === "object") {
+    if ("code" in current && current.code === "42P01") return true;
+    current = "cause" in current ? current.cause : null;
+  }
+  return false;
+}
+
 export async function GET() {
   try {
-    const member = await requireMember();
-    const [settings] = await getDb().select().from(accessibilitySettings).where(eq(accessibilitySettings.userId, member.id)).limit(1);
+    const session = await auth();
+    const memberId = session?.user?.id || null;
+    if (!memberId) return NextResponse.json(DEFAULT_ACCESSIBILITY_PREFERENCES);
+    const [settings] = await getDb().select().from(accessibilitySettings).where(eq(accessibilitySettings.userId, memberId)).limit(1);
     return NextResponse.json(settings ?? DEFAULT_ACCESSIBILITY_PREFERENCES);
   } catch (error) {
+    // Keep local preferences usable during a zero-downtime deploy where the
+    // application reaches production just before its forward-only migration.
+    if (isMissingAccessibilityTable(error)) return NextResponse.json(DEFAULT_ACCESSIBILITY_PREFERENCES);
     return apiError(error);
   }
 }

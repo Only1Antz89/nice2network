@@ -69,11 +69,13 @@ export function applyAccessibilityPreferences(preferences: AccessibilityPreferen
   applyAccessibilityPreferencesToMedia();
 }
 
-export function applyAccessibilityPreferencesToMedia() {
+export function applyAccessibilityPreferencesToMedia(root: ParentNode = document) {
   if (activeAccessibilityPreferences.preventAutoplay) {
-    document.querySelectorAll<HTMLMediaElement>("audio[autoplay], video[autoplay]").forEach((media) => media.pause());
+    if (root instanceof HTMLMediaElement && root.matches("audio[autoplay], video[autoplay]")) root.pause();
+    root.querySelectorAll<HTMLMediaElement>("audio[autoplay], video[autoplay]").forEach((media) => media.pause());
   }
-  document.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
+  const videos = root instanceof HTMLVideoElement ? [root] : Array.from(root.querySelectorAll<HTMLVideoElement>("video"));
+  videos.forEach((video) => {
     for (const track of Array.from(video.textTracks)) {
       if (track.kind === "captions" || track.kind === "subtitles") {
         track.mode = activeAccessibilityPreferences.captions ? "showing" : "disabled";

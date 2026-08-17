@@ -6,6 +6,7 @@ import { milestones, projectFollows, projectInvolvementRequests, projectMembers,
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { recomputeProjectRecommendations } from "@/lib/recommendations/service";
+import { ensureProjectEmbedding } from "@/lib/recommendations/project-similarity";
 import { requireProjectView } from "@/lib/content-access";
 
 async function requireOwner(userId: string, projectId: string) {
@@ -38,7 +39,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pr
     const member = await requireMember(), { projectId } = await params, input = z.object({ title: z.string().trim().min(4).max(120).optional(), summary: z.string().trim().min(20).max(300).optional(), industry:z.string().trim().min(2).max(80).optional(), stage: z.enum(["idea", "planning", "building", "launching"]).optional(), visibility: z.enum(["network", "connections", "private"]).optional() }).refine(value => Object.keys(value).length > 0).parse(await request.json());
     const before = await requireOwner(member.id, projectId);
     const [project] = await getDb().update(projects).set({ ...input, updatedAt: new Date() }).where(eq(projects.id, projectId)).returning();
-    after(() => recomputeProjectRecommendations(projectId));
+    after(async () => { await Promise.allSettled([recomputeProjectRecommendations(projectId), ensureProjectEmbedding(projectId)]); });
     await audit(member.id, "project.updated", "project", projectId, {}, { before: { title: before.title, summary: before.summary, stage: before.stage, visibility: before.visibility }, after: input });
     return NextResponse.json({ project });
   } catch (error) { return apiError(error); }
