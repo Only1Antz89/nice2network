@@ -100,6 +100,7 @@ test("mobile navigation omits the current page while full profiles retain banner
   assert.match(page, /mobileNav\.filter\(\(item\) => item\.id !== view\)\.map/);
   assert.match(page, /item\.id === "notifications" && unreadNotifications > 0\s+\? <NotificationUnreadIndicator unread=\{unreadNotifications\}/);
   assert.match(styles, /grid-auto-columns:minmax\(0,1fr\)/);
+  assert.match(styles, /\.mobile-topbar \.logo>span:last-child\{display:inline;white-space:nowrap\}/);
   assert.match(styles, /\.sidebar nav button>\.avatar\{width:24px;height:24px\}/);
   assert.match(styles, /\.mobile-sidebar-backdrop\{display:block;position:fixed;inset:0;z-index:35/);
   assert.match(publicStyles, /\.rail-help-link/);
