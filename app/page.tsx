@@ -5638,6 +5638,8 @@ type NetworkNodeRecord = {
   reasons: string[];
   introduction_eligible: boolean;
   connected_to_focus: boolean;
+  focus_follows: boolean;
+  follows_focus: boolean;
 };
 type NetworkClusterRecord = {
   kind: "cluster";
@@ -5663,6 +5665,8 @@ type NetworkGraphRecord = {
     id: string;
     expanded: boolean;
     visibleCount: number;
+    followingCount: number;
+    followerCount: number;
     reason: "private" | "not-following" | null;
   } | null;
 };
@@ -5693,7 +5697,12 @@ function NetworkView({
     }),
     [loading, setLoading] = useState(true),
     [focusLoading, setFocusLoading] = useState(false),
+    [overviewData, setOverviewData] = useState<NetworkGraphRecord | null>(null),
     [showKey, setShowKey] = useState(true),
+    [displayMenuOpen, setDisplayMenuOpen] = useState(false),
+    [showConnections, setShowConnections] = useState(true),
+    [showFollowing, setShowFollowing] = useState(true),
+    [showFollowers, setShowFollowers] = useState(false),
     [activeCluster, setActiveCluster] = useState(""),
     [viewport, setViewport] = useState({ scale: 0.9, panX: 0, panY: 0 }),
     [sheetLevel, setSheetLevel] = useState<"collapsed" | "mid" | "full">("mid"),
@@ -5707,6 +5716,7 @@ function NetworkView({
     [mobileSearchOpen, setMobileSearchOpen] = useState(false),
     [selected, setSelected] = useState<NetworkNodeRecord | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>()),
+    canvasRef = useRef<HTMLDivElement | null>(null),
     gesture = useRef<{ distance: number; scale: number } | null>(null),
     sheetDrag = useRef<number | null>(null),
     previousViewport = useRef<{ scale: number; panX: number; panY: number } | null>(null);
@@ -5720,6 +5730,7 @@ function NetworkView({
       )
       .then((next) => {
         setData(next);
+        setOverviewData(next);
         setShowKey(next.preferences?.showNetworkKey ?? true);
         setSelected((current) =>
           current
@@ -5734,6 +5745,17 @@ function NetworkView({
     window.addEventListener("n2:network-changed", loadGraph);
     return () => window.removeEventListener("n2:network-changed", loadGraph);
   }, []);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const min = data.viewport?.minScale ?? .45, max = data.viewport?.maxScale ?? 2.2;
+      setViewport((current) => ({ ...current, scale: Math.min(max, Math.max(min, current.scale + (event.deltaY > 0 ? -.1 : .1))) }));
+    };
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", handleWheel);
+  }, [data.viewport?.maxScale, data.viewport?.minScale]);
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("introduction");
     if (!id) return;
@@ -5756,7 +5778,7 @@ function NetworkView({
           if (!next) return;
           setData(next);
           setSelected((current) => current ? ((next.nodes.find((node: NetworkGraphNode) => node.kind === "person" && node.id === current.id) as NetworkNodeRecord | undefined) ?? current) : null);
-          setViewport((current) => ({ ...current, scale: next.viewport?.suggestedScale ?? current.scale, panX: 0, panY: 0 }));
+          if (!currentFocusId) setViewport((current) => ({ ...current, scale: next.viewport?.suggestedScale ?? current.scale, panX: 0, panY: 0 }));
         })
         .catch(() => undefined)
         .finally(() => setFocusLoading(false));
@@ -5780,7 +5802,6 @@ function NetworkView({
       setActiveCluster("");
       setDetailTab("profile");
       setWhyReasons([]);
-      setViewport({ scale: next.viewport?.suggestedScale ?? 1, panX: 0, panY: 7 });
     } finally {
       setFocusLoading(false);
     }
@@ -5788,8 +5809,19 @@ function NetworkView({
   async function closeNetworkBrief() {
     setSelected(null);
     if (!data.focus) return;
+    await restoreDefaultView();
+  }
+  async function restoreDefaultView() {
+    setSelected(null);
+    setDetailTab("profile");
+    setDisplayMenuOpen(false);
+    if (overviewData) setData(overviewData);
     const response = await fetch("/api/network/graph", { cache: "no-store" });
-    if (response.ok) setData((await response.json()) as NetworkGraphRecord);
+    if (response.ok) {
+      const next = (await response.json()) as NetworkGraphRecord;
+      setData(next);
+      setOverviewData(next);
+    }
     setActiveCluster("");
     setViewport({ scale: 0.9, panX: 0, panY: 0 });
   }
@@ -5807,50 +5839,62 @@ function NetworkView({
       "All professions",
       ...Array.from(new Set(data.nodes.map((node) => node.category))).sort(),
     ],
-    nodes = data.nodes,
+    allNodes = data.nodes,
+    focusedId = data.focus?.id,
+    nodes = allNodes.filter((node) => {
+      if (node.kind === "cluster") return !focusedId || showFollowing;
+      if (node.id === focusedId) return true;
+      if (node.degree === 2) return showFollowing && node.focus_follows;
+      if (node.is_following) return showFollowing;
+      return showFollowers && node.follows_viewer;
+    }),
     peopleNodes = nodes.filter((node): node is NetworkNodeRecord => node.kind === "person"),
     secondDegreeNodes = peopleNodes.filter((node) => node.degree === 2),
     visible = new Set([
       currentMember.id ?? "",
       ...nodes.map((node) => node.id),
     ]),
-    edges = data.edges.filter(
+    edges = showConnections ? data.edges.filter(
       (edge) => visible.has(edge.source) && visible.has(edge.target),
-    );
+    ) : [];
   const positions = new Map<string, { x: number; y: number }>();
-  const focusedId = data.focus?.id,
-    focusNode = peopleNodes.find((node) => node.id === focusedId),
-    orbitNodes = nodes.filter((node) => node.id !== focusedId),
-    focusOrbitNodes = focusNode ? orbitNodes.filter((node) => node.kind === "cluster" || node.connected_to_focus) : orbitNodes,
-    contextOrbitNodes = focusNode ? orbitNodes.filter((node): node is NetworkNodeRecord => node.kind === "person" && !node.connected_to_focus) : [];
-  if (focusNode) positions.set(focusNode.id, { x: 43, y: 32 });
-  focusOrbitNodes.forEach((node, index) => {
-    const innerRingSize = Math.min(16, focusOrbitNodes.length),
-      outer = index >= innerRingSize,
-      ringIndex = outer ? index - innerRingSize : index,
-      ringSize = outer ? focusOrbitNodes.length - innerRingSize : innerRingSize,
-      angle = -Math.PI / 2 + (ringIndex / Math.max(1, ringSize)) * Math.PI * 2,
-      clusterOffset = node.kind === "cluster" ? 5 : 0,
-      xRadius = focusNode ? (outer ? 40 : 26) + clusterOffset : (index % 2 ? 38 : 30) + clusterOffset,
-      yRadius = focusNode ? (outer ? 34 : 21) + clusterOffset * 0.6 : (index % 2 ? 34 : 27) + clusterOffset * 0.5,
-      centre = focusNode ? { x: 43, y: 36 } : { x: 50, y: 47 };
-    positions.set(node.id, { x: centre.x + Math.cos(angle) * xRadius, y: centre.y + Math.sin(angle) * yRadius });
+  const overviewPeople = (overviewData?.nodes ?? allNodes).filter((node): node is NetworkNodeRecord => node.kind === "person"),
+    defaultFrameIds = overviewPeople.filter((node) => node.is_following).map((node) => node.id),
+    defaultFrameSet = new Set(defaultFrameIds),
+    focusNode = peopleNodes.find((node) => node.id === focusedId);
+  defaultFrameIds.forEach((id, index) => {
+    const angle = -Math.PI / 2 + (index / Math.max(1, defaultFrameIds.length)) * Math.PI * 2;
+    positions.set(id, { x: 50 + Math.cos(angle) * 34, y: 50 + Math.sin(angle) * 31 });
   });
-  contextOrbitNodes.forEach((node, index) => {
-    const fraction = contextOrbitNodes.length === 1 ? 0.5 : 0.08 + (index / (contextOrbitNodes.length - 1)) * 0.84,
-      angle = Math.PI * fraction;
-    positions.set(node.id, { x: 50 + Math.cos(angle) * 31, y: 79 - Math.sin(angle) * 13 });
+  const followerOnlyNodes = peopleNodes.filter((node) => node.degree === 1 && !defaultFrameSet.has(node.id));
+  followerOnlyNodes.forEach((node, index) => {
+    const angle = -Math.PI / 2 + ((index + .5) / Math.max(1, followerOnlyNodes.length)) * Math.PI * 2;
+    positions.set(node.id, { x: 50 + Math.cos(angle) * 41, y: 50 + Math.sin(angle) * 38 });
   });
+  const releasedNodes = nodes.filter((node) => node.id !== focusedId && (node.kind === "cluster" || node.degree === 2));
+  if (focusNode) {
+    const anchor = positions.get(focusNode.id) ?? { x: 50, y: 19 };
+    releasedNodes.forEach((node, index) => {
+      const innerRingSize = Math.min(16, releasedNodes.length), outer = index >= innerRingSize,
+        ringIndex = outer ? index - innerRingSize : index,
+        ringSize = outer ? releasedNodes.length - innerRingSize : innerRingSize,
+        fraction = ringSize === 1 ? .5 : ringIndex / Math.max(1, ringSize - 1),
+        angle = Math.PI * (.08 + fraction * .84),
+        xRadius = outer ? 41 : 31, yRadius = outer ? 34 : 25;
+      positions.set(node.id, { x: anchor.x + Math.cos(angle) * xRadius, y: anchor.y + Math.sin(angle) * yRadius });
+    });
+  }
   const basePoint = (id: string) => id === currentMember.id
-    ? (focusNode ? { x: 50, y: 78 } : { x: 50, y: 47 })
-    : (positions.get(id) ?? { x: 50, y: 47 });
+    ? { x: 50, y: 50 }
+    : (positions.get(id) ?? { x: 50, y: 50 });
   const point = (id: string) => {
     const base = basePoint(id);
+    if (id === currentMember.id) return base;
     return { x: 50 + (base.x - 50) * viewport.scale + viewport.panX, y: 50 + (base.y - 50) * viewport.scale + viewport.panY };
   };
   const clampScale = (value: number) => Math.min(data.viewport?.maxScale ?? 2.2, Math.max(data.viewport?.minScale ?? 0.45, value));
   const zoomBy = (amount: number) => setViewport((current) => ({ ...current, scale: clampScale(current.scale + amount) }));
-  const fitView = () => setViewport({ scale: data.viewport?.suggestedScale ?? 0.9, panX: 0, panY: focusNode ? 7 : 0 });
+  const fitView = () => setViewport({ scale: focusedId ? 1 : data.viewport?.suggestedScale ?? 0.9, panX: 0, panY: 0 });
   const onMapPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button,input,select,aside")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -5933,11 +5977,11 @@ function NetworkView({
       </div>
       <div className="network-workspace">
         <div
+          ref={canvasRef}
           className={`network-canvas semantic-${viewport.scale < .7 ? "far" : viewport.scale < 1.2 ? "medium" : "near"}`}
           role="application"
           tabIndex={0}
           aria-label="Interactive network map. Use plus and minus to zoom, or drag to pan."
-          onWheel={(event) => { event.preventDefault(); zoomBy(event.deltaY > 0 ? -.1 : .1); }}
           onPointerDown={onMapPointerDown}
           onPointerMove={onMapPointerMove}
           onPointerUp={onMapPointerUp}
@@ -6049,11 +6093,21 @@ function NetworkView({
               </button>
             )}
             {activeCluster && <button className="network-clear" onClick={() => { setActiveCluster(""); setProfession("All professions"); if (previousViewport.current) setViewport(previousViewport.current); previousViewport.current = null; }}>Back to network</button>}
+            {focusedId && <button className="network-back-default" onClick={restoreDefaultView}><ArrowLeft size={14} /> Default view</button>}
             <div className="network-zoom-controls" aria-label="Map zoom controls">
               <button onClick={() => zoomBy(.12)} aria-label="Zoom in"><Plus size={15} /></button>
               <button onClick={() => zoomBy(-.12)} aria-label="Zoom out"><Minus size={15} /></button>
               <button onClick={fitView} aria-label="Fit network to view"><NetworkGraphIcon size={15} /></button>
-              <button onClick={() => { setDetailTab("connections"); if (!selected) setSelected(peopleNodes[0] ?? null); }} aria-label="Open connections list"><List size={15} /></button>
+              <div className="network-display-menu">
+                <button onClick={() => setDisplayMenuOpen((open) => !open)} aria-label="Network display options" aria-expanded={displayMenuOpen}><List size={15} /></button>
+                {displayMenuOpen && <div className="network-display-popover" role="menu" aria-label="Network display options">
+                  <strong>Display</strong>
+                  <label><input type="checkbox" checked={showConnections} onChange={(event) => setShowConnections(event.target.checked)} /> <span>See connections</span></label>
+                  <label><input type="checkbox" checked={showKey} onChange={toggleNetworkKey} /> <span>Show key</span></label>
+                  <label><input type="checkbox" checked={showFollowing} onChange={(event) => setShowFollowing(event.target.checked)} /> <span>Show following</span></label>
+                  <label><input type="checkbox" checked={showFollowers} onChange={(event) => setShowFollowers(event.target.checked)} /> <span>Show followers<small>People you do not follow back</small></span></label>
+                </div>}
+              </div>
             </div>
           </div>
           {nodes.map((node) => {
@@ -6147,7 +6201,7 @@ function NetworkView({
               {detailTab === "profile" ? <>
                 <p>{selected.bio ?? "Open their profile to learn more about the contribution they make."}</p>
                 <div className="network-skill-list">{[selected.primary_skill, selected.secondary_skill, selected.tertiary_skill].filter(Boolean).map((value) => <span key={value!}>{value}</span>)}</div>
-                {selected.is_following && data.focus?.id === selected.id && <div className={`network-release ${data.focus.expanded ? "released" : "private"}`}><UsersRound size={15} /><span><strong>{data.focus.expanded ? `${data.focus.visibleCount} visible ${data.focus.visibleCount === 1 ? "connection" : "connections"}` : "Connections kept private"}</strong><small>{data.focus.expanded ? "Shown with every member’s privacy choices applied." : "This member has chosen not to share their network."}</small></span></div>}
+                {selected.is_following && data.focus?.id === selected.id && <div className={`network-release ${data.focus.expanded ? "released" : "private"}`}><UsersRound size={15} /><span><strong>{data.focus.expanded ? `${data.focus.followingCount} following · ${data.focus.followerCount} followers` : "Connections kept private"}</strong><small>{data.focus.expanded ? "Shown with every member’s privacy choices applied." : "This member has chosen not to share their network."}</small></span></div>}
                 <div className="network-reasons">
                   <button onClick={explainConnection}><CircleHelp size={14} /> Why you see this person</button>
                   {(whyReasons.length ? whyReasons : selected.reasons).map((reason) => <small key={reason}>{reason}</small>)}

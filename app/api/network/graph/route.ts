@@ -39,6 +39,10 @@ type RawPerson = {
   connected_to_focus: boolean;
   focus_count: number;
   focus_mutual: boolean;
+  focus_follows: boolean;
+  follows_focus: boolean;
+  focus_following_count: number;
+  focus_follower_count: number;
 };
 
 type PersonNode = RawPerson & {
@@ -126,6 +130,7 @@ export async function GET(request: Request) {
       from privacy_settings where user_id=${member.id}
     `)) as unknown as Array<{ show_network_key: boolean }>;
     const viewerAgeBand = String(current?.age_band ?? "adult");
+    const viewerSafetyBand = viewerAgeBand === "teen_16_17" ? "teen" : "adult";
 
     let focus: RawPerson | undefined;
     if (mode === "focus" && focusId) {
@@ -138,9 +143,10 @@ export async function GET(request: Request) {
             and exists(select 1 from follows b where b.follower_id=u.id and b.following_id=${member.id}) as mutual,
           coalesce(ps.share_network_connections,true) as can_expand,coalesce(ps.allow_introductions,true) as allow_introductions,
           1 as degree,null::uuid as shared_by,${categorySql} as category,0 as shared_projects,0 as skill_overlap,200 as relevance,1 as total_count,
-          false as connected_to_focus,0 as focus_count,false as focus_mutual
+          false as connected_to_focus,0 as focus_count,false as focus_mutual,
+          false as focus_follows,false as follows_focus,0 as focus_following_count,0 as focus_follower_count
         from users u left join privacy_settings ps on ps.user_id=u.id
-        where u.id=${focusId} and u.age_band=${viewerAgeBand}
+        where u.id=${focusId} and (case when u.age_band='teen_16_17' then 'teen' else 'adult' end)=${viewerSafetyBand}
           and u.status='active' and u.email_verified is not null and u.onboarding_completed_at is not null
           and exists(select 1 from follows f where f.follower_id=${member.id} and f.following_id=u.id)
           and not exists(select 1 from network_map_hides h where h.viewer_id=${member.id} and h.hidden_user_id=u.id)
@@ -154,20 +160,19 @@ export async function GET(request: Request) {
       exists(select 1 from follows mine where mine.follower_id=${member.id} and mine.following_id=u.id)
       or exists(select 1 from follows mine where mine.follower_id=u.id and mine.following_id=${member.id})
     )`;
-    const focusConnection = focus ? sql`(
-      (exists(select 1 from follows r where r.follower_id=${focus.id} and r.following_id=u.id) and coalesce(fps.show_following,true) and coalesce(ups.show_followers,true))
-      or (exists(select 1 from follows r where r.follower_id=u.id and r.following_id=${focus.id}) and coalesce(ups.show_following,true) and coalesce(fps.show_followers,true))
-    )` : sql`false`;
+    const focusFollows = focus ? sql`(exists(select 1 from follows r where r.follower_id=${focus.id} and r.following_id=u.id) and coalesce(fps.show_following,true) and coalesce(ups.show_followers,true))` : sql`false`;
+    const followsFocus = focus ? sql`(exists(select 1 from follows r where r.follower_id=u.id and r.following_id=${focus.id}) and coalesce(ups.show_following,true) and coalesce(fps.show_followers,true))` : sql`false`;
+    const focusConnection = focus ? sql`(${focusFollows} or ${followsFocus})` : sql`false`;
     const baseWhere = mode === "focus" && focus
       ? sql`
           u.id<>${member.id} and u.id<>${focus.id}
-          and u.age_band=${viewerAgeBand}
+          and (case when u.age_band='teen_16_17' then 'teen' else 'adult' end)=${viewerSafetyBand}
           and (
             ${viewerConnection}
             or (coalesce(fps.share_network_connections,true) and ${focusConnection} and coalesce(ups.profile_visibility,'network') in ('public','network'))
           )`
       : sql`
-          u.id<>${member.id} and u.age_band=${viewerAgeBand}
+          u.id<>${member.id} and (case when u.age_band='teen_16_17' then 'teen' else 'adult' end)=${viewerSafetyBand}
           and (exists(select 1 from follows outgoing where outgoing.follower_id=${member.id} and outgoing.following_id=u.id) or exists(select 1 from follows incoming where incoming.follower_id=u.id and incoming.following_id=${member.id}))`;
     const privacyJoin = mode === "focus" && focus
       ? sql`left join privacy_settings ups on ups.user_id=u.id left join privacy_settings fps on fps.user_id=${focus.id}`
@@ -188,6 +193,9 @@ export async function GET(request: Request) {
         ${degree} as degree,${sharedBy} as shared_by,${categorySql} as category,
         ${connectedToFocus} as connected_to_focus,${focusCount} as focus_count,
         ${mode === "focus" && focus ? sql`(exists(select 1 from follows a where a.follower_id=${focus.id} and a.following_id=u.id) and exists(select 1 from follows b where b.follower_id=u.id and b.following_id=${focus.id}))` : sql`false`} as focus_mutual,
+        ${focusFollows} as focus_follows,${followsFocus} as follows_focus,
+        ${mode === "focus" && focus ? sql`sum(case when ${focusFollows} then 1 else 0 end) over()::int` : sql`0`} as focus_following_count,
+        ${mode === "focus" && focus ? sql`sum(case when ${followsFocus} then 1 else 0 end) over()::int` : sql`0`} as focus_follower_count,
         (select count(*)::int from project_members mine join project_members theirs on theirs.project_id=mine.project_id where mine.user_id=${member.id} and theirs.user_id=u.id) as shared_projects,
         ((case when lower(coalesce(u.primary_skill,'')) in (lower(coalesce(${String(current?.primary_skill ?? "")},'')),lower(coalesce(${String(current?.secondary_skill ?? "")},'')),lower(coalesce(${String(current?.tertiary_skill ?? "")},''))) then 1 else 0 end)
           +(case when lower(coalesce(u.secondary_skill,'')) in (lower(coalesce(${String(current?.primary_skill ?? "")},'')),lower(coalesce(${String(current?.secondary_skill ?? "")},'')),lower(coalesce(${String(current?.tertiary_skill ?? "")},''))) then 1 else 0 end))::int as skill_overlap,
@@ -285,7 +293,7 @@ export async function GET(request: Request) {
         total: mode === "focus" ? focusTotal : total,
       },
       preferences: { showNetworkKey: viewerPreferences?.show_network_key ?? true },
-      focus: focusId ? { id: focusId, expanded: focusAllowed, visibleCount: focusTotal, reason: !focus ? "not-following" : focusAllowed ? null : "private" } : null,
+      focus: focusId ? { id: focusId, expanded: focusAllowed, visibleCount: focusTotal, followingCount: Number(graphRows[0]?.focus_following_count ?? 0), followerCount: Number(graphRows[0]?.focus_follower_count ?? 0), reason: !focus ? "not-following" : focusAllowed ? null : "private" } : null,
       viewport: { minScale: 0.45, maxScale: 2.2, suggestedScale: mode === "focus" ? (focusTotal > 30 ? 0.82 : focusTotal > 12 ? 1 : 1.18) : total > 40 ? 0.68 : 0.9 },
       limits: { nodes: 60, edges: MAX_EDGES, pageSize: PAGE_SIZE },
     });

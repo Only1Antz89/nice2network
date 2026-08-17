@@ -348,11 +348,13 @@ test("bounds, explains and safely introduces through the scalable network map", 
   assert.match(graph, /MAX_PEOPLE = 52/); assert.match(graph, /MAX_EDGES = 240/); assert.match(graph, /PAGE_SIZE = 25/); assert.match(graph, /kind: "cluster"/); assert.match(graph, /relevance desc/);
   assert.match(graph, /MAX_CONTEXT_PEOPLE = 5/); assert.match(graph, /connected_to_focus/); assert.match(graph, /focus_mutual/); assert.match(graph, /edges\.push\(\.\.\.people\.filter/);
   assert.doesNotMatch(graph, /and not exists\(select 1 from follows mine where \(mine\.follower_id/);
-  assert.doesNotMatch(graph, /follower_count|followers_count|popularity/i);
+  assert.doesNotMatch(graph, /popularity|order by\s+followers_count/i);
+  assert.match(graph, /focus_follows/); assert.match(graph, /follows_focus/); assert.match(graph, /viewerSafetyBand/);
   assert.match(introductions, /\.min\(20\)\.max\(500\)/); assert.match(introductions, /value >= 10/); assert.match(introductions, /14 \* 86_400_000/);
   assert.match(response, /db\.transaction/); assert.match(response, /conversationMembers/); assert.match(response, /status: "accepted"/);
   assert.match(hides, /networkMapHides/); assert.match(explain, /via_valid/); assert.match(migration, /introduction_pending_unique/);
-  assert.match(page, /onWheel/); assert.match(page, /onMapPointerMove/); assert.match(page, /sheet-\$\{sheetLevel\}/); assert.match(page, /Back to network/);
+  assert.match(page, /passive: false/); assert.match(page, /onMapPointerMove/); assert.match(page, /sheet-\$\{sheetLevel\}/); assert.match(page, /Default view/);
+  assert.match(page, /network-display-menu/); assert.match(page, /Show following/); assert.match(page, /Show followers/);
   assert.match(styles, /semantic-far/); assert.match(styles, /touch-action:none/); assert.match(styles, /safe-area-inset-bottom/);
   assert.match(onboarding, /NETWORK VISIBILITY/); assert.match(onboarding, /allowIntroductions:true/);
 });
