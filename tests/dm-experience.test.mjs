@@ -53,3 +53,9 @@ test("conversation rows reveal archive, snooze, and delete controls on hover", (
   assert.match(page, /setChatDeleteTarget\(row\)/);
   assert.match(styles, /\.message-list-row:hover \.message-list-row-actions/);
 });
+
+test("meet card controls remain contextual on pointer and touch layouts", () => {
+  assert.match(page, /className="meet-card" key=\{meet\.id\} tabIndex=\{0\}/);
+  assert.match(styles, /\.meet-card:hover \.meet-card-actions,\.meet-card:focus-within \.meet-card-actions/);
+  assert.doesNotMatch(styles, /@media\(hover:none\)\{[^}]*\.meet-card-actions\{opacity:1/);
+});

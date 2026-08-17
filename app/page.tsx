@@ -7164,10 +7164,12 @@ type MeetRoute = { durationSeconds: number; distanceMeters: number };
 function MeetCardActions({
   meet,
   onSave,
+  onEdit,
   onDelete,
 }: {
   meet: MeetingRecord;
   onSave: (meet: MeetingRecord, action: "pin" | "bookmark") => void;
+  onEdit: (meet: MeetingRecord) => void;
   onDelete: (meet: MeetingRecord) => void;
 }) {
   return (
@@ -7191,15 +7193,25 @@ function MeetCardActions({
         <Bookmark size={14} fill={meet.isBookmarked ? "currentColor" : "none"} />
       </button>
       {meet.canEdit && (
-        <button
-          type="button"
-          className="danger"
-          aria-label={`Delete ${meet.title}`}
-          title="Delete"
-          onClick={() => onDelete(meet)}
-        >
-          <Trash2 size={14} />
-        </button>
+        <>
+          <button
+            type="button"
+            aria-label={`Edit ${meet.title}`}
+            title="Edit"
+            onClick={() => onEdit(meet)}
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            type="button"
+            className="danger"
+            aria-label={`Delete ${meet.title}`}
+            title="Delete"
+            onClick={() => onDelete(meet)}
+          >
+            <Trash2 size={14} />
+          </button>
+        </>
       )}
     </div>
   );
@@ -7466,7 +7478,7 @@ function MeetView() {
     [meetLocation, setMeetLocation] = useState(""),
     [meetThumbnail, setMeetThumbnail] = useState<string | null>(null);
   const [showAllPastMeets, setShowAllPastMeets] = useState(false);
-  const [pastMeetsCollapsed, setPastMeetsCollapsed] = useState(false);
+  const [pastMeetsCollapsed, setPastMeetsCollapsed] = useState(true);
   const [deleteMeetTarget, setDeleteMeetTarget] = useState<MeetingRecord | null>(null);
   async function load() {
     const response = await fetch("/api/calendar/events");
@@ -7779,8 +7791,8 @@ function MeetView() {
             canJoin = Boolean(clockNow) && clockNow >= joinOpensAt && clockNow <= new Date(meet.endsAt).getTime(),
             isFuture = Boolean(clockNow) && clockNow < joinOpensAt;
           return (
-            <div className="meet-card" key={meet.id}>
-              <MeetCardActions meet={meet} onSave={saveMeet} onDelete={setDeleteMeetTarget} />
+            <div className="meet-card" key={meet.id} tabIndex={0}>
+              <MeetCardActions meet={meet} onSave={saveMeet} onEdit={openEdit} onDelete={setDeleteMeetTarget} />
               <div className="meet-time">
                 <strong>
                   {start.toLocaleTimeString([], {
@@ -7846,8 +7858,8 @@ function MeetView() {
         <div className="meet-history-list" id="past-meets-list" hidden={pastMeetsCollapsed}>
           {pastMeets.slice(0, showAllPastMeets ? pastMeets.length : 5).map(meet => {
             const start = new Date(meet.startsAt);
-            return <div className="meet-card meet-card-past" key={meet.id}>
-              <MeetCardActions meet={meet} onSave={saveMeet} onDelete={setDeleteMeetTarget} />
+            return <div className="meet-card meet-card-past" key={meet.id} tabIndex={0}>
+              <MeetCardActions meet={meet} onSave={saveMeet} onEdit={openEdit} onDelete={setDeleteMeetTarget} />
               <div className="meet-time"><strong>{start.toLocaleDateString(undefined, { day: "numeric", month: "short" })}</strong><span>{start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
               <div>
                 <div className="meet-card-meta">

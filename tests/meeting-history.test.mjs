@@ -23,7 +23,7 @@ test("the Meet page keeps completed meets accessible in history", async () => {
   assert.match(page, /pastMeets\.slice/);
   assert.match(page, /setDetail\(meet\).*Details/);
   assert.match(page, /showAllPastMeets/);
-  assert.match(page, /pastMeetsCollapsed/);
+  assert.match(page, /\[pastMeetsCollapsed, setPastMeetsCollapsed\] = useState\(true\)/);
   assert.match(page, /aria-controls="past-meets-list"/);
   assert.match(page, /MeetCardActions/);
 });
@@ -36,6 +36,8 @@ test("meet card actions can pin, bookmark and safely delete hosted meets", async
 
   assert.match(page, /onSave\(meet, "pin"\)/);
   assert.match(page, /onSave\(meet, "bookmark"\)/);
+  assert.match(page, /onEdit\(meet\)/);
+  assert.match(page, /<Pencil size=\{14\}/);
   assert.match(page, /meet\.canEdit &&/);
   assert.match(page, /method: "DELETE"/);
   assert.match(route, /export async function DELETE/);
