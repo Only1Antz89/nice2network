@@ -114,6 +114,18 @@ test("the home greeting remains welcoming throughout the day", () => {
   assert.doesNotMatch(page, /Good night/);
 });
 
+test("the app shell remains usable with browser zoom and Windows display scaling", () => {
+  const layout = read("app/layout.tsx");
+  const styles = read("app/globals.css");
+  assert.match(layout, /width: "device-width"/);
+  assert.match(layout, /initialScale: 1/);
+  assert.match(styles, /html\{overflow-x:hidden;text-size-adjust:100%;-webkit-text-size-adjust:100%\}/);
+  assert.match(styles, /\.sidebar,\.right-rail\{\s*overflow-x:hidden;\s*overflow-y:auto;/);
+  assert.match(styles, /@media\(min-width:981px\) and \(max-height:680px\)/);
+  assert.match(styles, /height:calc\(100dvh - var\(--n2-compact-content-top\) - var\(--n2-compact-content-bottom\)\)/);
+  assert.match(styles, /\.conversation-page\{min-height:0\}/);
+});
+
 test("notifications use a dedicated responsive page instead of a mobile floating control", () => {
   const page = read("app/page.tsx");
   const styles = read("app/globals.css");
