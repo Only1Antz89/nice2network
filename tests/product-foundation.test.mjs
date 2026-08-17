@@ -360,8 +360,12 @@ test("bounds, explains and safely introduces through the scalable network map", 
   assert.match(page, /network-display-menu/); assert.match(page, /Show following/); assert.match(page, /Show followers/);
   assert.match(page, /search-closed/); assert.match(page, /aria-pressed/); assert.match(page, /layoutFocusedNetwork/); assert.match(page, /reservedRects/);
   assert.match(page, /network-node-orbits/);
+  assert.doesNotMatch(page, /Hide from map/); assert.match(page, /network-connection-scroll/);
   assert.match(page, /ResizeObserver/); assert.match(page, /requestAnimationFrame/); assert.match(styles, /density-extreme/);
   assert.match(styles, /network-map-toolbar\.search-closed/); assert.match(styles, /network-menu-deploy/);
+  assert.match(styles, /network-back-float[^}]*var\(--surface\)[^}]*color:var\(--ink\)/);
+  assert.match(styles, /network-focus-label[^}]*var\(--surface\)[^}]*color:var\(--ink\)/);
+  assert.match(styles, /network-brief\.connections-open/); assert.match(styles, /network-connection-scroll[^}]*overflow-y:auto/);
   assert.match(styles, /semantic-far/); assert.match(styles, /touch-action:none/); assert.match(styles, /safe-area-inset-bottom/);
   assert.match(onboarding, /NETWORK VISIBILITY/); assert.match(onboarding, /allowIntroductions:true/);
 });

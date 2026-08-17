@@ -5715,7 +5715,6 @@ function NetworkView({
     [detailTab, setDetailTab] = useState<"profile" | "connections">("profile"),
     [whyReasons, setWhyReasons] = useState<string[]>([]),
     [introTarget, setIntroTarget] = useState<NetworkNodeRecord | null>(null),
-    [hideTarget, setHideTarget] = useState<NetworkNodeRecord | null>(null),
     [incomingIntroduction, setIncomingIntroduction] = useState<IncomingIntroduction | null>(null),
     [profession, setProfession] = useState("All professions"),
     [skill, setSkill] = useState(""),
@@ -6013,16 +6012,6 @@ function NetworkView({
     const response = await fetch(`/api/network/explain?${params}`);
     if (response.ok) setWhyReasons((await response.json()).reasons ?? []);
   }
-  async function confirmHideConnection() {
-    if (!hideTarget) return;
-    const response = await fetch("/api/network/hides", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ targetId: hideTarget.id }) });
-    if (response.ok) {
-      setHideTarget(null);
-      setSelected(null);
-      const refreshed = await fetch("/api/network/graph", { cache: "no-store" });
-      if (refreshed.ok) setData(await refreshed.json());
-    }
-  }
   async function requestIntroduction(fields: Record<string, string>) {
     if (!introTarget?.shared_by) return;
     const response = await fetch("/api/network/introductions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ connectorId: introTarget.shared_by, targetId: introTarget.id, context: fields.context }) });
@@ -6296,7 +6285,7 @@ function NetworkView({
             </div>
           )}
           {selected && (
-            <aside className={`network-brief sheet-${sheetLevel}`}>
+            <aside className={`network-brief sheet-${sheetLevel}${detailTab === "connections" ? " connections-open" : ""}`}>
               <button className="network-sheet-handle" aria-label={`${sheetLevel === "full" ? "Collapse" : "Expand"} member details`} onClick={() => setSheetLevel((level) => level === "collapsed" ? "mid" : level === "mid" ? "full" : "collapsed")} onPointerDown={(event) => { sheetDrag.current = event.clientY; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerUp={(event) => { if (sheetDrag.current === null) return; const delta = event.clientY - sheetDrag.current; if (delta < -30) setSheetLevel((level) => level === "collapsed" ? "mid" : "full"); if (delta > 30) setSheetLevel((level) => level === "full" ? "mid" : "collapsed"); sheetDrag.current = null; }}><i /></button>
               <button
                 className="network-brief-close"
@@ -6311,7 +6300,7 @@ function NetworkView({
               </div>
               <div className="network-sheet-tabs" role="tablist">
                 <button className={detailTab === "profile" ? "active" : ""} onClick={() => setDetailTab("profile")} role="tab">Profile</button>
-                <button className={detailTab === "connections" ? "active" : ""} onClick={() => { setDetailTab("connections"); setSheetLevel("full"); }} role="tab">Connections {data.list?.total ?? 0}</button>
+                <button className={detailTab === "connections" ? "active" : ""} onClick={() => setDetailTab("connections")} role="tab">Connections {data.list?.total ?? 0}</button>
               </div>
               {detailTab === "profile" ? <>
                 <p>{selected.bio ?? "Open their profile to learn more about the contribution they make."}</p>
@@ -6321,14 +6310,15 @@ function NetworkView({
                   <button onClick={explainConnection}><CircleHelp size={14} /> Why you see this person</button>
                   {(whyReasons.length ? whyReasons : selected.reasons).map((reason) => <small key={reason}>{reason}</small>)}
                 </div>
-                <div className="network-brief-actions">
-                  {selected.introduction_eligible && <button className="secondary-button" onClick={() => setIntroTarget(selected)}><UserPlus size={14} /> Ask for an introduction</button>}
-                  <button className="secondary-button" onClick={() => setHideTarget(selected)}>Hide from map</button>
-                </div>
+                {selected.introduction_eligible && <div className="network-brief-actions">
+                  <button className="secondary-button" onClick={() => setIntroTarget(selected)}><UserPlus size={14} /> Ask for an introduction</button>
+                </div>}
                 <button className="primary-button wide" onClick={() => { fetch("/api/network/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: "profile_opened", targetId: selected.id }), keepalive: true }).catch(() => undefined); onProfile(selected.id); }}>View full profile <ArrowUpRight size={15} /></button>
               </> : <div className="network-connection-list" role="tabpanel">
-                {(data.list?.items ?? []).map((item) => <button key={item.id} onClick={() => setSelected(item)}><Avatar person={{ name: item.name ?? "n2 member", role: item.profession ?? "Member", img: item.image }} size="sm" /><span><strong>{item.name}</strong><small>{item.reasons[0]}</small></span><ArrowUpRight size={14} /></button>)}
-                {!data.list?.items.length && <p>No visible connections in this view.</p>}
+                <div className="network-connection-scroll">
+                  {(data.list?.items ?? []).map((item) => <button key={item.id} onClick={() => setSelected(item)}><Avatar person={{ name: item.name ?? "n2 member", role: item.profession ?? "Member", img: item.image }} size="sm" /><span><strong>{item.name}</strong><small>{item.reasons[0]}</small></span><ArrowUpRight size={14} /></button>)}
+                  {!data.list?.items.length && <p>No visible connections in this view.</p>}
+                </div>
                 <footer><button disabled={!data.list?.cursor} onClick={() => loadConnectionPage(data.list?.cursor ?? null)}><ChevronLeft size={14} /> Previous</button><small>{data.list?.total ?? 0} visible</small><button disabled={!data.list?.nextCursor} onClick={() => loadConnectionPage(data.list?.nextCursor ?? null)}>Next <ChevronRight size={14} /></button></footer>
               </div>}
             </aside>
@@ -6336,7 +6326,6 @@ function NetworkView({
         </div>
       </div>
       {introTarget && <ActionDialog eyebrow="WARM INTRODUCTION" title={`Ask for an introduction to ${introTarget.name ?? "this member"}?`} description="Your mutual connection can accept or decline. If they accept, n2 creates a three-person conversation." confirmLabel="Send request" fields={[{ name: "context", label: "Why would this introduction be useful?", placeholder: "Share enough context for your connection to decide…", required: true, minLength: 20, maxLength: 500, multiline: true }]} onClose={() => setIntroTarget(null)} onConfirm={requestIntroduction} />}
-      {hideTarget && <ActionDialog eyebrow="CURATE YOUR MAP" title={`Hide ${hideTarget.name ?? "this member"} from Networks?`} description="This only removes them from your network map. It does not unfollow them or change recommendations elsewhere." confirmLabel="Hide from map" cancelLabel="Keep visible" onClose={() => setHideTarget(null)} onConfirm={confirmHideConnection} />}
       {incomingIntroduction && <div className="modal-backdrop action-dialog-backdrop" role="presentation"><section className="n2-editor-modal action-dialog network-introduction-review" role="dialog" aria-modal="true" aria-labelledby="network-introduction-title"><header><div><span className="eyebrow">WARM INTRODUCTION</span><h2 id="network-introduction-title">Would you introduce these members?</h2></div><button className="icon-button" onClick={() => setIncomingIntroduction(null)} aria-label="Close request"><X size={18}/></button></header><div className="network-introduction-people"><Avatar person={{ name: incomingIntroduction.requester_name ?? "n2 member", role: incomingIntroduction.requester_profession ?? "Member", img: incomingIntroduction.requester_image }} size="lg"/><span><strong>{incomingIntroduction.requester_name}</strong><small>would like to meet</small><strong>{incomingIntroduction.target_name}</strong></span><Avatar person={{ name: incomingIntroduction.target_name ?? "n2 member", role: incomingIntroduction.target_profession ?? "Member", img: incomingIntroduction.target_image }} size="lg"/></div><blockquote>{incomingIntroduction.context}</blockquote><p>Accepting creates a named three-person conversation. Declining shares no private reason.</p><footer><button className="secondary-button" onClick={() => respondToIntroduction("decline")}>Decline</button><button className="primary-button" onClick={() => respondToIntroduction("accept")}>Accept and introduce</button></footer></section></div>}
     </div>
   );

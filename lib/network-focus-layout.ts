@@ -33,11 +33,15 @@ function radialCandidates(
   height: number,
   anchor: NetworkLayoutPoint,
   spacing: number,
+  nodeCount: number,
 ) {
   const candidates: Array<NetworkLayoutPoint & { score: number }> = [],
     centre = { x: width / 2, y: height / 2 },
     outward = Math.atan2(anchor.y - centre.y, anchor.x - centre.x),
-    maximumRadius = Math.hypot(width, height),
+    maximumRadius = Math.min(
+      Math.hypot(width, height) * .48,
+      Math.max(spacing * 2.2, Math.sqrt(Math.max(1, nodeCount)) * spacing * .78),
+    ),
     marginX = Math.min(68, Math.max(42, width * .055)),
     marginY = Math.min(64, Math.max(40, height * .065));
   for (let radius = spacing; radius <= maximumRadius; radius += spacing * .82) {
@@ -54,15 +58,16 @@ function radialCandidates(
   return candidates.sort((a, b) => a.score - b.score);
 }
 
-function gridCandidates(width: number, height: number, spacing: number) {
+function gridCandidates(width: number, height: number, anchor: NetworkLayoutPoint, spacing: number) {
   const candidates: Array<NetworkLayoutPoint & { score: number }> = [],
     centre = { x: width / 2, y: height / 2 };
   for (let y = spacing * .55; y <= height - spacing * .55; y += spacing * .78) {
     for (let x = spacing * .55; x <= width - spacing * .55; x += spacing * .78) {
-      candidates.push({ x, y, score: Math.hypot(x - centre.x, y - centre.y) });
+      const centrePenalty = Math.max(0, spacing * 1.4 - Math.hypot(x - centre.x, y - centre.y));
+      candidates.push({ x, y, score: Math.hypot(x - anchor.x, y - anchor.y) + centrePenalty });
     }
   }
-  return candidates.sort((a, b) => b.score - a.score);
+  return candidates.sort((a, b) => a.score - b.score);
 }
 
 export function layoutFocusedNetwork(input: FocusNetworkLayoutInput): FocusNetworkLayout {
@@ -80,21 +85,20 @@ export function layoutFocusedNetwork(input: FocusNetworkLayoutInput): FocusNetwo
     placed = [];
     positions = {};
     const candidates = [
-      ...radialCandidates(width, height, anchor, spacing),
-      ...gridCandidates(width, height, spacing),
+      ...radialCandidates(width, height, anchor, spacing, input.nodeIds.length),
+      ...gridCandidates(width, height, anchor, spacing),
     ];
     for (const id of input.nodeIds) {
-      const candidate = candidates.find((point) =>
+      const candidateIndex = candidates.findIndex((point) =>
         !reserved.some((rect) => pointInside(point, rect, spacing * .48)) &&
         farEnough(point, obstacles, spacing * .94) &&
         farEnough(point, placed, spacing),
       );
-      if (!candidate) break;
+      if (candidateIndex < 0) break;
+      const [candidate] = candidates.splice(candidateIndex, 1);
       const point = { x: candidate.x, y: candidate.y };
       positions[id] = { x: point.x / width * 100, y: point.y / height * 100 };
       placed.push(point);
-      candidate.x = -width;
-      candidate.y = -height;
     }
     if (placed.length === input.nodeIds.length) break;
   }
