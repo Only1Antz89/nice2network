@@ -1,4 +1,4 @@
-/* eslint-disable no-empty, @next/next/no-img-element, jsx-a11y/media-has-caption, jsx-a11y/no-autofocus, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex, react-hooks/set-state-in-effect, react-hooks/immutability */
+/* eslint-disable no-empty, @next/next/no-img-element, jsx-a11y/media-has-caption, jsx-a11y/no-autofocus, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex, react-hooks/set-state-in-effect */
 "use client";
 
 import {
@@ -54,7 +54,7 @@ import {
   Accessibility,
   X,
 } from "lucide-react";
-import { FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
 import EmojiPicker from "@/components/emoji-picker";
 import GuestAuthPrompt from "@/components/guest-auth-prompt";
@@ -77,6 +77,7 @@ import {
   type MemberPerson,
 } from "@/components/network-brand";
 import { sanitizeRichText } from "@/lib/rich-text";
+import { layoutFocusedNetwork } from "@/lib/network-focus-layout";
 import {
   ACCESSIBILITY_STORAGE_KEY,
   ACCESSIBILITY_EVENT,
@@ -5705,8 +5706,9 @@ function NetworkView({
     [showFollowers, setShowFollowers] = useState(false),
     [activeCluster, setActiveCluster] = useState(""),
     [viewport, setViewport] = useState({ scale: 0.9, panX: 0, panY: 0 }),
-    [canvasAspect, setCanvasAspect] = useState(1.6),
+    [canvasSize, setCanvasSize] = useState({ width: 1280, height: 720 }),
     [mapInteracting, setMapInteracting] = useState(false),
+    [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null),
     [sheetLevel, setSheetLevel] = useState<"collapsed" | "mid" | "full">("mid"),
     [detailTab, setDetailTab] = useState<"profile" | "connections">("profile"),
     [whyReasons, setWhyReasons] = useState<string[]>([]),
@@ -5766,7 +5768,7 @@ function NetworkView({
     if (!canvas) return;
     const measure = () => {
       const rect = canvas.getBoundingClientRect();
-      if (rect.height > 0) setCanvasAspect(Math.min(2.4, Math.max(.7, rect.width / rect.height)));
+      if (rect.width > 0 && rect.height > 0) setCanvasSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
     };
     const observer = new ResizeObserver(measure);
     observer.observe(canvas);
@@ -5823,8 +5825,7 @@ function NetworkView({
         ? ""
         : `focus|${node.id}||All professions|`;
       setData(next);
-      const focusSize = next.nodes.filter((item) => item.kind === "cluster" || item.degree === 2).length;
-      setViewport({ scale: focusSize > 42 ? .58 : focusSize > 28 ? .68 : focusSize > 16 ? .8 : focusSize > 8 ? .9 : 1, panX: 0, panY: 0 });
+      setViewport({ scale: 1, panX: 0, panY: 0 });
       setSelected((next.nodes.find((item) => item.kind === "person" && item.id === node.id) as NetworkNodeRecord | undefined) ?? node);
       setShowKey(next.preferences?.showNetworkKey ?? true);
       setActiveCluster("");
@@ -5881,6 +5882,8 @@ function NetworkView({
     }),
     peopleNodes = nodes.filter((node): node is NetworkNodeRecord => node.kind === "person"),
     secondDegreeNodes = peopleNodes.filter((node) => node.degree === 2),
+    secondDegreeSet = new Set(secondDegreeNodes.map((node) => node.id)),
+    activePathNodeId = hoveredNodeId ?? selected?.id ?? null,
     visible = new Set([
       currentMember.id ?? "",
       ...nodes.map((node) => node.id),
@@ -5893,7 +5896,7 @@ function NetworkView({
     defaultFrameIds = overviewPeople.filter((node) => node.is_following).map((node) => node.id),
     defaultFrameSet = new Set(defaultFrameIds),
     focusNode = peopleNodes.find((node) => node.id === focusedId),
-    aspectScale = Math.max(.7, canvasAspect),
+    aspectScale = Math.max(.7, canvasSize.width / canvasSize.height),
     overviewRings = [{ capacity: 8, radius: 21 }, { capacity: 14, radius: 32 }, { capacity: 20, radius: 42 }, { capacity: 28, radius: 49 }];
   let overviewOffset = 0;
   overviewRings.forEach((ring, ringIndex) => {
@@ -5910,49 +5913,50 @@ function NetworkView({
     positions.set(node.id, { x: 50 + Math.cos(angle) * 46 / aspectScale, y: 50 + Math.sin(angle) * 46 });
   });
   const releasedNodes = nodes.filter((node) => node.id !== focusedId && (node.kind === "cluster" || node.degree === 2));
-  const focusRings = [
-    { capacity: 6, radius: 17, span: Math.PI * 1.02 },
-    { capacity: 10, radius: 25, span: Math.PI * 1.2 },
-    { capacity: 14, radius: 33, span: Math.PI * 1.36 },
-    { capacity: 18, radius: 41, span: Math.PI * 1.5 },
-    { capacity: 24, radius: 49, span: Math.PI * 1.62 },
-  ];
-  const activeFocusRings: { radius: number; count: number }[] = [];
-  if (focusNode) {
-    const anchor = positions.get(focusNode.id) ?? { x: 50, y: 19 };
-    let offset = 0;
-    focusRings.forEach((ring, ringIndex) => {
-      const ringNodes = releasedNodes.slice(offset, offset + ring.capacity);
-      if (!ringNodes.length) return;
-      activeFocusRings.push({ radius: ring.radius, count: ringNodes.length });
-      ringNodes.forEach((node, index) => {
-        const fraction = ringNodes.length === 1 ? .5 : index / Math.max(1, ringNodes.length - 1),
-        inwardAngle = Math.atan2(50 - anchor.y, 50 - anchor.x),
-        angle = inwardAngle - ring.span / 2 + fraction * ring.span + ringIndex * .025,
-        rawX = anchor.x + Math.cos(angle) * ring.radius / aspectScale,
-        rawY = anchor.y + Math.sin(angle) * ring.radius,
-        safeRadiusX = canvasAspect < .9 ? 24 : 30,
-        safeRadiusY = 27;
-        let physicalX = (rawX - 50) * aspectScale,
-          physicalY = rawY - 50,
-          safeDistance = Math.hypot(physicalX / safeRadiusX, physicalY / safeRadiusY);
-        if (safeDistance < 1) {
-          if (safeDistance < .01) {
-            physicalX = (anchor.x - 50) * aspectScale;
-            physicalY = anchor.y - 50;
-            safeDistance = Math.hypot(physicalX / safeRadiusX, physicalY / safeRadiusY) || 1;
-          }
-          const push = 1.08 / safeDistance;
-          physicalX *= push;
-          physicalY *= push;
-        }
-        const x = 50 + physicalX / aspectScale,
-          y = 50 + physicalY;
-        positions.set(node.id, { x: Math.min(92, Math.max(8, x)), y: Math.min(91, Math.max(9, y)) });
-      });
-      offset += ringNodes.length;
+  const focusAnchor = focusNode ? (positions.get(focusNode.id) ?? { x: 50, y: 19 }) : { x: 50, y: 19 },
+    focusAnchorX = focusAnchor.x,
+    focusAnchorY = focusAnchor.y,
+    selectedPanelOpen = Boolean(selected),
+    releasedNodeKey = releasedNodes.map((node) => node.id).join("|"),
+    obstaclePointKey = peopleNodes
+      .filter((node) => node.degree === 1 && node.id !== focusedId)
+      .map((node) => positions.get(node.id))
+      .filter((point): point is { x: number; y: number } => Boolean(point))
+      .map((point) => `${point.x},${point.y}`)
+      .join(";");
+  const focusLayout = useMemo(() => {
+    if (!focusedId) return null;
+    const width = canvasSize.width, height = canvasSize.height,
+      compact = width <= 560,
+      toolbarWidth = compact ? width - 20 : Math.min(720, width - 36),
+      toolbarHeight = compact ? 220 : 118,
+      reservedRects = [
+        { x: width / 2 - 92, y: height / 2 - 78, width: 184, height: 156 },
+      ];
+    if (mobileSearchOpen) reservedRects.push({ x: width / 2 - toolbarWidth / 2, y: height / 2 + 46, width: toolbarWidth, height: toolbarHeight });
+    if (selectedPanelOpen) {
+      if (compact) {
+        const sheetHeight = sheetLevel === "full" ? height * .88 : sheetLevel === "mid" ? height * .48 : 104;
+        reservedRects.push({ x: 0, y: height - sheetHeight, width, height: sheetHeight });
+      } else reservedRects.push({ x: width - 292, y: Math.max(0, height - 440), width: 292, height: 440 });
+    }
+    return layoutFocusedNetwork({
+      width,
+      height,
+      anchor: { x: focusAnchorX, y: focusAnchorY },
+      nodeIds: releasedNodeKey ? releasedNodeKey.split("|") : [],
+      obstaclePoints: obstaclePointKey ? obstaclePointKey.split(";").map((value) => {
+        const [x, y] = value.split(",").map(Number);
+        return { x, y };
+      }) : [],
+      reservedRects,
     });
-  }
+  }, [canvasSize.height, canvasSize.width, focusAnchorX, focusAnchorY, focusedId, mobileSearchOpen, obstaclePointKey, releasedNodeKey, selectedPanelOpen, sheetLevel]);
+  if (focusLayout) Object.entries(focusLayout.positions).forEach(([id, position]) => positions.set(id, position));
+  useEffect(() => {
+    if (!focusedId) return;
+    setViewport({ scale: 1, panX: 0, panY: 0 });
+  }, [canvasSize.height, canvasSize.width, focusedId, mobileSearchOpen, selectedPanelOpen, sheetLevel, showFollowers, showFollowing]);
   const basePoint = (id: string) => id === currentMember.id
     ? { x: 50, y: 50 }
     : (positions.get(id) ?? { x: 50, y: 50 });
@@ -5963,8 +5967,7 @@ function NetworkView({
   };
   const clampScale = (value: number) => Math.min(data.viewport?.maxScale ?? 2.2, Math.max(data.viewport?.minScale ?? 0.45, value));
   const zoomBy = (amount: number) => setViewport((current) => ({ ...current, scale: clampScale(current.scale + amount) }));
-  const densityScale = releasedNodes.length > 42 ? .58 : releasedNodes.length > 28 ? .68 : releasedNodes.length > 16 ? .8 : releasedNodes.length > 8 ? .9 : 1;
-  const fitView = () => setViewport({ scale: focusedId ? densityScale : data.viewport?.suggestedScale ?? 0.9, panX: 0, panY: 0 });
+  const fitView = () => setViewport({ scale: focusedId ? 1 : data.viewport?.suggestedScale ?? 0.9, panX: 0, panY: 0 });
   const onMapPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button,input,select,aside")) return;
     setMapInteracting(true);
@@ -6098,13 +6101,12 @@ function NetworkView({
             preserveAspectRatio="none"
             aria-hidden="true"
           >
-            {focusNode && releasedNodes.length > 0 && (() => {
+            {focusNode && focusLayout && releasedNodes.length > 0 && (() => {
               const centre = point(focusNode.id);
               return (
                 <g className="network-node-orbits">
-                  {activeFocusRings.map((ring, index) => (
-                    <ellipse key={ring.radius} className={index ? "outer" : ""} cx={centre.x} cy={centre.y} rx={ring.radius * viewport.scale / aspectScale} ry={ring.radius * viewport.scale} />
-                  ))}
+                  {releasedNodes.length > 8 && <ellipse cx={centre.x} cy={centre.y} rx={focusLayout.orbit.rx * viewport.scale * .62} ry={focusLayout.orbit.ry * viewport.scale * .62} />}
+                  <ellipse className="outer" cx={centre.x} cy={centre.y} rx={focusLayout.orbit.rx * viewport.scale} ry={focusLayout.orbit.ry * viewport.scale} />
                 </g>
               );
             })()}
@@ -6113,7 +6115,14 @@ function NetworkView({
                 b = point(edge.target),
                 discovered = secondDegreeNodes.some(
                   (node) => node.id === edge.source || node.id === edge.target,
-                );
+                ),
+                focusPrimary = Boolean(focusedId) && (
+                  edge.source === focusedId && secondDegreeSet.has(edge.target) ||
+                  edge.target === focusedId && secondDegreeSet.has(edge.source)
+                ),
+                focusCrossLink = Boolean(focusedId) && !focusPrimary && (secondDegreeSet.has(edge.source) || secondDegreeSet.has(edge.target)),
+                adjacent = Boolean(activePathNodeId) && (edge.source === activePathNodeId || edge.target === activePathNodeId),
+                subdued = Boolean(activePathNodeId) && !adjacent;
               return (
                 <line
                   key={`${edge.source}-${edge.target}-${index}`}
@@ -6121,7 +6130,7 @@ function NetworkView({
                   y1={a.y}
                   x2={b.x}
                   y2={b.y}
-                  className={`${edge.mutual ? "mutual" : "following"}${discovered ? " discovered" : ""}`}
+                  className={`${edge.mutual ? "mutual" : "following"}${discovered ? " discovered" : ""}${focusPrimary ? " focus-primary" : ""}${focusCrossLink ? " focus-cross-link" : ""}${focusedId && !focusPrimary && !focusCrossLink ? " focus-backdrop" : ""}${adjacent ? " path-adjacent" : ""}${subdued ? " path-subdued" : ""}`}
                 />
               );
             })}
@@ -6143,6 +6152,12 @@ function NetworkView({
             <span>{currentMember.name}</span>
             <small>{mobileSearchOpen ? "Close search" : "Search your network"}</small>
           </button>
+          {focusNode && (
+            <div className="network-focus-label" style={{ left: `${point(focusNode.id).x}%`, top: `${Math.max(5, point(focusNode.id).y - 11)}%` }}>
+              <strong>{focusNode.name}&apos;s network</strong>
+              <span>{data.focus?.followingCount ?? releasedNodes.length} following · {releasedNodes.length} shown</span>
+            </div>
+          )}
           {focusedId && !mobileSearchOpen && (
             <button className="network-back-float" onClick={restoreDefaultView}>
               <ArrowLeft size={14} /> Default view
@@ -6222,7 +6237,7 @@ function NetworkView({
             return (
               <button
                 key={node.id}
-                className={`network-node ${node.degree === 2 ? "second-degree" : "direct"} ${data.focus && !node.connected_to_focus && data.focus.id !== node.id ? "network-context-node" : ""} ${data.focus?.id === node.id ? "network-focus" : ""} ${selected?.id === node.id ? "selected" : ""}`}
+                className={`network-node ${node.degree === 2 ? "second-degree" : "direct"} ${data.focus && node.degree === 1 && data.focus.id !== node.id ? "network-backdrop-node" : ""} ${data.focus && !node.connected_to_focus && data.focus.id !== node.id ? "network-context-node" : ""} ${data.focus?.id === node.id ? "network-focus" : ""} ${selected?.id === node.id ? "selected" : ""}`}
                 style={
                   {
                     left: `${position.x}%`,
@@ -6231,6 +6246,10 @@ function NetworkView({
                   } as React.CSSProperties
                 }
                 onClick={() => { setSelected(node); if (node.is_following) selectNetworkNode(node); }}
+                onMouseEnter={() => setHoveredNodeId(node.id)}
+                onMouseLeave={() => setHoveredNodeId(null)}
+                onFocus={() => setHoveredNodeId(node.id)}
+                onBlur={() => setHoveredNodeId(null)}
                 aria-label={`${node.name ?? "n2 member"}. ${node.reasons.join(". ")}`}
               >
                 <Avatar
