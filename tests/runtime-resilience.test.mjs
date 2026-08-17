@@ -22,9 +22,9 @@ test("optional accessibility and link previews fail without browser errors", () 
 });
 
 test("link previews support the Node 22 all-address DNS callback", () => {
-  const preview = read("app/api/link-preview/route.ts");
-  assert.match(preview, /typeof options === "object" && options\.all/);
-  assert.match(preview, /callback\(null, \[address\]\)/);
+  const remoteHttp = read("lib/safe-remote-http.ts");
+  assert.match(remoteHttp, /typeof lookupOptions === "object" && lookupOptions\.all/);
+  assert.match(remoteHttp, /callback\(null, \[address\]\)/);
 });
 
 test("accessibility media updates only inspect newly-added subtrees", () => {

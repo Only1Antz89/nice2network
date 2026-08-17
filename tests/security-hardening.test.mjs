@@ -15,11 +15,29 @@ test("applies browser security headers and cross-site write protection", async (
 
 test("pins link preview requests to a validated public DNS result", async () => {
   const route = await read("app/api/link-preview/route.ts");
+  const imageRoute = await read("app/api/link-preview/image/route.ts");
+  const remoteHttp = await read("lib/safe-remote-http.ts");
   assert.match(route, /requireMember/);
-  assert.match(route, /addresses\.some\(\(\{ address \}\) => isPrivateAddress\(address\)\)/);
-  assert.match(route, /options\.all\) callback\(null, \[address\]\)/);
-  assert.match(route, /callback\(null, address\.address, address\.family\)/);
+  assert.match(imageRoute, /requireMember/);
+  assert.match(remoteHttp, /addresses\.some\(\(\{ address \}\) => isPrivateRemoteAddress\(address\)\)/);
+  assert.match(remoteHttp, /lookupOptions\.all\) callback\(null, \[address\]\)/);
+  assert.match(remoteHttp, /callback\(null, address\.address, address\.family\)/);
   assert.match(route, /MAX_HTML_BYTES/);
+  assert.match(imageRoute, /MAX_IMAGE_BYTES/);
+  assert.match(imageRoute, /ALLOWED_IMAGE_TYPES/);
+  assert.match(imageRoute, /x-content-type-options/);
+});
+
+test("rich link previews proxy and progressively render social images", async () => {
+  const route = await read("app/api/link-preview/route.ts");
+  const page = await read("app/page.tsx");
+  const css = await read("app/globals.css");
+  assert.match(route, /\/api\/link-preview\/image\?url=/);
+  assert.match(route, /og:image:secure_url/);
+  assert.match(page, /loading="lazy"/);
+  assert.match(page, /imageAlt/);
+  assert.match(page, /link-preview\?v=2&url=/);
+  assert.match(css, /aspect-ratio:1\.91\/1/);
 });
 
 test("revokes JWT access after password or account status changes", async () => {

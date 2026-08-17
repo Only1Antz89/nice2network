@@ -343,6 +343,7 @@ type LinkPreviewRecord = {
   title: string;
   description: string;
   image: string | null;
+  imageAlt?: string;
   siteName: string;
   domain: string;
 };
@@ -493,7 +494,15 @@ function RichLinkPreview({ text, url }: { text?: string | null; url?: string | n
   if (!target || !preview) return null;
   return (
     <a className="rich-link-preview" href={preview.url} target="_blank" rel="noreferrer">
-      {preview.image && <img src={preview.image} alt="" />}
+      {preview.image && (
+        <img
+          src={preview.image}
+          alt={preview.imageAlt || ""}
+          loading="lazy"
+          decoding="async"
+          onError={(event) => { event.currentTarget.hidden = true; }}
+        />
+      )}
       <span>
         <small>{preview.siteName || preview.domain}</small>
         <strong>{preview.title}</strong>
@@ -508,7 +517,7 @@ const linkPreviewCache = new Map<string, LinkPreviewRecord | null>();
 
 async function loadLinkPreview(target: string, signal: AbortSignal) {
   if (linkPreviewCache.has(target)) return linkPreviewCache.get(target) ?? null;
-  const response = await fetch(`/api/link-preview?url=${encodeURIComponent(target)}`, {
+  const response = await fetch(`/api/link-preview?v=2&url=${encodeURIComponent(target)}`, {
     signal,
   });
   const preview = response.ok && response.status !== 204 ? await response.json() as LinkPreviewRecord : null;
