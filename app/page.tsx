@@ -5917,21 +5917,36 @@ function NetworkView({
     { capacity: 18, radius: 41, span: Math.PI * 1.5 },
     { capacity: 24, radius: 49, span: Math.PI * 1.62 },
   ];
-  const activeFocusRings: { radius: number; count: number }[] = [];
   if (focusNode) {
     const anchor = positions.get(focusNode.id) ?? { x: 50, y: 19 };
     let offset = 0;
     focusRings.forEach((ring, ringIndex) => {
       const ringNodes = releasedNodes.slice(offset, offset + ring.capacity);
       if (!ringNodes.length) return;
-      activeFocusRings.push({ radius: ring.radius, count: ringNodes.length });
       ringNodes.forEach((node, index) => {
         const fraction = ringNodes.length === 1 ? .5 : index / Math.max(1, ringNodes.length - 1),
         inwardAngle = Math.atan2(50 - anchor.y, 50 - anchor.x),
         angle = inwardAngle - ring.span / 2 + fraction * ring.span + ringIndex * .025,
-        x = anchor.x + Math.cos(angle) * ring.radius / aspectScale,
-        y = anchor.y + Math.sin(angle) * ring.radius;
-      positions.set(node.id, { x: Math.min(92, Math.max(8, x)), y: Math.min(91, Math.max(9, y)) });
+        rawX = anchor.x + Math.cos(angle) * ring.radius / aspectScale,
+        rawY = anchor.y + Math.sin(angle) * ring.radius,
+        safeRadiusX = canvasAspect < .9 ? 24 : 30,
+        safeRadiusY = 27;
+        let physicalX = (rawX - 50) * aspectScale,
+          physicalY = rawY - 50,
+          safeDistance = Math.hypot(physicalX / safeRadiusX, physicalY / safeRadiusY);
+        if (safeDistance < 1) {
+          if (safeDistance < .01) {
+            physicalX = (anchor.x - 50) * aspectScale;
+            physicalY = anchor.y - 50;
+            safeDistance = Math.hypot(physicalX / safeRadiusX, physicalY / safeRadiusY) || 1;
+          }
+          const push = 1.08 / safeDistance;
+          physicalX *= push;
+          physicalY *= push;
+        }
+        const x = 50 + physicalX / aspectScale,
+          y = 50 + physicalY;
+        positions.set(node.id, { x: Math.min(92, Math.max(8, x)), y: Math.min(91, Math.max(9, y)) });
       });
       offset += ringNodes.length;
     });
@@ -6081,16 +6096,6 @@ function NetworkView({
             preserveAspectRatio="none"
             aria-hidden="true"
           >
-            {focusNode && releasedNodes.length > 0 && (() => {
-              const centre = point(focusNode.id);
-              return (
-                <g className="network-node-orbits">
-                  {activeFocusRings.map((ring, index) => (
-                    <ellipse key={ring.radius} className={index ? "outer" : ""} cx={centre.x} cy={centre.y} rx={ring.radius * viewport.scale / aspectScale} ry={ring.radius * viewport.scale} />
-                  ))}
-                </g>
-              );
-            })()}
             {edges.map((edge, index) => {
               const a = point(edge.source),
                 b = point(edge.target),
