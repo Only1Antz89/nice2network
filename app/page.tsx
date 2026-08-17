@@ -5917,12 +5917,14 @@ function NetworkView({
     { capacity: 18, radius: 41, span: Math.PI * 1.5 },
     { capacity: 24, radius: 49, span: Math.PI * 1.62 },
   ];
+  const activeFocusRings: { radius: number; count: number }[] = [];
   if (focusNode) {
     const anchor = positions.get(focusNode.id) ?? { x: 50, y: 19 };
     let offset = 0;
     focusRings.forEach((ring, ringIndex) => {
       const ringNodes = releasedNodes.slice(offset, offset + ring.capacity);
       if (!ringNodes.length) return;
+      activeFocusRings.push({ radius: ring.radius, count: ringNodes.length });
       ringNodes.forEach((node, index) => {
         const fraction = ringNodes.length === 1 ? .5 : index / Math.max(1, ringNodes.length - 1),
         inwardAngle = Math.atan2(50 - anchor.y, 50 - anchor.x),
@@ -6096,6 +6098,16 @@ function NetworkView({
             preserveAspectRatio="none"
             aria-hidden="true"
           >
+            {focusNode && releasedNodes.length > 0 && (() => {
+              const centre = point(focusNode.id);
+              return (
+                <g className="network-node-orbits">
+                  {activeFocusRings.map((ring, index) => (
+                    <ellipse key={ring.radius} className={index ? "outer" : ""} cx={centre.x} cy={centre.y} rx={ring.radius * viewport.scale / aspectScale} ry={ring.radius * viewport.scale} />
+                  ))}
+                </g>
+              );
+            })()}
             {edges.map((edge, index) => {
               const a = point(edge.source),
                 b = point(edge.target),
