@@ -52,3 +52,15 @@ test("settings expose visual, motion, interaction and media controls", () => {
   assert.match(preferences, /media\.pause\(\)/);
   assert.match(settings, /Skip to main content/);
 });
+
+test("settings remain saveable on-device while the account table is unavailable", () => {
+  const route = read("app/api/accessibility/route.ts");
+  const settings = read("app/page.tsx");
+  const controller = read("components/accessibility-controller.tsx");
+
+  assert.match(route, /x-n2-accessibility-persistence/);
+  assert.match(route, /localPreferencesResponse\(preferences, 202\)/);
+  assert.match(settings, /persistence !== "local"/);
+  assert.match(settings, /Saved on this device/);
+  assert.match(controller, /persistence === "local"/);
+});

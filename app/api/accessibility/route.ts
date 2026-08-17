@@ -30,25 +30,37 @@ function isMissingAccessibilityTable(error: unknown) {
   return false;
 }
 
+function localPreferencesResponse(preferences = DEFAULT_ACCESSIBILITY_PREFERENCES, status = 200) {
+  return NextResponse.json(preferences, {
+    status,
+    headers: {
+      "cache-control": "private, no-store",
+      "x-n2-accessibility-persistence": "local",
+    },
+  });
+}
+
 export async function GET() {
   try {
     const session = await auth();
     const memberId = session?.user?.id || null;
-    if (!memberId) return NextResponse.json(DEFAULT_ACCESSIBILITY_PREFERENCES);
+    if (!memberId) return localPreferencesResponse();
     const [settings] = await getDb().select().from(accessibilitySettings).where(eq(accessibilitySettings.userId, memberId)).limit(1);
     return NextResponse.json(settings ?? DEFAULT_ACCESSIBILITY_PREFERENCES);
   } catch (error) {
     // Keep local preferences usable during a zero-downtime deploy where the
     // application reaches production just before its forward-only migration.
-    if (isMissingAccessibilityTable(error)) return NextResponse.json(DEFAULT_ACCESSIBILITY_PREFERENCES);
+    if (isMissingAccessibilityTable(error)) return localPreferencesResponse();
     return apiError(error);
   }
 }
 
 export async function PATCH(request: Request) {
+  let preferences: z.infer<typeof schema> | null = null;
   try {
     const member = await requireMember();
     const input = schema.parse(await request.json());
+    preferences = input;
     const [settings] = await getDb().insert(accessibilitySettings).values({ userId: member.id, ...input }).onConflictDoUpdate({
       target: accessibilitySettings.userId,
       set: { ...input, updatedAt: new Date() },
@@ -56,6 +68,10 @@ export async function PATCH(request: Request) {
     await audit(member.id, "accessibility.updated", "user", member.id, { fields: Object.keys(input) });
     return NextResponse.json(settings);
   } catch (error) {
+    // Keep preferences usable on the current device while a deployment is
+    // briefly ahead of migration 0020. A later successful PATCH upgrades the
+    // same preferences to account-backed storage without changing the client.
+    if (isMissingAccessibilityTable(error) && preferences) return localPreferencesResponse(preferences, 202);
     return apiError(error);
   }
 }

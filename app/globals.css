@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-:root{--ink:#11110f;--paper:#f7f7f3;--line:#deded7;--muted:#73736c;--soft:#eeeee8;--orange:#ff6b35;--blue:#3d67ff;--green:#2b8c66;--keyboard-inset:0px}
+:root{--ink:#11110f;--paper:#f7f7f3;--surface:#fff;--surface-raised:#fafaf7;--surface-subtle:#eeeee8;--line:#deded7;--muted:#73736c;--body-muted:#4d4d48;--action-muted:#62625c;--soft:#eeeee8;--solid:#11110f;--solid-hover:#2a2a26;--solid-ink:#fff;--toggle-off:#c9c9c2;--orange:#ff6b35;--blue:#3d67ff;--green:#2b8c66;--keyboard-inset:0px}
 
 /* User accessibility preferences. These selectors live at the root so they
    also cover authentication, onboarding, admin and meeting surfaces. */
@@ -14,11 +14,13 @@ html[data-large-pointer="true"] a,html[data-large-pointer="true"] button,html[da
 html[data-motion="reduced"] *,html[data-motion="reduced"] *::before,html[data-motion="reduced"] *::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
 html[data-contrast="high"]{--ink:#000;--paper:#fff;--line:#595959;--muted:#333;--soft:#e6e6e6}
 html[data-contrast="high"] button,html[data-contrast="high"] input,html[data-contrast="high"] select,html[data-contrast="high"] textarea{border-color:#595959}
-html[data-colour-theme="dark"]{--ink:#f6f6f1;--paper:#151514;--line:#4b4b46;--muted:#bebeb7;--soft:#2b2b28;color-scheme:dark}
-@media(prefers-color-scheme:dark){html[data-colour-theme="system"]{--ink:#f6f6f1;--paper:#151514;--line:#4b4b46;--muted:#bebeb7;--soft:#2b2b28;color-scheme:dark}}
+html[data-colour-theme="dark"]{--ink:#f4f4ef;--paper:#151514;--surface:#1d1d1b;--surface-raised:#232321;--surface-subtle:#2a2a27;--line:#3b3b37;--muted:#aaa9a2;--body-muted:#c6c5be;--action-muted:#b4b3ac;--soft:#2a2a27;--solid:#f4f4ef;--solid-hover:#fff;--solid-ink:#151514;--toggle-off:#66665f;--green:#56c79b;color-scheme:dark}
+@media(prefers-color-scheme:dark){html[data-colour-theme="system"]{--ink:#f4f4ef;--paper:#151514;--surface:#1d1d1b;--surface-raised:#232321;--surface-subtle:#2a2a27;--line:#3b3b37;--muted:#aaa9a2;--body-muted:#c6c5be;--action-muted:#b4b3ac;--soft:#2a2a27;--solid:#f4f4ef;--solid-hover:#fff;--solid-ink:#151514;--toggle-off:#66665f;--green:#56c79b;color-scheme:dark}}
+html[data-colour-theme="dark"][data-contrast="high"]{--ink:#fff;--paper:#000;--surface:#080808;--surface-raised:#111;--surface-subtle:#1b1b1b;--line:#b8b8b8;--muted:#eee;--soft:#1b1b1b;--solid:#fff;--solid-hover:#e8e8e8;--solid-ink:#000}
+@media(prefers-color-scheme:dark){html[data-colour-theme="system"][data-contrast="high"]{--ink:#fff;--paper:#000;--surface:#080808;--surface-raised:#111;--surface-subtle:#1b1b1b;--line:#b8b8b8;--muted:#eee;--soft:#1b1b1b;--solid:#fff;--solid-hover:#e8e8e8;--solid-ink:#000}}
 html[data-colour-theme="dark"] body,html[data-colour-theme="dark"] .sidebar,html[data-colour-theme="dark"] .right-rail,html[data-colour-theme="dark"] .mobile-nav,
 html[data-colour-theme="dark"] .project-card,html[data-colour-theme="dark"] .composer,html[data-colour-theme="dark"] .settings-form,html[data-colour-theme="dark"] .settings-row,html[data-colour-theme="dark"] .settings-group>button,html[data-colour-theme="dark"] .preference-row,html[data-colour-theme="dark"] .select-setting,html[data-colour-theme="dark"] input,html[data-colour-theme="dark"] select,html[data-colour-theme="dark"] textarea,
-html[data-colour-theme="dark"] .message-list,html[data-colour-theme="dark"] .message-list>button,html[data-colour-theme="dark"] .meet-card,html[data-colour-theme="dark"] .stats-row,html[data-colour-theme="dark"] .share-sheet,html[data-colour-theme="dark"] .notification-panel,html[data-colour-theme="dark"] .auth-card{background:#1d1d1b;color:var(--ink)}
+html[data-colour-theme="dark"] .message-list,html[data-colour-theme="dark"] .message-list>button,html[data-colour-theme="dark"] .meet-card,html[data-colour-theme="dark"] .stats-row,html[data-colour-theme="dark"] .share-sheet,html[data-colour-theme="dark"] .notification-panel,html[data-colour-theme="dark"] .auth-card{background:var(--surface);color:var(--ink)}
 @media(prefers-color-scheme:dark){html[data-colour-theme="system"] body,html[data-colour-theme="system"] .sidebar,html[data-colour-theme="system"] .right-rail,html[data-colour-theme="system"] .mobile-nav,html[data-colour-theme="system"] .project-card,html[data-colour-theme="system"] .composer,html[data-colour-theme="system"] .settings-form,html[data-colour-theme="system"] .settings-row,html[data-colour-theme="system"] .settings-group>button,html[data-colour-theme="system"] .preference-row,html[data-colour-theme="system"] .select-setting,html[data-colour-theme="system"] input,html[data-colour-theme="system"] select,html[data-colour-theme="system"] textarea{background:#1d1d1b;color:var(--ink)}}
 .n2-hyperlink{color:var(--orange);font-weight:650;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;overflow-wrap:anywhere}.n2-hyperlink:hover{color:#d94b18}.n2-hyperlink:focus-visible{outline:2px solid var(--orange);outline-offset:2px;border-radius:2px}
 *{box-sizing:border-box}html{background:var(--paper)}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-geist-sans),Arial,sans-serif}button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer}.app-shell{min-height:100vh;display:grid;grid-template-columns:236px minmax(520px,760px) 328px;justify-content:center}.sidebar{position:sticky;top:0;height:100vh;border-right:1px solid var(--line);padding:30px 24px 22px;display:flex;flex-direction:column;justify-content:space-between;background:#fafaf7;z-index:20}.logo{display:flex;align-items:center;gap:10px;border:0;background:none;padding:0;font-size:16px;font-weight:700;letter-spacing:-.4px}.logo-mark{width:31px;height:31px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-family:var(--font-geist-mono);font-size:12px;letter-spacing:-1px}.sidebar nav{display:grid;gap:6px;margin-top:56px}.sidebar nav button,.sidebar-bottom>button{height:45px;border:0;background:none;border-radius:11px;padding:0 13px;display:flex;align-items:center;gap:13px;color:#55554f;width:100%;font-size:14px}.sidebar nav button:hover,.sidebar nav button.active,.sidebar-bottom>button:hover,.sidebar-bottom>button.active{background:#eaeae4;color:#111}.sidebar nav button.active{font-weight:650}.sidebar nav b{margin-left:auto;background:var(--ink);color:#fff;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;font:10px var(--font-geist-mono)}.sidebar-bottom{display:grid;gap:5px}.profile-chip{height:62px!important;border-top:1px solid var(--line)!important;border-radius:0!important;margin-top:8px;padding:16px 0 0!important}.profile-chip span{display:flex;flex:1;flex-direction:column;align-items:flex-start;gap:2px}.profile-chip strong{font-size:12px}.profile-chip small{font-size:10px;color:var(--muted)}
@@ -763,3 +765,71 @@ img,video,canvas,svg{max-width:100%}
 .timeline-post>.post-thread-trigger{display:block;width:calc(100% - 32px);border:0;background:none;padding:0;text-align:left;font-family:inherit;color:inherit;font-size:12px;line-height:1.6;white-space:pre-wrap;margin:9px 16px 12px}
 
 .route-state-page{min-height:100svh;display:grid;place-items:center;align-content:center;gap:14px;text-align:center;padding:28px;background:var(--paper);color:var(--ink)}.route-state-mark{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:#111;color:#fff;font-weight:800}.route-state-page h1{max-width:620px;margin:2px 0;font-size:clamp(27px,5vw,48px);letter-spacing:-.04em}.route-state-page p{max-width:520px;margin:0;color:var(--muted);font-size:12px;line-height:1.65}.route-state-page small{color:var(--muted);font:8px var(--font-geist-mono)}.route-state-progress{width:min(260px,70vw);height:3px;overflow:hidden;border-radius:999px;background:var(--line)}.route-state-progress i{display:block;width:42%;height:100%;border-radius:inherit;background:#ff6b35;animation:n2-route-loading 1.2s ease-in-out infinite}.route-state-actions{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}.route-state-actions a{text-decoration:none}@keyframes n2-route-loading{0%{transform:translateX(-105%)}100%{transform:translateX(245%)}}@media(prefers-reduced-motion:reduce){.route-state-progress i{animation:none;transform:none;width:100%}}
+
+/* Theme-safe application surfaces. Keep semantic text colours independent
+   from solid buttons and cards so dark mode never produces light-on-light UI. */
+.sidebar,.right-rail,.mobile-nav,.project-card,.composer,.created-project-card,
+.settings-form,.settings-row,.settings-group>button,.settings-page>button,
+.preference-row,.select-setting,.message-list,.message-list>button,.meet-card,
+.stats-row,.month-calendar,.month-grid>button,.view-toggle,.message-search,
+.chat-composer,.bubble.theirs,.search-button,.icon-button.border,.secondary-button,
+.skill-chips span,.share-sheet,.notification-panel,.auth-card,.search-field,
+.search-results>button,.search-prompts button,.share-primary>button,
+.share-more-wrap>button,.share-more-menu,.share-destination-list>button,
+.share-options>a,.share-options>button,.form-grid input,.form-grid select,
+.form-grid textarea,.select-setting select,.profile-settings-lead button,
+.connection-setting a,.safety-panel button,.meet-detail,.meet-modal,.new-chat-modal{
+  background:var(--surface);
+  color:var(--ink);
+}
+.settings-section-title,.accessibility-note,.safety-panel,.security-note,
+.message-list>button.unread,.notification-list>a.unread,.search-button kbd{
+  background:var(--surface-subtle);
+  color:var(--ink);
+}
+.sidebar nav button,.sidebar-bottom>button{color:var(--muted)}
+.sidebar nav button:hover,.sidebar nav button.active,
+.sidebar-bottom>button:hover,.sidebar-bottom>button.active{
+  background:var(--surface-subtle);
+  color:var(--ink);
+}
+.primary-button,.save-button,.join-button,.chat-composer>button,.dm-send-button,
+.logo-mark,.sidebar nav b,.end-note span,.n2-ai-mark,
+.calendar-strip button.active,.month-grid>button.selected span,.match-feedback button.active{
+  background:var(--solid);
+  color:var(--solid-ink);
+}
+.primary-button:hover,.save-button:hover,.dm-send-button:hover:not(:disabled){background:var(--solid-hover);color:var(--solid-ink)}
+.toggle{background:var(--toggle-off)}
+.toggle i,.settings-row .toggle i{background:var(--solid-ink)}
+.toggle.on{background:var(--solid)}
+.toggle.on i,.settings-row .toggle.on i{background:var(--solid-ink)}
+.project-copy{color:var(--body-muted)}
+.post-actions button{color:var(--action-muted)}
+.project-kicker span+span,.project-blue .project-kicker span+span,
+.meet-card .tag.dark,.meet-visibility-options>button.active{
+  background:var(--solid);
+  color:var(--solid-ink);
+}
+.pulse-card{background:#10100f;color:#fff;border:1px solid #292925}
+.pulse-card .pulse-head>span{color:#a7a79f}
+.pulse-track article>button{color:#fff}
+.pulse-track article>strong{color:#fff}
+.pulse-track article>span,.pulse-track article>small,.pulse-controls span{color:#92928b}
+.pulse-controls button{color:#fff}
+.person-suggest>button,.follow-person-button{background:var(--surface);color:var(--ink);border-color:var(--line)}
+.settings-section-title strong,.accessibility-note strong{color:var(--ink)}
+.accessibility-section-break{border-top-color:var(--paper)}
+.accessibility-reset{color:var(--ink)}
+.settings-form select{color:var(--ink)}
+.mobile-menu,.mobile-page-notification{background:var(--surface);color:var(--ink)}
+html[data-colour-theme="dark"] .avatar-ring{outline-color:var(--surface)}
+html[data-colour-theme="dark"] .meet-card-past{background:var(--surface-raised);color:var(--muted)}
+html[data-colour-theme="dark"] .meet-history-status{background:var(--surface-subtle);color:var(--muted)}
+html[data-colour-theme="dark"] .form-error{color:#ff9b86!important}
+@media(prefers-color-scheme:dark){
+  html[data-colour-theme="system"] .avatar-ring{outline-color:var(--surface)}
+  html[data-colour-theme="system"] .meet-card-past{background:var(--surface-raised);color:var(--muted)}
+  html[data-colour-theme="system"] .meet-history-status{background:var(--surface-subtle);color:var(--muted)}
+  html[data-colour-theme="system"] .form-error{color:#ff9b86!important}
+}

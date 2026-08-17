@@ -66,3 +66,14 @@ test("in-person meets provide a private, opt-in map and ETA flow", () => {
   assert.match(config, /geolocation=\(self\)/);
   assert.match(config, /https:\/\/www\.openstreetmap\.org/);
 });
+
+test("dark mode separates text, surface and solid-action colours", () => {
+  const styles = read("app/globals.css");
+  assert.match(styles, /--surface:#1d1d1b/);
+  assert.match(styles, /--solid:#f4f4ef/);
+  assert.match(styles, /--solid-ink:#151514/);
+  assert.match(styles, /\.settings-section-title,.accessibility-note/);
+  assert.match(styles, /\.pulse-card\{background:#10100f;color:#fff/);
+  assert.match(styles, /\.sidebar nav button:hover,.sidebar nav button.active/);
+  assert.match(styles, /html\[data-colour-theme="dark"\]\[data-contrast="high"\]/);
+});

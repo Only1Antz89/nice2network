@@ -52,9 +52,12 @@ export default function AccessibilityController() {
     headingObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
 
     fetch("/api/accessibility")
-      .then((response) => response.ok ? response.json() : null)
-      .then((remote) => {
-        if (!remote) return;
+      .then(async (response) => ({
+        remote: response.ok ? await response.json() : null,
+        persistence: response.headers.get("x-n2-accessibility-persistence"),
+      }))
+      .then(({ remote, persistence }) => {
+        if (!remote || persistence === "local") return;
         local = normaliseAccessibilityPreferences(remote);
         storeAndApplyAccessibilityPreferences(local);
       })

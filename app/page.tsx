@@ -8591,7 +8591,8 @@ function SettingsView({
   const [panel, setPanel] = useState<
     "root" | "profile" | "notifications" | "calendar" | "privacy" | "accessibility" | "security"
   >(initialPanel);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState(false),
+    [savedLocally, setSavedLocally] = useState(false);
   const [saveStatus, setSaveStatus] = useState({ busy: false, error: "" });
   const [passwordStatus, setPasswordStatus] = useState({
     busy: false,
@@ -8767,9 +8768,12 @@ function SettingsView({
         })
         .catch(() => undefined);
       fetch("/api/accessibility")
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (data) setAccessibility(normaliseAccessibilityPreferences(data));
+        .then(async (response) => ({
+          data: response.ok ? await response.json() : null,
+          persistence: response.headers.get("x-n2-accessibility-persistence"),
+        }))
+        .then(({ data, persistence }) => {
+          if (data && persistence !== "local") setAccessibility(normaliseAccessibilityPreferences(data));
         })
         .catch(() => undefined);
     });
@@ -8782,6 +8786,7 @@ function SettingsView({
   async function saveSettings() {
     if (saveStatus.busy) return;
     setSaved(false);
+    setSavedLocally(false);
     setSaveStatus({ busy: true, error: "" });
     if (panel === "profile" && !profileUserId) {
       setSaveStatus({
@@ -8889,7 +8894,11 @@ function SettingsView({
           headers: { "content-type": "application/json" },
           body: JSON.stringify(accessibility),
         });
-        if (!response.ok) throw new Error("We couldn't save your accessibility settings.");
+        if (!response.ok) {
+          const result = await response.json().catch(() => null);
+          throw new Error(result?.error ?? "We couldn't save your accessibility settings.");
+        }
+        setSavedLocally(response.headers.get("x-n2-accessibility-persistence") === "local");
         storeAndApplyAccessibilityPreferences(accessibility);
       }
       localStorage.setItem(
@@ -8898,7 +8907,10 @@ function SettingsView({
       );
       setSaveStatus({ busy: false, error: "" });
       setSaved(true);
-      setTimeout(() => setSaved(false), 2200);
+      setTimeout(() => {
+        setSaved(false);
+        setSavedLocally(false);
+      }, 3200);
     } catch (error) {
       setSaveStatus({
         busy: false,
@@ -8999,7 +9011,7 @@ function SettingsView({
             >
               {saved ? (
                 <>
-                  <Check size={15} /> Saved
+                  <Check size={15} /> {savedLocally ? "Saved on this device" : "Saved"}
                 </>
               ) : (
                 saveStatus.busy ? "Saving…" : "Save changes"
