@@ -526,7 +526,8 @@ select:focus,
   background-image: radial-gradient(var(--line) 1px, transparent 1px);
 }
 .network-node span,
-.network-node small {
+.network-node small,
+.network-node.second-degree em {
   background: var(--surface-raised);
   box-shadow: 0 0 0 3px var(--surface-raised);
 }
@@ -537,10 +538,27 @@ select:focus,
   background: var(--surface-glass);
   border-color: var(--line);
 }
+.network-key-show {
+  background: var(--surface-glass);
+  color: var(--ink);
+  border-color: var(--line);
+}
 .network-search,
 .network-profession-filter {
   background: var(--control);
   color: var(--ink);
+}
+.network-zoom-controls button,
+.network-connection-list > footer button,
+.network-cluster-node > i,
+.onboarding-visibility > button {
+  background: var(--control);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.onboarding-visibility > button.active {
+  background: var(--positive-soft);
+  border-color: var(--green);
 }
 .network-brief-role,
 .network-map-status strong,

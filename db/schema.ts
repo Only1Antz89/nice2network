@@ -285,6 +285,12 @@ export const follows = pgTable("follows", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.followerId, table.followingId] }), index("follows_following_idx").on(table.followingId, table.createdAt)]);
 
+export const networkMapHides = pgTable("network_map_hides", {
+  viewerId: uuid("viewer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  hiddenUserId: uuid("hidden_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.viewerId, table.hiddenUserId] }), index("network_map_hides_hidden_idx").on(table.hiddenUserId)]);
+
 export const memberRecommendations = pgTable("member_recommendations", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -310,7 +316,7 @@ export const memberRecommendationFeedback = pgTable("member_recommendation_feedb
 }, (table) => [index("member_recommendation_feedback_idx").on(table.userId, table.createdAt)]);
 
 export const privacySettings = pgTable("privacy_settings", {
-  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }), profileVisibility: text("profile_visibility").notNull().default("network"), messagePermission: text("message_permission").notNull().default("connections"), showLocation: boolean("show_location").notNull().default(true), showAvailability: boolean("show_availability").notNull().default(true), showFollowers: boolean("show_followers").notNull().default(true), showFollowing: boolean("show_following").notNull().default(true), muteFollowNotifications: boolean("mute_follow_notifications").notNull().default(false), useActivityForMatching: boolean("use_activity_for_matching").notNull().default(true), allowIntroductions: boolean("allow_introductions").notNull().default(true), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }), profileVisibility: text("profile_visibility").notNull().default("network"), messagePermission: text("message_permission").notNull().default("connections"), showLocation: boolean("show_location").notNull().default(true), showAvailability: boolean("show_availability").notNull().default(true), showFollowers: boolean("show_followers").notNull().default(true), showFollowing: boolean("show_following").notNull().default(true), shareNetworkConnections: boolean("share_network_connections").notNull().default(true), showNetworkKey: boolean("show_network_key").notNull().default(true), muteFollowNotifications: boolean("mute_follow_notifications").notNull().default(false), useActivityForMatching: boolean("use_activity_for_matching").notNull().default(true), allowIntroductions: boolean("allow_introductions").notNull().default(true), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const accessibilitySettings = pgTable("accessibility_settings", {
@@ -477,6 +483,23 @@ export const messages = pgTable("messages", {
   editedAt: timestamp("edited_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("messages_conversation_idx").on(table.conversationId, table.createdAt)]);
+
+export const introductionRequests = pgTable("introduction_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requesterId: uuid("requester_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  connectorId: uuid("connector_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  targetId: uuid("target_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  context: text("context").notNull(),
+  status: text("status").notNull().default("pending"),
+  conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("introduction_connector_status_idx").on(table.connectorId, table.status, table.createdAt),
+  index("introduction_requester_time_idx").on(table.requesterId, table.createdAt),
+  uniqueIndex("introduction_pending_unique").on(table.requesterId, table.connectorId, table.targetId).where(sql`${table.status} = 'pending'`),
+]);
 
 export const complianceAssessments = pgTable("compliance_assessments", {
   id: uuid("id").defaultRandom().primaryKey(),

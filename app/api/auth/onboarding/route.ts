@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { projectRoles, projects, users, verificationTokens } from "@/db/schema";
+import { privacySettings, projectRoles, projects, users, verificationTokens } from "@/db/schema";
 import { trackProductEvent } from "@/lib/analytics";
 import { recommendPeople } from "@/lib/people-recommendations";
 
@@ -18,6 +18,8 @@ const schema = z.object({
   interests: z.array(z.string().trim().min(1).max(50)).min(1).max(20),
   location: z.string().trim().min(2).max(100),
   workMode: z.enum(["remote", "hybrid", "in_person"]),
+  shareNetworkConnections: z.boolean().default(true),
+  allowIntroductions: z.boolean().default(true),
 });
 
 export async function POST(request: Request) {
@@ -35,6 +37,8 @@ export async function POST(request: Request) {
     const rankedSkills = [input.primarySkill, input.secondarySkill, input.tertiarySkill];
     const [member] = await db.update(users).set({ profession: input.profession, headline: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: rankedSkills, interests: input.interests, location: teen ? null : input.location, workMode: input.workMode, status: "active", onboardingCompletedAt: new Date(), updatedAt: new Date() }).where(eq(users.email, email)).returning({ id: users.id, ageBand: users.ageBand });
     if (!member) return NextResponse.json({ error: "Member not found." }, { status: 404 });
+
+    await db.insert(privacySettings).values({ userId: member.id, shareNetworkConnections: input.shareNetworkConnections, allowIntroductions: input.allowIntroductions }).onConflictDoUpdate({ target: privacySettings.userId, set: { shareNetworkConnections: input.shareNetworkConnections, allowIntroductions: input.allowIntroductions, updatedAt: new Date() } });
 
     await trackProductEvent({ actorId: member.id, ageBand: member.ageBand, event: "onboarding_completed", entityType: "user", entityId: member.id });
     const norm = (value: string) => value.trim().toLowerCase();

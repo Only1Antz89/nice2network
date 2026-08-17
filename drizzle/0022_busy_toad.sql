@@ -1,0 +1,2 @@
+ALTER TABLE "privacy_settings" ADD COLUMN "share_network_connections" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "privacy_settings" ADD COLUMN "show_network_key" boolean DEFAULT true NOT NULL;

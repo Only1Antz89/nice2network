@@ -10,7 +10,9 @@ export type ActionDialogField = {
   defaultValue?: string;
   placeholder?: string;
   required?: boolean;
+  minLength?: number;
   maxLength?: number;
+  multiline?: boolean;
   options?: Array<{ value: string; label: string }>;
 };
 
@@ -63,10 +65,10 @@ export default function ActionDialog({ eyebrow, title, description, confirmLabel
                 <select ref={index === 0 ? firstField as React.RefObject<HTMLSelectElement> : undefined} name={field.name} defaultValue={field.defaultValue} required={field.required}>
                   {field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
-              ) : field.kind === "input" ? (
-                <input ref={index === 0 ? firstField as React.RefObject<HTMLInputElement> : undefined} name={field.name} defaultValue={field.defaultValue} placeholder={field.placeholder} required={field.required} maxLength={field.maxLength} />
+              ) : field.kind === "input" || field.multiline === false ? (
+                <input ref={index === 0 ? firstField as React.RefObject<HTMLInputElement> : undefined} name={field.name} defaultValue={field.defaultValue} placeholder={field.placeholder} required={field.required} minLength={field.minLength} maxLength={field.maxLength} />
               ) : (
-                <textarea ref={index === 0 ? firstField as React.RefObject<HTMLTextAreaElement> : undefined} name={field.name} defaultValue={field.defaultValue} placeholder={field.placeholder} required={field.required} maxLength={field.maxLength} />
+                <textarea ref={index === 0 ? firstField as React.RefObject<HTMLTextAreaElement> : undefined} name={field.name} defaultValue={field.defaultValue} placeholder={field.placeholder} required={field.required} minLength={field.minLength} maxLength={field.maxLength} />
               )}
             </label>
           ))}

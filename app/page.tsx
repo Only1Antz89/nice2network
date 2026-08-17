@@ -1,4 +1,4 @@
-/* eslint-disable no-empty, @next/next/no-img-element, jsx-a11y/media-has-caption, jsx-a11y/no-autofocus, react-hooks/set-state-in-effect, react-hooks/immutability */
+/* eslint-disable no-empty, @next/next/no-img-element, jsx-a11y/media-has-caption, jsx-a11y/no-autofocus, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex, react-hooks/set-state-in-effect, react-hooks/immutability */
 "use client";
 
 import {
@@ -17,14 +17,17 @@ import {
   Clock3,
   Ellipsis,
   Eye,
+  EyeOff,
   Image as ImageIcon,
   Italic,
   Globe2,
   Home,
   Lightbulb,
+  List,
   Paperclip,
   LogOut,
   MapPin,
+  Minus,
   Mic,
   Menu,
   MessageCircle,
@@ -5613,6 +5616,7 @@ function ProjectsView({
 }
 
 type NetworkNodeRecord = {
+  kind: "person";
   id: string;
   name: string | null;
   image: string | null;
@@ -5626,24 +5630,44 @@ type NetworkNodeRecord = {
   mutual: boolean;
   is_following: boolean;
   follows_viewer: boolean;
+  can_expand: boolean;
+  degree: 1 | 2;
+  shared_by: string | null;
+  category: string;
+  relevance: number;
+  reasons: string[];
+  introduction_eligible: boolean;
 };
-type NetworkEdgeRecord = { source: string; target: string; mutual: boolean };
+type NetworkClusterRecord = {
+  kind: "cluster";
+  id: string;
+  category: string;
+  label: string;
+  count: number;
+  sample: string[];
+  degree: 1 | 2;
+};
+type NetworkGraphNode = NetworkNodeRecord | NetworkClusterRecord;
+type NetworkEdgeRecord = { source: string; target: string; mutual: boolean; aggregate?: boolean };
+type NetworkGraphRecord = {
+  mode?: "overview" | "focus";
+  current: Record<string, unknown> | null;
+  nodes: NetworkGraphNode[];
+  edges: NetworkEdgeRecord[];
+  totals?: { visible: number; rendered: number; aggregated: number; hidden: number };
+  list?: { items: NetworkNodeRecord[]; cursor: string | null; nextCursor: string | null; total: number };
+  viewport?: { minScale: number; maxScale: number; suggestedScale: number };
+  preferences?: { showNetworkKey: boolean };
+  focus?: {
+    id: string;
+    expanded: boolean;
+    visibleCount: number;
+    reason: "private" | "not-following" | null;
+  } | null;
+};
+type IncomingIntroduction = { id: string; context: string; status: string; expires_at: string; requester_name: string | null; requester_image: string | null; requester_profession: string | null; target_name: string | null; target_image: string | null; target_profession: string | null };
 const signalNetworkChanged = () =>
   window.dispatchEvent(new Event("n2:network-changed"));
-const networkProfession = (
-  person: Pick<NetworkNodeRecord, "profession" | "industry">,
-) => {
-  const value =
-    `${person.profession ?? ""} ${person.industry ?? ""}`.toLowerCase();
-  if (/financ|account|invest|bank/.test(value)) return "Finance";
-  if (/tech|software|engineer|data|digital/.test(value)) return "Technology";
-  if (/design|creative|brand|media|planner|architect/.test(value))
-    return "Design & creative";
-  if (/education|learning|teacher|programme/.test(value)) return "Education";
-  if (/operation|community|food|hospitality|logistic|nonprofit/.test(value))
-    return "Operations & community";
-  return "Other";
-};
 const networkColour = (category: string) =>
   ({
     Finance: "#1f9d68",
@@ -5661,20 +5685,31 @@ function NetworkView({
   currentMember: MemberPerson;
   onProfile: (id: string) => void;
 }) {
-  const [data, setData] = useState<{
-      current: Record<string, unknown> | null;
-      nodes: NetworkNodeRecord[];
-      edges: NetworkEdgeRecord[];
-    }>({ current: null, nodes: [], edges: [] }),
+  const [data, setData] = useState<NetworkGraphRecord>({
+      current: null,
+      nodes: [],
+      edges: [],
+    }),
     [loading, setLoading] = useState(true),
+    [focusLoading, setFocusLoading] = useState(false),
+    [showKey, setShowKey] = useState(true),
+    [activeCluster, setActiveCluster] = useState(""),
+    [viewport, setViewport] = useState({ scale: 0.9, panX: 0, panY: 0 }),
+    [sheetLevel, setSheetLevel] = useState<"collapsed" | "mid" | "full">("mid"),
+    [detailTab, setDetailTab] = useState<"profile" | "connections">("profile"),
+    [whyReasons, setWhyReasons] = useState<string[]>([]),
+    [introTarget, setIntroTarget] = useState<NetworkNodeRecord | null>(null),
+    [hideTarget, setHideTarget] = useState<NetworkNodeRecord | null>(null),
+    [incomingIntroduction, setIncomingIntroduction] = useState<IncomingIntroduction | null>(null),
     [profession, setProfession] = useState("All professions"),
     [skill, setSkill] = useState(""),
-    [platformPeople, setPlatformPeople] = useState<
-      Array<Record<string, unknown>>
-    >([]),
-    [platformSearching, setPlatformSearching] = useState(false),
     [mobileSearchOpen, setMobileSearchOpen] = useState(false),
     [selected, setSelected] = useState<NetworkNodeRecord | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>()),
+    gesture = useRef<{ distance: number; scale: number } | null>(null),
+    sheetDrag = useRef<number | null>(null),
+    previousViewport = useRef<{ scale: number; panX: number; panY: number } | null>(null);
+  const currentFocusId = data.focus?.id;
   useEffect(() => {
     const loadGraph = () => {
       setLoading(true);
@@ -5684,11 +5719,13 @@ function NetworkView({
       )
       .then((next) => {
         setData(next);
+        setShowKey(next.preferences?.showNetworkKey ?? true);
         setSelected((current) =>
           current
-            ? (next.nodes.find((node: NetworkNodeRecord) => node.id === current.id) ?? null)
+            ? (next.nodes.find((node: NetworkGraphNode) => node.kind === "person" && node.id === current.id) as NetworkNodeRecord | undefined) ?? null
             : null,
         );
+        setViewport({ scale: next.viewport?.suggestedScale ?? 0.9, panX: 0, panY: 0 });
       })
       .finally(() => setLoading(false));
     };
@@ -5697,63 +5734,81 @@ function NetworkView({
     return () => window.removeEventListener("n2:network-changed", loadGraph);
   }, []);
   useEffect(() => {
-    const controller = new AbortController(),
-      query = skill.trim(),
-      timer = setTimeout(() => {
-        if (query.length < 2) {
-          setPlatformPeople([]);
-          setPlatformSearching(false);
-          return;
-        }
-        setPlatformSearching(true);
-        fetch(`/api/search?q=${encodeURIComponent(query)}`, {
-          signal: controller.signal,
+    const id = new URLSearchParams(window.location.search).get("introduction");
+    if (!id) return;
+    fetch(`/api/network/introductions/${encodeURIComponent(id)}`, { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((record) => { if (record?.status === "pending") setIncomingIntroduction(record); })
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController(), timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ mode: currentFocusId ? "focus" : "overview" });
+      if (currentFocusId) params.set("focus", currentFocusId);
+      if (skill.trim()) params.set("query", skill.trim());
+      if (profession !== "All professions") params.set("cluster", profession);
+      if (activeCluster) params.set("cluster", activeCluster);
+      setFocusLoading(true);
+      fetch(`/api/network/graph?${params}`, { cache: "no-store", signal: controller.signal })
+        .then((response) => response.ok ? response.json() : null)
+        .then((next) => {
+          if (!next) return;
+          setData(next);
+          setSelected((current) => current ? ((next.nodes.find((node: NetworkGraphNode) => node.kind === "person" && node.id === current.id) as NetworkNodeRecord | undefined) ?? current) : null);
+          setViewport((current) => ({ ...current, scale: next.viewport?.suggestedScale ?? current.scale, panX: 0, panY: 0 }));
         })
-          .then((response) =>
-            response.ok ? response.json() : { people: [] },
-          )
-          .then((result) => setPlatformPeople(result.people ?? []))
-          .catch(() => undefined)
-          .finally(() => setPlatformSearching(false));
-      }, 250);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [skill]);
+        .catch(() => undefined)
+        .finally(() => setFocusLoading(false));
+    }, 280);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [skill, profession, activeCluster, currentFocusId]);
+  async function selectNetworkNode(node: NetworkNodeRecord) {
+    setSelected(node);
+    setSheetLevel("mid");
+    if (!node.is_following) return;
+    setFocusLoading(true);
+    try {
+      const response = await fetch(`/api/network/graph?focus=${encodeURIComponent(node.id)}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+      const next = (await response.json()) as NetworkGraphRecord;
+      setData(next);
+      setSelected((next.nodes.find((item) => item.kind === "person" && item.id === node.id) as NetworkNodeRecord | undefined) ?? node);
+      setShowKey(next.preferences?.showNetworkKey ?? true);
+      setActiveCluster("");
+      setDetailTab("profile");
+      setWhyReasons([]);
+      setViewport({ scale: next.viewport?.suggestedScale ?? 1, panX: 0, panY: 7 });
+    } finally {
+      setFocusLoading(false);
+    }
+  }
+  async function closeNetworkBrief() {
+    setSelected(null);
+    if (!data.focus) return;
+    const response = await fetch("/api/network/graph", { cache: "no-store" });
+    if (response.ok) setData((await response.json()) as NetworkGraphRecord);
+    setActiveCluster("");
+    setViewport({ scale: 0.9, panX: 0, panY: 0 });
+  }
+  async function toggleNetworkKey() {
+    const next = !showKey;
+    setShowKey(next);
+    const response = await fetch("/api/privacy", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ showNetworkKey: next }),
+    });
+    if (!response.ok) setShowKey(!next);
+  }
   const categories = [
       "All professions",
-      ...Array.from(new Set(data.nodes.map(networkProfession))).sort(),
+      ...Array.from(new Set(data.nodes.map((node) => node.category))).sort(),
     ],
-    query = skill.trim().toLowerCase(),
-    nodes = data.nodes.filter(
-      (node) =>
-        (profession === "All professions" ||
-          networkProfession(node) === profession) &&
-        (!query ||
-          [
-            node.name,
-            node.primary_skill,
-            node.secondary_skill,
-            node.tertiary_skill,
-            node.profession,
-          ].some((value) => value?.toLowerCase().includes(query))),
-    ),
-    positions = new Map(
-      nodes.map((node, index) => {
-        const angle =
-            -Math.PI / 2 + (index / Math.max(1, nodes.length)) * Math.PI * 2,
-          xRadius = nodes.length > 10 ? (index % 2 ? 43 : 34) : 40,
-          yRadius = nodes.length > 10 ? (index % 2 ? 36 : 29) : 34;
-        return [
-          node.id,
-          {
-            x: 50 + Math.cos(angle) * xRadius,
-            y: 43 + Math.sin(angle) * yRadius,
-          },
-        ];
-      }),
-    ),
+    nodes = data.nodes,
+    peopleNodes = nodes.filter((node): node is NetworkNodeRecord => node.kind === "person"),
+    secondDegreeNodes = peopleNodes.filter((node) => node.degree === 2),
     visible = new Set([
       currentMember.id ?? "",
       ...nodes.map((node) => node.id),
@@ -5761,10 +5816,96 @@ function NetworkView({
     edges = data.edges.filter(
       (edge) => visible.has(edge.source) && visible.has(edge.target),
     );
-  const point = (id: string) =>
-    id === currentMember.id
-      ? { x: 50, y: 43 }
-      : (positions.get(id) ?? { x: 50, y: 43 });
+  const positions = new Map<string, { x: number; y: number }>();
+  const focusedId = data.focus?.id,
+    focusNode = peopleNodes.find((node) => node.id === focusedId),
+    orbitNodes = nodes.filter((node) => node.id !== focusedId);
+  if (focusNode) positions.set(focusNode.id, { x: 43, y: 32 });
+  orbitNodes.forEach((node, index) => {
+    const angle = -Math.PI / 2 + (index / Math.max(1, orbitNodes.length)) * Math.PI * 2,
+      clusterOffset = node.kind === "cluster" ? 8 : 0,
+      xRadius = focusNode ? 30 + clusterOffset : (index % 2 ? 38 : 30) + clusterOffset,
+      yRadius = focusNode ? 25 + clusterOffset * 0.6 : (index % 2 ? 34 : 27) + clusterOffset * 0.5,
+      centre = focusNode ? { x: 43, y: 36 } : { x: 50, y: 47 };
+    positions.set(node.id, { x: centre.x + Math.cos(angle) * xRadius, y: centre.y + Math.sin(angle) * yRadius });
+  });
+  const basePoint = (id: string) => id === currentMember.id
+    ? (focusNode ? { x: 50, y: 78 } : { x: 50, y: 47 })
+    : (positions.get(id) ?? { x: 50, y: 47 });
+  const point = (id: string) => {
+    const base = basePoint(id);
+    return { x: 50 + (base.x - 50) * viewport.scale + viewport.panX, y: 50 + (base.y - 50) * viewport.scale + viewport.panY };
+  };
+  const clampScale = (value: number) => Math.min(data.viewport?.maxScale ?? 2.2, Math.max(data.viewport?.minScale ?? 0.45, value));
+  const zoomBy = (amount: number) => setViewport((current) => ({ ...current, scale: clampScale(current.scale + amount) }));
+  const fitView = () => setViewport({ scale: data.viewport?.suggestedScale ?? 0.9, panX: 0, panY: focusNode ? 7 : 0 });
+  const onMapPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest("button,input,select,aside")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      gesture.current = { distance: Math.hypot(a.x - b.x, a.y - b.y), scale: viewport.scale };
+    }
+  };
+  const onMapPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const previous = pointers.current.get(event.pointerId);
+    if (!previous) return;
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.current.size === 2 && gesture.current) {
+      const [a, b] = [...pointers.current.values()], distance = Math.hypot(a.x - b.x, a.y - b.y);
+      setViewport((current) => ({ ...current, scale: clampScale(gesture.current!.scale * distance / Math.max(1, gesture.current!.distance)) }));
+      return;
+    }
+    if (pointers.current.size === 1) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      setViewport((current) => ({ ...current, panX: current.panX + (event.clientX - previous.x) / rect.width * 100, panY: current.panY + (event.clientY - previous.y) / rect.height * 100 }));
+    }
+  };
+  const onMapPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    pointers.current.delete(event.pointerId);
+    if (pointers.current.size < 2) gesture.current = null;
+  };
+  async function explainConnection() {
+    if (!selected) return;
+    const params = new URLSearchParams({ target: selected.id });
+    if (selected.shared_by) params.set("via", selected.shared_by);
+    const response = await fetch(`/api/network/explain?${params}`);
+    if (response.ok) setWhyReasons((await response.json()).reasons ?? []);
+  }
+  async function confirmHideConnection() {
+    if (!hideTarget) return;
+    const response = await fetch("/api/network/hides", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ targetId: hideTarget.id }) });
+    if (response.ok) {
+      setHideTarget(null);
+      setSelected(null);
+      const refreshed = await fetch("/api/network/graph", { cache: "no-store" });
+      if (refreshed.ok) setData(await refreshed.json());
+    }
+  }
+  async function requestIntroduction(fields: Record<string, string>) {
+    if (!introTarget?.shared_by) return;
+    const response = await fetch("/api/network/introductions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ connectorId: introTarget.shared_by, targetId: introTarget.id, context: fields.context }) });
+    if (response.ok) setIntroTarget(null);
+  }
+  async function respondToIntroduction(action: "accept" | "decline") {
+    if (!incomingIntroduction) return;
+    const response = await fetch(`/api/network/introductions/${encodeURIComponent(incomingIntroduction.id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) });
+    if (!response.ok) return;
+    const result = await response.json();
+    setIncomingIntroduction(null);
+    window.history.replaceState({}, "", "/?view=network");
+    if (result.conversationId) window.location.assign("/?view=messages");
+  }
+  async function loadConnectionPage(cursor: string | null) {
+    const params = new URLSearchParams({ mode: data.focus ? "focus" : "overview" });
+    if (data.focus?.id) params.set("focus", data.focus.id);
+    if (cursor) params.set("cursor", cursor);
+    if (skill.trim()) params.set("query", skill.trim());
+    if (profession !== "All professions") params.set("cluster", profession);
+    const response = await fetch(`/api/network/graph?${params}`, { cache: "no-store" });
+    if (response.ok) setData(await response.json());
+  }
   return (
     <div className="subpage network-page">
       <div className="network-page-heading">
@@ -5774,22 +5915,49 @@ function NetworkView({
           <p>Explore the people, professions and skills connected to you.</p>
         </div>
         <div className="network-count">
-          <strong>{data.nodes.filter((node) => node.mutual).length}</strong>
-          <span>mutual connections</span>
+          <strong>{data.totals?.visible ?? peopleNodes.length}</strong>
+          <span>visible connections</span>
         </div>
       </div>
       <div className="network-workspace">
-        <div className="network-canvas">
-          <div className="network-legend">
-            {categories.slice(1).map((category) => (
-              <span key={category}>
-                <i style={{ background: networkColour(category) }} />
-                {category}
-              </span>
-            ))}
-            <span className="line-key solid">Mutual</span>
-            <span className="line-key dashed">One-way follow</span>
-          </div>
+        <div
+          className={`network-canvas semantic-${viewport.scale < .7 ? "far" : viewport.scale < 1.2 ? "medium" : "near"}`}
+          role="application"
+          tabIndex={0}
+          aria-label="Interactive network map. Use plus and minus to zoom, or drag to pan."
+          onWheel={(event) => { event.preventDefault(); zoomBy(event.deltaY > 0 ? -.1 : .1); }}
+          onPointerDown={onMapPointerDown}
+          onPointerMove={onMapPointerMove}
+          onPointerUp={onMapPointerUp}
+          onPointerCancel={onMapPointerUp}
+          onKeyDown={(event) => {
+            if (event.key === "+" || event.key === "=") zoomBy(.1);
+            if (event.key === "-") zoomBy(-.1);
+            if (event.key === "0") fitView();
+          }}
+        >
+          {showKey ? (
+            <div className="network-legend" aria-label="Network key">
+              {categories.slice(1).map((category) => (
+                <span key={category}>
+                  <i style={{ background: networkColour(category) }} />
+                  {category}
+                </span>
+              ))}
+              <span className="line-key solid">Mutual</span>
+              <span className="line-key dashed">One-way follow</span>
+              {secondDegreeNodes.length > 0 && (
+                <span className="line-key discovered">Member connection</span>
+              )}
+              <button onClick={toggleNetworkKey} aria-label="Hide network key">
+                <EyeOff size={12} /> Hide key
+              </button>
+            </div>
+          ) : (
+            <button className="network-key-show" onClick={toggleNetworkKey}>
+              <Eye size={13} /> Show key
+            </button>
+          )}
           <svg
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
@@ -5797,7 +5965,10 @@ function NetworkView({
           >
             {edges.map((edge, index) => {
               const a = point(edge.source),
-                b = point(edge.target);
+                b = point(edge.target),
+                discovered = secondDegreeNodes.some(
+                  (node) => node.id === edge.source || node.id === edge.target,
+                );
               return (
                 <line
                   key={`${edge.source}-${edge.target}-${index}`}
@@ -5805,7 +5976,7 @@ function NetworkView({
                   y1={a.y}
                   x2={b.x}
                   y2={b.y}
-                  className={edge.mutual ? "mutual" : "following"}
+                  className={`${edge.mutual ? "mutual" : "following"}${discovered ? " discovered" : ""}`}
                 />
               );
             })}
@@ -5814,8 +5985,8 @@ function NetworkView({
             className="network-node network-self network-self-search"
             style={
               {
-                left: "50%",
-                top: "43%",
+                left: `${point(currentMember.id ?? "").x}%`,
+                top: `${point(currentMember.id ?? "").y}%`,
                 "--node-colour": "#111",
               } as React.CSSProperties
             }
@@ -5827,7 +5998,7 @@ function NetworkView({
             <span>{currentMember.name}</span>
             <small>{mobileSearchOpen ? "Close search" : "Search your network"}</small>
           </button>
-          <div className={`network-floating-tools ${mobileSearchOpen ? "search-open" : ""}`}>
+          <div className="network-floating-tools search-open network-map-toolbar">
             <label className="network-search">
               <Search size={16} />
               <input
@@ -5865,56 +6036,33 @@ function NetworkView({
                 Clear
               </button>
             )}
+            {activeCluster && <button className="network-clear" onClick={() => { setActiveCluster(""); setProfession("All professions"); if (previousViewport.current) setViewport(previousViewport.current); previousViewport.current = null; }}>Back to network</button>}
+            <div className="network-zoom-controls" aria-label="Map zoom controls">
+              <button onClick={() => zoomBy(.12)} aria-label="Zoom in"><Plus size={15} /></button>
+              <button onClick={() => zoomBy(-.12)} aria-label="Zoom out"><Minus size={15} /></button>
+              <button onClick={fitView} aria-label="Fit network to view"><NetworkGraphIcon size={15} /></button>
+              <button onClick={() => { setDetailTab("connections"); if (!selected) setSelected(peopleNodes[0] ?? null); }} aria-label="Open connections list"><List size={15} /></button>
+            </div>
           </div>
-          {skill.trim().length >= 2 && (
-            <section className="network-platform-results" aria-live="polite">
-              <div>
-                <span className="eyebrow">PEOPLE ACROSS N2</span>
-                <small>
-                  {platformSearching
-                    ? "Searching…"
-                    : `${platformPeople.length} found`}
-                </small>
-              </div>
-              {!platformSearching && !platformPeople.length && (
-                <p>No public or network-visible profiles match this search.</p>
-              )}
-              {platformPeople.map((person) => (
-                <button
-                  key={String(person.id)}
-                  onClick={() => onProfile(String(person.id))}
-                >
-                  <Avatar
-                    person={{
-                      name: String(person.name ?? "n2 member"),
-                      role: String(person.profession ?? "Member"),
-                      img: person.image ? String(person.image) : null,
-                    }}
-                    size="md"
-                  />
-                  <span>
-                    <strong>{String(person.name ?? "n2 member")}</strong>
-                    <small>{String(person.profession ?? "n2 member")}</small>
-                    <em>
-                      {person.isMutual
-                        ? "Mutual connection"
-                        : person.isFollowing
-                          ? "Following"
-                          : "View profile"}
-                    </em>
-                  </span>
-                  <ArrowUpRight size={16} />
-                </button>
-              ))}
-            </section>
-          )}
           {nodes.map((node) => {
-            const position = positions.get(node.id)!,
-              category = networkProfession(node);
+            const position = point(node.id), category = node.category;
+            if (node.kind === "cluster") return (
+              <button
+                key={node.id}
+                className="network-node network-cluster-node"
+                style={{ left: `${position.x}%`, top: `${position.y}%`, "--node-colour": networkColour(category) } as React.CSSProperties}
+                onClick={() => { previousViewport.current = viewport; setActiveCluster(node.category); setProfession(node.category); }}
+                aria-label={`Explore ${node.count} more ${node.label} connections`}
+              >
+                <i><strong>{node.count}</strong><small>more</small></i>
+                <span>{node.label}</span>
+                <small>{node.sample.filter(Boolean).slice(0, 2).join(" · ")}</small>
+              </button>
+            );
             return (
               <button
                 key={node.id}
-                className={`network-node ${selected?.id === node.id ? "selected" : ""}`}
+                className={`network-node ${node.degree === 2 ? "second-degree" : "direct"} ${data.focus?.id === node.id ? "network-focus" : ""} ${selected?.id === node.id ? "selected" : ""}`}
                 style={
                   {
                     left: `${position.x}%`,
@@ -5922,7 +6070,8 @@ function NetworkView({
                     "--node-colour": networkColour(category),
                   } as React.CSSProperties
                 }
-                onClick={() => setSelected(node)}
+                onClick={() => { setSelected(node); if (node.is_following) selectNetworkNode(node); }}
+                aria-label={`${node.name ?? "n2 member"}. ${node.reasons.join(". ")}`}
               >
                 <Avatar
                   person={{
@@ -5934,10 +6083,11 @@ function NetworkView({
                 />
                 <span>{node.name}</span>
                 <small>{category}</small>
+                {node.degree === 2 && <em>via {peopleNodes.find((item) => item.id === node.shared_by)?.name ?? "your network"}</em>}
               </button>
             );
           })}
-          {loading && (
+          {(loading || focusLoading) && (
             <div className="network-map-status">Mapping your network…</div>
           )}
           {!loading && !data.nodes.length && (
@@ -5964,59 +6114,48 @@ function NetworkView({
             </div>
           )}
           {selected && (
-            <aside className="network-brief">
+            <aside className={`network-brief sheet-${sheetLevel}`}>
+              <button className="network-sheet-handle" aria-label={`${sheetLevel === "full" ? "Collapse" : "Expand"} member details`} onClick={() => setSheetLevel((level) => level === "collapsed" ? "mid" : level === "mid" ? "full" : "collapsed")} onPointerDown={(event) => { sheetDrag.current = event.clientY; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerUp={(event) => { if (sheetDrag.current === null) return; const delta = event.clientY - sheetDrag.current; if (delta < -30) setSheetLevel((level) => level === "collapsed" ? "mid" : "full"); if (delta > 30) setSheetLevel((level) => level === "full" ? "mid" : "collapsed"); sheetDrag.current = null; }}><i /></button>
               <button
                 className="network-brief-close"
-                onClick={() => setSelected(null)}
+                onClick={closeNetworkBrief}
+                aria-label="Close member details"
               >
                 <X size={15} />
               </button>
-              <Avatar
-                person={{
-                  name: selected.name ?? "n2 member",
-                  role: selected.profession ?? "Member",
-                  img: selected.image,
-                }}
-                size="lg"
-                ring
-              />
-              <span className="network-connection-state">
-                {selected.mutual
-                  ? "Mutual connection"
-                  : selected.is_following
-                    ? "You follow this member"
-                    : "Follows you"}
-              </span>
-              <h2>{selected.name}</h2>
-              <p className="network-brief-role">
-                {selected.profession ?? "n2 member"}
-                {selected.location ? ` · ${selected.location}` : ""}
-              </p>
-              <p>
-                {selected.bio ??
-                  "Open their profile to learn more about the contribution they make."}
-              </p>
-              <div className="network-skill-list">
-                {[
-                  selected.primary_skill,
-                  selected.secondary_skill,
-                  selected.tertiary_skill,
-                ]
-                  .filter(Boolean)
-                  .map((value) => (
-                    <span key={value!}>{value}</span>
-                  ))}
+              <div className="network-sheet-summary">
+                <Avatar person={{ name: selected.name ?? "n2 member", role: selected.profession ?? "Member", img: selected.image }} size="lg" ring />
+                <span><b className="network-connection-state">{selected.mutual ? "Mutual connection" : selected.is_following ? "You follow this member" : selected.degree === 2 ? "Member of member" : "Follows you"}</b><h2>{selected.name}</h2><small>{selected.profession ?? "n2 member"}{selected.location ? ` · ${selected.location}` : ""}</small></span>
               </div>
-              <button
-                className="primary-button wide"
-                onClick={() => onProfile(selected.id)}
-              >
-                View full profile <ArrowUpRight size={15} />
-              </button>
+              <div className="network-sheet-tabs" role="tablist">
+                <button className={detailTab === "profile" ? "active" : ""} onClick={() => setDetailTab("profile")} role="tab">Profile</button>
+                <button className={detailTab === "connections" ? "active" : ""} onClick={() => { setDetailTab("connections"); setSheetLevel("full"); }} role="tab">Connections {data.list?.total ?? 0}</button>
+              </div>
+              {detailTab === "profile" ? <>
+                <p>{selected.bio ?? "Open their profile to learn more about the contribution they make."}</p>
+                <div className="network-skill-list">{[selected.primary_skill, selected.secondary_skill, selected.tertiary_skill].filter(Boolean).map((value) => <span key={value!}>{value}</span>)}</div>
+                {selected.is_following && data.focus?.id === selected.id && <div className={`network-release ${data.focus.expanded ? "released" : "private"}`}><UsersRound size={15} /><span><strong>{data.focus.expanded ? `${data.focus.visibleCount} visible ${data.focus.visibleCount === 1 ? "connection" : "connections"}` : "Connections kept private"}</strong><small>{data.focus.expanded ? "Shown with every member’s privacy choices applied." : "This member has chosen not to share their network."}</small></span></div>}
+                <div className="network-reasons">
+                  <button onClick={explainConnection}><CircleHelp size={14} /> Why you see this person</button>
+                  {(whyReasons.length ? whyReasons : selected.reasons).map((reason) => <small key={reason}>{reason}</small>)}
+                </div>
+                <div className="network-brief-actions">
+                  {selected.introduction_eligible && <button className="secondary-button" onClick={() => setIntroTarget(selected)}><UserPlus size={14} /> Ask for an introduction</button>}
+                  <button className="secondary-button" onClick={() => setHideTarget(selected)}>Hide from map</button>
+                </div>
+                <button className="primary-button wide" onClick={() => { fetch("/api/network/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: "profile_opened", targetId: selected.id }), keepalive: true }).catch(() => undefined); onProfile(selected.id); }}>View full profile <ArrowUpRight size={15} /></button>
+              </> : <div className="network-connection-list" role="tabpanel">
+                {(data.list?.items ?? []).map((item) => <button key={item.id} onClick={() => setSelected(item)}><Avatar person={{ name: item.name ?? "n2 member", role: item.profession ?? "Member", img: item.image }} size="sm" /><span><strong>{item.name}</strong><small>{item.reasons[0]}</small></span><ArrowUpRight size={14} /></button>)}
+                {!data.list?.items.length && <p>No visible connections in this view.</p>}
+                <footer><button disabled={!data.list?.cursor} onClick={() => loadConnectionPage(data.list?.cursor ?? null)}><ChevronLeft size={14} /> Previous</button><small>{data.list?.total ?? 0} visible</small><button disabled={!data.list?.nextCursor} onClick={() => loadConnectionPage(data.list?.nextCursor ?? null)}>Next <ChevronRight size={14} /></button></footer>
+              </div>}
             </aside>
           )}
         </div>
       </div>
+      {introTarget && <ActionDialog eyebrow="WARM INTRODUCTION" title={`Ask for an introduction to ${introTarget.name ?? "this member"}?`} description="Your mutual connection can accept or decline. If they accept, n2 creates a three-person conversation." confirmLabel="Send request" fields={[{ name: "context", label: "Why would this introduction be useful?", placeholder: "Share enough context for your connection to decide…", required: true, minLength: 20, maxLength: 500, multiline: true }]} onClose={() => setIntroTarget(null)} onConfirm={requestIntroduction} />}
+      {hideTarget && <ActionDialog eyebrow="CURATE YOUR MAP" title={`Hide ${hideTarget.name ?? "this member"} from Networks?`} description="This only removes them from your network map. It does not unfollow them or change recommendations elsewhere." confirmLabel="Hide from map" cancelLabel="Keep visible" onClose={() => setHideTarget(null)} onConfirm={confirmHideConnection} />}
+      {incomingIntroduction && <div className="modal-backdrop action-dialog-backdrop" role="presentation"><section className="n2-editor-modal action-dialog network-introduction-review" role="dialog" aria-modal="true" aria-labelledby="network-introduction-title"><header><div><span className="eyebrow">WARM INTRODUCTION</span><h2 id="network-introduction-title">Would you introduce these members?</h2></div><button className="icon-button" onClick={() => setIncomingIntroduction(null)} aria-label="Close request"><X size={18}/></button></header><div className="network-introduction-people"><Avatar person={{ name: incomingIntroduction.requester_name ?? "n2 member", role: incomingIntroduction.requester_profession ?? "Member", img: incomingIntroduction.requester_image }} size="lg"/><span><strong>{incomingIntroduction.requester_name}</strong><small>would like to meet</small><strong>{incomingIntroduction.target_name}</strong></span><Avatar person={{ name: incomingIntroduction.target_name ?? "n2 member", role: incomingIntroduction.target_profession ?? "Member", img: incomingIntroduction.target_image }} size="lg"/></div><blockquote>{incomingIntroduction.context}</blockquote><p>Accepting creates a named three-person conversation. Declining shares no private reason.</p><footer><button className="secondary-button" onClick={() => respondToIntroduction("decline")}>Decline</button><button className="primary-button" onClick={() => respondToIntroduction("accept")}>Accept and introduce</button></footer></section></div>}
     </div>
   );
 }
@@ -8598,7 +8737,7 @@ function SettingsView({
   const [recommendations, setRecommendations] = useState(true);
   const [availability, setAvailability] = useState(true);
   const [panel, setPanel] = useState<
-    "root" | "profile" | "notifications" | "calendar" | "privacy" | "accessibility" | "security"
+    "root" | "profile" | "notifications" | "calendar" | "networking" | "privacy" | "accessibility" | "security"
   >(initialPanel);
   const [saved, setSaved] = useState(false),
     [savedLocally, setSavedLocally] = useState(false);
@@ -8667,6 +8806,12 @@ function SettingsView({
     muteFollowNotifications: false,
     messages: "Connections and project members",
   });
+  const [networking, setNetworking] = useState({
+    shareNetworkConnections: true,
+    allowIntroductions: true,
+    showNetworkKey: true,
+  });
+  const [hiddenNetworkMembers, setHiddenNetworkMembers] = useState<Array<{ id: string; name: string | null; image: string | null; profession: string | null }>>([]);
   const [accessibility, setAccessibility] = useState<AccessibilityPreferences>(
     DEFAULT_ACCESSIBILITY_PREFERENCES,
   );
@@ -8698,6 +8843,7 @@ function SettingsView({
           const value = JSON.parse(stored);
           if (value.calendarPrefs) setCalendarPrefs(value.calendarPrefs);
           if (value.privacy) setPrivacy(value.privacy);
+          if (value.networking) setNetworking((current) => ({ ...current, ...value.networking }));
           if (typeof value.recommendations === "boolean")
             setRecommendations(value.recommendations);
           if (typeof value.availability === "boolean")
@@ -8775,6 +8921,21 @@ function SettingsView({
               digest: data.preferences.emailDigest,
             });
         })
+        .catch(() => undefined);
+      fetch("/api/privacy")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((settings) => {
+          if (!settings) return;
+          setNetworking({
+            shareNetworkConnections: settings.shareNetworkConnections ?? true,
+            allowIntroductions: settings.allowIntroductions ?? true,
+            showNetworkKey: settings.showNetworkKey ?? true,
+          });
+        })
+        .catch(() => undefined);
+      fetch("/api/network/hides", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((result) => setHiddenNetworkMembers(Array.isArray(result?.items) ? result.items : []))
         .catch(() => undefined);
       fetch("/api/accessibility")
         .then(async (response) => ({
@@ -8881,6 +9042,15 @@ function SettingsView({
         });
         if (!response.ok) throw new Error("We couldn't save your privacy settings.");
       }
+      if (panel === "networking") {
+        const response = await fetch("/api/privacy", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(networking),
+        });
+        if (!response.ok) throw new Error("We couldn't save your networking settings.");
+        window.dispatchEvent(new Event("n2:network-changed"));
+      }
       if (panel === "notifications") {
         const response = await fetch("/api/notifications", {
         method: "PATCH",
@@ -8912,7 +9082,7 @@ function SettingsView({
       }
       localStorage.setItem(
         "n2-settings",
-        JSON.stringify({ calendarPrefs, privacy, recommendations, availability }),
+        JSON.stringify({ calendarPrefs, privacy, networking, recommendations, availability }),
       );
       setSaveStatus({ busy: false, error: "" });
       setSaved(true);
@@ -8983,6 +9153,10 @@ function SettingsView({
       calendar: [
         "Calendar connections",
         "Bring Google, Outlook, Meet and Teams together.",
+      ],
+      networking: [
+        "Networking",
+        "Choose how connections are discovered and explained.",
       ],
       privacy: [
         "Privacy and visibility",
@@ -9692,6 +9866,79 @@ function SettingsView({
             </div>
           </div>
         )}
+        {panel === "networking" && (
+          <div className="settings-form">
+            <div className="settings-section-title">
+              <strong>Network map</strong>
+              <small>Control connection discovery and the map display.</small>
+            </div>
+            <div className="preference-row">
+              <span>
+                <strong>Share connections with people who follow me</strong>
+                <small>
+                  Let followers reveal the members you follow and who follows you,
+                  when those members also permit it.
+                </small>
+              </span>
+              {toggle(
+                networking.shareNetworkConnections,
+                () =>
+                  setNetworking({
+                    ...networking,
+                    shareNetworkConnections: !networking.shareNetworkConnections,
+                  }),
+                "Toggle sharing connections with followers",
+              )}
+            </div>
+            <div className="preference-row">
+              <span>
+                <strong>Show the network key</strong>
+                <small>
+                  Display profession colours and connection line meanings on the map.
+                </small>
+              </span>
+              {toggle(
+                networking.showNetworkKey,
+                () =>
+                  setNetworking({
+                    ...networking,
+                    showNetworkKey: !networking.showNetworkKey,
+                  }),
+                "Toggle the network key",
+              )}
+            </div>
+            <div className="preference-row">
+              <span>
+                <strong>Allow warm introduction requests</strong>
+                <small>
+                  Let eligible connections ask you to introduce them to someone in your visible network. You always choose whether to accept.
+                </small>
+              </span>
+              {toggle(
+                networking.allowIntroductions,
+                () => setNetworking({ ...networking, allowIntroductions: !networking.allowIntroductions }),
+                "Toggle warm introduction requests",
+              )}
+            </div>
+            <div className="settings-section-title network-hidden-title">
+              <strong>Hidden map members</strong>
+              <small>Hidden people remain followed and can still appear elsewhere on n2.</small>
+            </div>
+            {hiddenNetworkMembers.length ? hiddenNetworkMembers.map((member) => (
+              <div className="connection-setting" key={member.id}>
+                <Avatar person={{ name: member.name ?? "n2 member", role: member.profession ?? "Member", img: member.image }} size="sm" />
+                <span><strong>{member.name ?? "n2 member"}</strong><small>{member.profession ?? "Member"}</small></span>
+                <button type="button" onClick={async () => {
+                  const response = await fetch(`/api/network/hides?targetId=${encodeURIComponent(member.id)}`, { method: "DELETE" });
+                  if (response.ok) {
+                    setHiddenNetworkMembers((current) => current.filter((item) => item.id !== member.id));
+                    window.dispatchEvent(new Event("n2:network-changed"));
+                  }
+                }}>Show again</button>
+              </div>
+            )) : <div className="preference-row"><span><strong>No hidden members</strong><small>People you hide from the map will be listed here.</small></span></div>}
+          </div>
+        )}
         {panel === "accessibility" && (
           <div className="settings-form accessibility-settings">
             <div className="settings-section-title">
@@ -9903,6 +10150,7 @@ function SettingsView({
           ["profile", "Profile and expertise"],
           ["notifications", "Messages and notifications"],
           ["calendar", "Calendar connections"],
+          ["networking", "Networking"],
           ["privacy", "Privacy and visibility"],
           ["accessibility", "Accessibility"],
           ["security", "Security and password"],

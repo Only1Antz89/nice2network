@@ -320,10 +320,25 @@ test("ships a connected-member network map with profession and skill discovery",
   assert.match(graph, /or exists\(select 1 from follows incoming/);
   assert.match(page, /edge\.mutual \? "mutual" : "following"/);
   assert.match(page, /n2:network-changed/);
-  assert.match(graph, /show_followers=true/);
+  assert.match(graph, /show_followers,true/);
   assert.match(styles, /\.network-canvas/);
   assert.match(styles, /\.network-node \.avatar/);
   assert.match(styles, /\.app-shell\.network-shell/);
+});
+
+test("bounds, explains and safely introduces through the scalable network map", async () => {
+  const [schema, graph, introductions, response, hides, explain, page, styles, onboarding, migration] = await Promise.all([
+    read("db/schema.ts"), read("app/api/network/graph/route.ts"), read("app/api/network/introductions/route.ts"), read("app/api/network/introductions/[id]/route.ts"), read("app/api/network/hides/route.ts"), read("app/api/network/explain/route.ts"), read("app/page.tsx"), read("app/network.css"), read("app/onboarding/page.tsx"), read("drizzle/0023_common_jetstream.sql"),
+  ]);
+  for (const table of ["networkMapHides", "introductionRequests"]) assert.match(schema, new RegExp(`export const ${table} = pgTable`));
+  assert.match(graph, /MAX_PEOPLE = 52/); assert.match(graph, /MAX_EDGES = 240/); assert.match(graph, /PAGE_SIZE = 25/); assert.match(graph, /kind: "cluster"/); assert.match(graph, /relevance desc/);
+  assert.doesNotMatch(graph, /follower_count|followers_count|popularity/i);
+  assert.match(introductions, /\.min\(20\)\.max\(500\)/); assert.match(introductions, /value >= 10/); assert.match(introductions, /14 \* 86_400_000/);
+  assert.match(response, /db\.transaction/); assert.match(response, /conversationMembers/); assert.match(response, /status: "accepted"/);
+  assert.match(hides, /networkMapHides/); assert.match(explain, /via_valid/); assert.match(migration, /introduction_pending_unique/);
+  assert.match(page, /onWheel/); assert.match(page, /onMapPointerMove/); assert.match(page, /sheet-\$\{sheetLevel\}/); assert.match(page, /Back to network/);
+  assert.match(styles, /semantic-far/); assert.match(styles, /touch-action:none/); assert.match(styles, /safe-area-inset-bottom/);
+  assert.match(onboarding, /NETWORK VISIBILITY/); assert.match(onboarding, /allowIntroductions:true/);
 });
 
 test("connects every open project contribution to a profile-aware application flow", async () => {
