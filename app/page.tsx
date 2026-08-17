@@ -3470,7 +3470,7 @@ function Feed({
           </h1>
           <p>
             {authenticated
-              ? "Projects across the network could use someone like you today."
+              ? "Projects across the network are looking for someone like you today."
               : "Explore real ideas, open roles and collaborations growing across n2."}
           </p>
         </div>
