@@ -92,3 +92,24 @@ test("profile navigation uses member identity without a profile banner", () => {
   assert.match(styles, /grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
   assert.match(publicStyles, /\.rail-help-link/);
 });
+
+test("dark mode uses one semantic surface system across core product areas", () => {
+  const layout = read("app/layout.tsx");
+  const theme = read("app/dark-theme.css");
+  assert.match(layout, /import "\.\/dark-theme\.css"/);
+  for (const selector of [
+    ".timeline-post",
+    ".official-notice",
+    ".project-detail-grid > article",
+    ".project-team-grid > button",
+    ".project-roadmap article",
+    ".comment-thread > header",
+    ".meet-detail",
+    ".network-canvas",
+    ".mobile-nav",
+  ]) assert.match(theme, new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(theme, /--surface-overlay:/);
+  assert.match(theme, /--control-hover:/);
+  assert.match(theme, /person-suggest > \.follow-person-button[\s\S]*background: #050505 !important/);
+  assert.match(theme, /html\[data-colour-theme="system"\] \.person-suggest/);
+});

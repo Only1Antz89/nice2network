@@ -1,0 +1,645 @@
+/*
+ * Semantic colour layer
+ * ---------------------
+ * The original interface mixed theme tokens with fixed light surfaces. This
+ * layer makes every application surface consume the same hierarchy, so light,
+ * dark, system-dark and high-contrast modes remain internally consistent.
+ */
+:root {
+  --control: #fff;
+  --control-hover: #f2f2ed;
+  --surface-overlay: rgba(255, 255, 255, .96);
+  --surface-glass: rgba(250, 250, 247, .92);
+  --inverse-surface: #11110f;
+  --inverse-ink: #fff;
+  --accent-soft: #ffebe3;
+  --positive-soft: #e2f2e9;
+  --warning-soft: #fff8df;
+  --danger-soft: #fff1ef;
+  --shadow-soft: 0 12px 38px rgba(17, 17, 15, .07);
+  --shadow-overlay: 0 30px 100px rgba(0, 0, 0, .22);
+}
+
+html[data-colour-theme="dark"] {
+  --control: #272725;
+  --control-hover: #31312e;
+  --surface-overlay: rgba(29, 29, 27, .97);
+  --surface-glass: rgba(29, 29, 27, .92);
+  --inverse-surface: #080807;
+  --inverse-ink: #f7f7f3;
+  --accent-soft: #45251b;
+  --positive-soft: #18382d;
+  --warning-soft: #3b321d;
+  --danger-soft: #40231f;
+  --shadow-soft: 0 12px 38px rgba(0, 0, 0, .24);
+  --shadow-overlay: 0 30px 100px rgba(0, 0, 0, .58);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-colour-theme="system"] {
+    --control: #272725;
+    --control-hover: #31312e;
+    --surface-overlay: rgba(29, 29, 27, .97);
+    --surface-glass: rgba(29, 29, 27, .92);
+    --inverse-surface: #080807;
+    --inverse-ink: #f7f7f3;
+    --accent-soft: #45251b;
+    --positive-soft: #18382d;
+    --warning-soft: #3b321d;
+    --danger-soft: #40231f;
+    --shadow-soft: 0 12px 38px rgba(0, 0, 0, .24);
+    --shadow-overlay: 0 30px 100px rgba(0, 0, 0, .58);
+  }
+}
+
+/* Primary content cards and durable work surfaces. */
+.project-card,
+.timeline-post,
+.created-project-card,
+.official-notice,
+.stats-row,
+.meet-card,
+.message-list,
+.message-list > button,
+.settings-form,
+.settings-row,
+.settings-group > button,
+.settings-page > button,
+.workbench,
+.algorithm-settings,
+.similar-project-list > article,
+.shortlist-panel article,
+.ranked-skills > div,
+.profile-project-grid > article,
+.project-detail-grid > article,
+.project-team-grid > button,
+.project-roadmap article,
+.project-update-composer,
+.funding-options button,
+.blueprint-roadmap > article,
+.blueprint-roles article,
+.ai-role-recommendations article,
+.free-choice-list,
+.free-choice-list button,
+.following-list > button,
+.new-joiner-card,
+.new-joiner-card > button,
+.saved-list article,
+.saved-actions button,
+.media-grid article,
+.reason-grid > div,
+.remote-fallback,
+.covered-contributions b,
+.calendar-connections > div,
+.role-list > div,
+.milestone-list > button,
+.network-count,
+.network-workspace,
+.people-discovery-panel,
+.share-sheet,
+.share-options > a,
+.share-options > button,
+.notification-panel,
+.feed-filter-modal,
+.post-composer-modal,
+.guest-auth-modal,
+.funding-modal,
+.n2-editor-modal,
+.onboarding-modal,
+.meet-modal,
+.meet-detail,
+.new-chat-modal,
+.confirm-modal,
+.room-settings,
+.meet-history-detail,
+.rich-text-field,
+.dm-composer,
+.chat-composer,
+.conversation-page .chat-date,
+.bubble.theirs {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+/* Remaining application shells: authentication, administration and calendars. */
+.sidebar,
+.composer,
+.auth-card,
+.recovery-card,
+.onboarding-card form,
+.onboarding-network article,
+.admin-access-card,
+.admin-sidebar,
+.admin-metrics article,
+.admin-panel,
+.admin-table,
+.case-grid article,
+.notice-list article,
+.notice-form,
+.system-grid article,
+.month-calendar,
+.month-grid > button,
+.month-grid > .empty,
+.help-search,
+.help-topics article > button,
+.help-topics article > div,
+.shared-content-page > article,
+.people-suggestion-grid article,
+.project-suggestion-grid article,
+.project-ai-assist-panel,
+.ai-role-recommendations article > button,
+.n2-editor-modal > footer,
+.meet-creation-flow > header,
+.meet-creation-flow > .meet-flow-header,
+.meet-editor-panel,
+.meet-creation-flow .meet-visibility-picker,
+.meet-flow-footer,
+.meet-creation-flow .meet-attendee-picker,
+.meeting-participant-panel,
+.meeting-participant-panel > header,
+.meet-profile-preview,
+.participant-quick-card {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.admin-shell,
+.admin-access-page,
+.shared-content-page,
+.meet-flow-body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.project-card,
+.timeline-post,
+.created-project-card,
+.official-notice,
+.project-detail-grid > article,
+.project-team-grid > button,
+.project-roadmap article,
+.project-update-composer {
+  box-shadow: var(--shadow-soft);
+}
+
+/* Raised, contextual and selection surfaces. */
+.ai-gap,
+.feed-context,
+.public-feed-note,
+.share-project,
+.attachment-preview,
+.role-chips span,
+.post-project-links button,
+.project-hashtags button,
+.settings-section-title,
+.accessibility-note,
+.safety-panel,
+.security-note,
+.warm-intro,
+.meet-step-summary,
+.meet-scheduled-label,
+.meet-card-past,
+.meet-history-status,
+.meet-not-ready.ended,
+.message-list > button.unread,
+.notification-list > a.unread,
+.new-chat-results > button.selected,
+.project-participation-actions .active,
+.recruitment-tabs > button.active,
+.recruitment-tabs > button > b,
+.ai-confidence,
+.profile-project-grid header i,
+.active-pill,
+.match-score {
+  background: var(--surface-subtle);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+/* Inputs, selectors, compact controls and toolbars. */
+.secondary-button,
+.icon-button.border,
+.search-button,
+.message-search,
+.search-field,
+.search-results > button,
+.search-prompts button,
+.feed-load-more,
+.algorithm-fields input,
+.algorithm-fields select,
+.algorithm-actions > button:first-child,
+.form-grid input,
+.form-grid select,
+.form-grid textarea,
+.field-row input,
+.field-row select,
+.select-setting select,
+.profile-settings-lead button,
+.connection-setting a,
+.safety-panel button,
+.history-editor header button,
+.roadmap-actions button,
+.blueprint-roadmap article button,
+.media-change,
+.meet-visibility-options > button,
+.meet-mode-picker button,
+.meet-step-summary > button,
+.meet-selected-person,
+.meet-selected-person select,
+.meet-people-results > button,
+.mobile-composer-tools button,
+.post-tools > label,
+.post-tools > .video-link-tool > button,
+.video-link-tool > button,
+.video-link-popover,
+.video-link-popover > div button,
+.project-source-tabs button,
+.rich-text-toolbar,
+.rich-text-toolbar select,
+.emoji-trigger,
+.emoji-popover,
+.mobile-menu,
+.mobile-page-notification,
+.chat-empty-state > span,
+.thread-post-actions button,
+.role-choice-list > button,
+.funding-modal input,
+.funding-modal textarea,
+.location-fields input,
+.project-image-input,
+.n2-editor-fields input,
+.n2-editor-fields textarea,
+.n2-editor-fields select,
+.guest-auth-modal input,
+.guest-auth-modal select,
+.onboarding-fields input,
+.onboarding-fields textarea,
+.onboarding-fields select,
+.onboarding-skill-fields input,
+.onboarding-skill-fields label {
+  background: var(--control) !important;
+  color: var(--ink) !important;
+  border-color: var(--line) !important;
+}
+
+.modal-content textarea,
+.auth-card select,
+.oauth-buttons button,
+.share-primary > button,
+.share-more-wrap > button,
+.share-destination-list > button,
+.admin-refresh,
+.admin-search,
+.admin-table select,
+.feed-filter-fields input,
+.feed-filter-fields select,
+.match-feedback button,
+.view-toggle,
+.new-chat-results > button,
+.comment-save-actions button,
+.mfa-reveal,
+.mfa-qr,
+.meet-creation-flow .meet-visibility-options > button,
+.meeting-participant-panel > header button,
+.meet-profile-close,
+.room-settings select {
+  background: var(--control) !important;
+  color: var(--ink) !important;
+  border-color: var(--line) !important;
+}
+
+.skill-chips span,
+.conversation-context,
+.mfa-secret,
+.meet-map-frame,
+.conversation-composer-dock .chat-attachment,
+.new-chat-results > button.ineligible,
+.project-team-recruit,
+.project-team-recruit > span,
+.ai-review-scope span,
+.network-self-search-icon {
+  background: var(--surface-subtle) !important;
+  color: var(--ink) !important;
+  border-color: var(--line) !important;
+}
+
+.secondary-button:hover,
+.icon-button.border:hover,
+.search-results > button:hover,
+.search-prompts button:hover,
+.share-options > a:hover,
+.share-options > button:hover,
+.message-list > button:hover,
+.project-menu button:hover,
+.rich-text-toolbar button:hover,
+.rich-text-toolbar button:focus-visible {
+  background: var(--control-hover) !important;
+  color: var(--ink) !important;
+}
+
+input::placeholder,
+textarea::placeholder,
+.rich-text-editor:empty::before {
+  color: var(--muted);
+  opacity: 1;
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+.comment-composer input:focus,
+.post-thread .post-reply-composer input:focus,
+.comment-thread .project-comment-composer input:focus {
+  border-color: var(--ink) !important;
+}
+
+.emoji-popover .EmojiPickerReact {
+  --epr-bg-color: var(--surface);
+  --epr-category-label-bg-color: var(--surface);
+  --epr-search-input-bg-color: var(--control);
+  --epr-search-input-border-color: var(--line);
+  --epr-hover-bg-color: var(--control-hover);
+  --epr-focus-bg-color: var(--control-hover);
+  --epr-highlight-color: var(--ink);
+  color: var(--ink) !important;
+}
+
+/* Posts, notices and conversation threads. */
+.official-notice {
+  border-color: var(--line);
+  box-shadow: 4px 4px 0 var(--line);
+}
+.official-notice h2,
+.timeline-post h1,
+.timeline-post h2,
+.timeline-post h3,
+.timeline-post > p,
+.thread-post > p,
+.thread-comments p,
+.thread-comments strong,
+.comment-thread h2 {
+  color: var(--ink);
+}
+.timeline-post > footer,
+.post-actions,
+.thread-comments > article,
+.thread-project,
+.comment-thread > header,
+.comment-composer,
+.comment-thread .project-comment-composer,
+.post-thread .post-reply-composer {
+  border-color: var(--line);
+}
+.thread-project,
+.comment-thread > header,
+.comment-composer,
+.comment-thread .project-comment-composer,
+.post-thread .post-reply-composer {
+  background: var(--surface);
+  color: var(--ink);
+}
+.post-thread .post-reply-composer input,
+.comment-thread .project-comment-composer input {
+  background: var(--control) !important;
+  color: var(--ink);
+  border-color: var(--line);
+}
+.timeline-post > footer button,
+.post-actions button,
+.thread-post-actions button {
+  color: var(--action-muted);
+}
+.rich-link-preview {
+  background: var(--surface-raised);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.bubble.mine .rich-link-preview {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.bubble.mine .rich-link-preview p,
+.bubble.mine .rich-link-preview small,
+.bubble.mine .rich-link-preview em {
+  color: var(--muted);
+}
+
+/* Project hierarchy: the hero remains intentionally inverse. */
+.project-detail > header {
+  background: var(--inverse-surface);
+  color: var(--inverse-ink);
+  border: 1px solid #33332f;
+}
+.project-detail-tabs button.active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+.project-detail-grid h2,
+.project-funding h2,
+.project-lead strong,
+.detail-role-list strong,
+.project-team-grid strong,
+.project-roadmap h3 {
+  color: var(--ink);
+}
+.project-copy,
+.project-detail-grid > article > p,
+.project-funding p {
+  color: var(--body-muted);
+}
+.open-person > svg,
+.created-orbit span:nth-child(2),
+.created-orbit span:nth-child(3) {
+  background: var(--control);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.ai-icon,
+.n2-ai-mark {
+  background: var(--solid);
+  color: var(--solid-ink);
+}
+.funding-caveat,
+.blueprint-fallback,
+.ai-fallback-note {
+  background: var(--warning-soft);
+  color: var(--ink);
+  border-color: #7d6a32;
+}
+.project-roadmap article.blocked {
+  background: var(--warning-soft);
+}
+.project-roadmap article.in_progress {
+  border-color: var(--ink);
+}
+
+.project-kicker span:first-child,
+.project-blue .project-kicker span:first-child {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* Menus, drawers and overlays retain separation from the page beneath. */
+.project-menu,
+.share-more-menu,
+.video-link-popover,
+.network-brief,
+.network-floating-tools,
+.network-platform-results {
+  background: var(--surface-overlay);
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: var(--shadow-overlay);
+}
+.panel-backdrop,
+.modal-backdrop,
+.search-overlay {
+  background: rgba(0, 0, 0, .68);
+}
+
+/* Network and people discovery. */
+.network-canvas {
+  background-color: var(--surface-raised);
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+}
+.network-node span,
+.network-node small {
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 3px var(--surface-raised);
+}
+.network-node .avatar {
+  box-shadow: 0 0 0 5px var(--surface);
+}
+.network-legend {
+  background: var(--surface-glass);
+  border-color: var(--line);
+}
+.network-search,
+.network-profession-filter {
+  background: var(--control);
+  color: var(--ink);
+}
+.network-brief-role,
+.network-map-status strong,
+.profile-network-counts strong {
+  color: var(--ink) !important;
+}
+.people-filter-tabs button {
+  background: var(--control);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.profile-network-counts button:hover,
+.profile-network-counts button.active {
+  color: var(--ink);
+  border-bottom-color: var(--ink) !important;
+}
+
+/* Status feedback is muted enough for dark surfaces while remaining legible. */
+.settings-save-error,
+.messages-error,
+.recruitment-error,
+.admin-dialog-error,
+.chat-send-error {
+  background: var(--danger-soft);
+  color: var(--ink);
+  border-color: #8e4a40;
+}
+.system-notification-denied,
+.role-fit.warning,
+.meet-not-ready {
+  background: var(--warning-soft);
+  color: var(--ink);
+  border-color: #7d6a32;
+}
+.role-fit.match,
+.verified-banner,
+.project-participation-actions .active,
+.match-score,
+.active-pill,
+.profile-project-grid header i,
+.recruitment-tabs > button > b,
+.ai-confidence {
+  background: var(--positive-soft);
+  color: var(--ink);
+}
+
+.admin-error {
+  background: var(--danger-soft);
+  color: var(--ink);
+}
+.status-active,
+.status-resolved,
+.status-published,
+.status-operational,
+.status-upheld,
+.status-dot.connected {
+  background: var(--positive-soft);
+  color: var(--ink);
+}
+.status-high,
+.status-quarantined,
+.status-suspended,
+.status-degraded,
+.status-dot.connecting {
+  background: var(--warning-soft);
+  color: var(--ink);
+}
+.status-urgent,
+.status-banned,
+.status-failed,
+.status-unavailable,
+.status-dot.disconnected {
+  background: var(--danger-soft);
+  color: var(--ink);
+}
+
+/* Dark-mode-only decisions: these are intentionally black, not token-white. */
+html[data-colour-theme="dark"] .person-suggest > .follow-person-button {
+  background: #050505 !important;
+  color: #fff !important;
+  border-color: #787872 !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .08);
+}
+html[data-colour-theme="dark"] .person-suggest > .follow-person-button:hover,
+html[data-colour-theme="dark"] .person-suggest > .follow-person-button:focus-visible {
+  background: var(--orange) !important;
+  color: #111 !important;
+  border-color: var(--orange) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-colour-theme="system"] .person-suggest > .follow-person-button {
+    background: #050505 !important;
+    color: #fff !important;
+    border-color: #787872 !important;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .08);
+  }
+  html[data-colour-theme="system"] .person-suggest > .follow-person-button:hover,
+  html[data-colour-theme="system"] .person-suggest > .follow-person-button:focus-visible {
+    background: var(--orange) !important;
+    color: #111 !important;
+    border-color: var(--orange) !important;
+  }
+}
+
+/* Mobile chrome uses the same surface stack and safe-area behaviour. */
+.mobile-nav {
+  background: var(--surface-glass);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.mobile-nav button {
+  color: var(--muted);
+}
+.mobile-nav button.active {
+  color: var(--ink);
+}
+
+.avatar-ring {
+  outline-color: var(--surface);
+}

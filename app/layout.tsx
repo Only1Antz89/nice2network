@@ -4,6 +4,7 @@ import "./globals.css";
 import "./people.css";
 import "./network.css";
 import "./public.css";
+import "./dark-theme.css";
 import SiteAnalytics from "./site-analytics";
 import AccessibilityController from "@/components/accessibility-controller";
 import CookieBanner from "@/components/cookie-banner";
