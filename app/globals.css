@@ -8,7 +8,7 @@ html[data-text-size="large"]{zoom:1.12}
 html[data-text-size="extra-large"]{zoom:1.25}
 html[data-readable-font="true"] body,html[data-readable-font="true"] button,html[data-readable-font="true"] input,html[data-readable-font="true"] select,html[data-readable-font="true"] textarea{font-family:Arial,"Helvetica Neue",sans-serif!important;letter-spacing:.025em;line-height:1.55}
 html[data-underline-links="true"] a:not(.logo):not(.room-brand){text-decoration:underline!important;text-decoration-thickness:2px!important;text-underline-offset:3px}
-html[data-enhanced-focus="true"] :focus-visible{outline:3px solid #1d5fff!important;outline-offset:3px!important;box-shadow:0 0 0 2px var(--paper)!important}
+html[data-enhanced-focus="true"] :focus-visible{outline:3px solid var(--ink)!important;outline-offset:3px!important;box-shadow:0 0 0 2px var(--paper)!important}
 html[data-large-pointer="true"],html[data-large-pointer="true"] *{cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath fill='white' stroke='black' stroke-width='2' d='M3 2l20 18-9 1 5 8-4 2-5-8-7 6z'/%3E%3C/svg%3E") 3 2,auto}
 html[data-large-pointer="true"] a,html[data-large-pointer="true"] button,html[data-large-pointer="true"] label,html[data-large-pointer="true"] select{cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath fill='white' stroke='black' stroke-width='2' d='M3 2l20 18-9 1 5 8-4 2-5-8-7 6z'/%3E%3C/svg%3E") 3 2,pointer}
 html[data-motion="reduced"] *,html[data-motion="reduced"] *::before,html[data-motion="reduced"] *::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
@@ -1052,4 +1052,29 @@ html[data-colour-theme="dark"] .form-error{color:#ff9b86!important}
   .notification-group>header{align-items:flex-start;padding:14px}
   .notification-group>header small{font-size:7px}
   .notifications-page-row{padding:13px 14px}
+}
+
+/* Text entry stays calm and monochrome in every browser and at every size.
+   Keep a neutral border/focus-within cue without Chrome, Edge or Safari rings. */
+input:focus,input:focus-visible,
+textarea:focus,textarea:focus-visible,
+select:focus,select:focus-visible,
+[contenteditable]:focus,[contenteditable]:focus-visible{
+  outline:none!important;
+  outline-offset:0!important;
+  box-shadow:none!important;
+  -webkit-tap-highlight-color:transparent;
+}
+html[data-enhanced-focus="true"] input:focus-visible,
+html[data-enhanced-focus="true"] textarea:focus-visible,
+html[data-enhanced-focus="true"] select:focus-visible,
+html[data-enhanced-focus="true"] [contenteditable]:focus-visible{
+  outline:none!important;
+  outline-offset:0!important;
+  box-shadow:none!important;
+  border-color:var(--ink)!important;
+}
+input::selection,textarea::selection,[contenteditable]::selection{
+  background:color-mix(in srgb,var(--ink) 22%,transparent);
+  color:inherit;
 }

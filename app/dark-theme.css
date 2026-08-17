@@ -731,6 +731,15 @@ html[data-colour-theme="dark"] .person-suggest > .follow-person-button:focus-vis
   color: var(--ink);
 }
 
+/* Search fields inherit the search capsule instead of drawing a second,
+   dark rectangular input surface inside it. */
+.message-search input,
+.conversation-search input {
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 .avatar-ring {
   outline-color: var(--surface);
 }

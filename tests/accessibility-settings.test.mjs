@@ -51,6 +51,8 @@ test("settings expose visual, motion, interaction and media controls", () => {
   assert.match(preferences, /track\.mode = activeAccessibilityPreferences\.captions/);
   assert.match(preferences, /media\.pause\(\)/);
   assert.match(settings, /Skip to main content/);
+  assert.match(styles, /data-enhanced-focus="true"[^\n]*outline:3px solid var\(--ink\)/);
+  assert.doesNotMatch(styles, /data-enhanced-focus="true"[^\n]*#1d5fff/);
 });
 
 test("settings remain saveable on-device while the account table is unavailable", () => {

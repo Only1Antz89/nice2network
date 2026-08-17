@@ -46,6 +46,16 @@ test("the edit-message field uses a neutral focus treatment", () => {
   assert.match(styles, /\.action-dialog \.n2-editor-fields textarea:focus[\s\S]*?outline:none!important;[\s\S]*?box-shadow:none!important/);
 });
 
+test("all text entry fields suppress browser-blue focus rings", () => {
+  assert.match(styles, /input:focus,input:focus-visible,[\s\S]*?\[contenteditable\]:focus-visible\{[\s\S]*?outline:none!important;[\s\S]*?box-shadow:none!important/);
+  assert.doesNotMatch(styles, /data-enhanced-focus="true"[^\n]*#1d5fff/);
+});
+
+test("message search uses one continuous surface", () => {
+  const darkStyles = readFileSync(new URL("../app/dark-theme.css", import.meta.url), "utf8");
+  assert.match(darkStyles, /\.message-search input,[\s\S]*?\.conversation-search input[\s\S]*?background: transparent !important/);
+});
+
 test("conversation rows reveal archive, snooze, and delete controls on hover", () => {
   assert.match(page, /className="message-list-row-actions"/);
   assert.match(page, /conversationListAction\(row, row\.archivedAt \? "restore" : "archive"\)/);
