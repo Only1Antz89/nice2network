@@ -9440,6 +9440,7 @@ function SettingsView({
       description: string;
     }>,
   });
+  const persistedProfileRef = useRef("");
   const [profileImage, setProfileImage] = useState(""),
     [coverImage, setCoverImage] = useState("");
   const [notifications, setNotifications] = useState({
@@ -9542,7 +9543,7 @@ function SettingsView({
           const { profile: record } = await response.json();
           setProfileImage(record.image ?? "");
           setCoverImage(record.coverImage ?? "");
-          setProfile({
+          const loadedProfile = {
             name: record.name ?? "",
             username: record.username ?? "",
             headline: record.headline ?? "",
@@ -9581,7 +9582,9 @@ function SettingsView({
                 description: String(item.description ?? ""),
               }),
             ),
-          });
+          };
+          setProfile(loadedProfile);
+          persistedProfileRef.current = JSON.stringify(loadedProfile);
         })
         .catch(() => undefined);
       fetch("/api/notifications")
@@ -9659,63 +9662,84 @@ function SettingsView({
     }
     try {
       if (panel === "profile") {
-      const career = profile.career.filter((item) =>
-        [item.title, item.company, item.location, item.startDate, item.endDate, item.description]
-          .some((value) => String(value ?? "").trim()) || item.current,
-      );
-      const incompleteCareer = career.find((item) => !item.title.trim() || !item.company.trim());
-      if (incompleteCareer) {
-        setSaveStatus({ busy: false, error: "Add both a job title and company for each career entry, or remove the unfinished entry." });
-        return;
-      }
-      const education = profile.education.filter((item) =>
-        [item.institution, item.qualification, item.fieldOfStudy, item.startYear, item.endYear, item.description]
-          .some((value) => String(value ?? "").trim()),
-      );
-      const incompleteEducation = education.find((item) => !item.institution.trim() || !item.qualification.trim());
-      if (incompleteEducation) {
-        setSaveStatus({ busy: false, error: "Add both an institution and qualification for each education entry, or remove the unfinished entry." });
-        return;
-      }
-      if (profile.name.trim().length < 2) {
-        setSaveStatus({ busy: false, error: "Add at least two characters for your name before saving." });
-        return;
-      }
-      if (!/^[a-z0-9][a-z0-9_-]{2,29}$/.test(profile.username)) {
-        setSaveStatus({ busy: false, error: "Use 3–30 lowercase letters, numbers, underscores or hyphens for your username." });
-        return;
-      }
-      if (![profile.primarySkill, profile.secondarySkill, profile.tertiarySkill].every((skill) => skill.trim())) {
-        setSaveStatus({ busy: false, error: "Add your primary, secondary and tertiary career skills before saving." });
-        return;
-      }
-      const response = await fetch(`/api/profiles/${profileUserId}`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          ...profile,
-          interests: profile.interests
-            .split(",")
-            .map((value) => value.trim())
-            .filter(Boolean),
-          career: career.map((item) => ({
+        const previous = persistedProfileRef.current
+          ? JSON.parse(persistedProfileRef.current) as Partial<typeof profile>
+          : {};
+        const updates: Record<string, unknown> = {};
+        const scalarFields = ["name", "username", "headline", "profession", "industry", "bio", "city", "country", "timezone", "workMode"] as const;
+        for (const field of scalarFields) {
+          if (profile[field] !== previous[field]) updates[field] = profile[field];
+        }
+        if (updates.name !== undefined && profile.name.trim().length < 2) {
+          setSaveStatus({ busy: false, error: "Add at least two characters for your name before saving." });
+          return;
+        }
+        if (updates.username !== undefined && !/^[a-z0-9][a-z0-9_-]{2,29}$/.test(profile.username)) {
+          setSaveStatus({ busy: false, error: "Use 3–30 lowercase letters, numbers, underscores or hyphens for your username." });
+          return;
+        }
+        const skillsChanged = ["primarySkill", "secondarySkill", "tertiarySkill"].some(
+          field => profile[field as "primarySkill" | "secondarySkill" | "tertiarySkill"] !== previous[field as "primarySkill" | "secondarySkill" | "tertiarySkill"],
+        );
+        if (skillsChanged) {
+          if (![profile.primarySkill, profile.secondarySkill, profile.tertiarySkill].every(skill => skill.trim())) {
+            setSaveStatus({ busy: false, error: "Add your primary, secondary and tertiary career skills before saving." });
+            return;
+          }
+          updates.primarySkill = profile.primarySkill;
+          updates.secondarySkill = profile.secondarySkill;
+          updates.tertiarySkill = profile.tertiarySkill;
+        }
+        if (profile.interests !== previous.interests) {
+          updates.interests = profile.interests.split(",").map(value => value.trim()).filter(Boolean);
+        }
+        let savedCareer = profile.career;
+        if (JSON.stringify(profile.career) !== JSON.stringify(previous.career ?? [])) {
+          savedCareer = profile.career.filter(item =>
+            [item.title, item.company, item.location, item.startDate, item.endDate, item.description]
+              .some(value => String(value ?? "").trim()) || item.current,
+          );
+          if (savedCareer.some(item => !item.title.trim() || !item.company.trim())) {
+            setSaveStatus({ busy: false, error: "Add both a job title and company for each career entry, or remove the unfinished entry." });
+            return;
+          }
+          updates.career = savedCareer.map(item => ({
             ...item,
             startDate: item.startDate || null,
             endDate: item.endDate || null,
-          })),
-          education: education.map((item) => ({
+          }));
+        }
+        let savedEducation = profile.education;
+        if (JSON.stringify(profile.education) !== JSON.stringify(previous.education ?? [])) {
+          savedEducation = profile.education.filter(item =>
+            [item.institution, item.qualification, item.fieldOfStudy, item.startYear, item.endYear, item.description]
+              .some(value => String(value ?? "").trim()),
+          );
+          if (savedEducation.some(item => !item.institution.trim() || !item.qualification.trim())) {
+            setSaveStatus({ busy: false, error: "Add both an institution and qualification for each education entry, or remove the unfinished entry." });
+            return;
+          }
+          updates.education = savedEducation.map(item => ({
             ...item,
             startYear: item.startYear ? Number(item.startYear) : null,
             endYear: item.endYear ? Number(item.endYear) : null,
-          })),
-        }),
-      });
-      if (!response.ok) {
-        const result = await response.json().catch(() => null);
-        setSaveStatus({ busy: false, error: result?.error || "We couldn't save your changes. Please check the fields and try again." });
-        return;
-      }
-      setProfile((current) => ({ ...current, career, education }));
+          }));
+        }
+        if (Object.keys(updates).length) {
+          const response = await fetch(`/api/profiles/${profileUserId}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(updates),
+          });
+          if (!response.ok) {
+            const result = await response.json().catch(() => null);
+            setSaveStatus({ busy: false, error: result?.error || "We couldn't save your changes. Please check the fields and try again." });
+            return;
+          }
+        }
+        const savedProfile = { ...profile, career: savedCareer, education: savedEducation };
+        setProfile(savedProfile);
+        persistedProfileRef.current = JSON.stringify(savedProfile);
       }
       if (panel === "privacy") {
         const response = await fetch("/api/privacy", {

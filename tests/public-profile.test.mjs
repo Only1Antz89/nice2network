@@ -23,7 +23,7 @@ test("members can see and safely change their public-profile username", async ()
   ]);
   assert.match(profileApi, /username: users\.username/);
   assert.match(profileApi, /That username is already taken/);
-  assert.match(profileApi, /publicProfilePath: `\/\$\{input\.username\}`/);
+  assert.match(profileApi, /publicProfilePath: `\/\$\{username\}`/);
   assert.match(settings, />\s*Username\s*</);
   assert.match(settings, /Public address:/);
   assert.match(settings, /Set profile visibility to Public before sharing/);

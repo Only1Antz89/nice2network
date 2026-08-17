@@ -28,6 +28,10 @@ const profileSchema = z.object({
   career: z.array(z.object({ id: z.uuid().optional(), title: z.string().trim().min(1).max(120), company: z.string().trim().min(1).max(120), location: z.string().trim().max(120).nullable().optional(), startDate: z.string().date().nullable().optional(), endDate: z.string().date().nullable().optional(), current: z.boolean().default(false), description: z.string().trim().max(6000).nullable().optional() })).max(20).default([]),
   education: z.array(z.object({ id: z.uuid().optional(), institution: z.string().trim().min(1).max(160), qualification: z.string().trim().min(1).max(160), fieldOfStudy: z.string().trim().max(160).nullable().optional(), startYear: z.number().int().min(1940).max(2100).nullable().optional(), endYear: z.number().int().min(1940).max(2100).nullable().optional(), description: z.string().trim().max(1000).nullable().optional() })).max(20).default([]),
 });
+const profilePatchSchema = profileSchema.partial().refine(
+  input => Object.keys(input).length > 0,
+  "Choose at least one profile field to update.",
+);
 
 export async function GET(_: Request, { params }: { params: Promise<{ userId: string }> }) {
   try {
@@ -63,22 +67,65 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
   } catch (error) { return apiError(error); }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ userId: string }> }) {
+async function updateProfile(
+  request: Request,
+  params: Promise<{ userId: string }>,
+  partial: boolean,
+) {
   try {
     const viewer = await requireMember(), { userId } = await params;
     if (viewer.id !== userId) throw new ApiError(403, "You can only edit your own profile");
-    const input = profileSchema.parse(await request.json()), db = getDb();
-    const [usernameOwner] = await db.select({ id: users.id }).from(users).where(and(eq(users.username, input.username), ne(users.id, userId))).limit(1);
-    if (usernameOwner) throw new ApiError(409, "That username is already taken. Choose another one.");
+    const input = (partial ? profilePatchSchema : profileSchema).parse(await request.json()), db = getDb();
+    const [current] = await db.select({
+      username: users.username,
+      primarySkill: users.primarySkill,
+      secondarySkill: users.secondarySkill,
+      tertiarySkill: users.tertiarySkill,
+      city: users.city,
+      country: users.country,
+    }).from(users).where(eq(users.id, userId)).limit(1);
+    if (!current) throw new ApiError(404, "Profile not found");
+    if (input.username !== undefined && input.username !== current.username) {
+      const [usernameOwner] = await db.select({ id: users.id }).from(users).where(and(eq(users.username, input.username), ne(users.id, userId))).limit(1);
+      if (usernameOwner) throw new ApiError(409, "That username is already taken. Choose another one.");
+    }
+    const userChanges: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
+    const scalarFields = ["username", "name", "image", "coverImage", "headline", "profession", "industry", "bio", "primarySkill", "secondarySkill", "tertiarySkill", "interests", "city", "country", "timezone", "workMode"] as const;
+    for (const field of scalarFields) {
+      if (input[field] !== undefined) Object.assign(userChanges, { [field]: input[field] });
+    }
+    if (input.primarySkill !== undefined || input.secondarySkill !== undefined || input.tertiarySkill !== undefined) {
+      userChanges.skills = [
+        input.primarySkill ?? current.primarySkill,
+        input.secondarySkill ?? current.secondarySkill,
+        input.tertiarySkill ?? current.tertiarySkill,
+      ].filter((skill): skill is string => Boolean(skill));
+    }
+    if (input.city !== undefined || input.country !== undefined) {
+      userChanges.location = [input.city ?? current.city, input.country ?? current.country].filter(Boolean).join(", ") || null;
+    }
     await db.transaction(async tx => {
-      await tx.update(users).set({ username: input.username, name: input.name, image: input.image, coverImage: input.coverImage, headline: input.headline, profession: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: [input.primarySkill, input.secondarySkill, input.tertiarySkill], interests: input.interests, city: input.city, country: input.country, timezone: input.timezone, workMode: input.workMode, location: [input.city, input.country].filter(Boolean).join(", ") || null, updatedAt: new Date() }).where(eq(users.id, userId));
-      await tx.delete(careerHistory).where(eq(careerHistory.userId, userId));
-      if (input.career.length) await tx.insert(careerHistory).values(input.career.map((item, sortOrder) => ({ ...item, description: sanitizeRichText(item.description) || null, id: undefined, userId, startDate: item.startDate ?? null, endDate: item.current ? null : item.endDate ?? null, sortOrder })));
-      await tx.delete(educationHistory).where(eq(educationHistory.userId, userId));
-      if (input.education.length) await tx.insert(educationHistory).values(input.education.map((item, sortOrder) => ({ ...item, id: undefined, userId, sortOrder })));
+      await tx.update(users).set(userChanges).where(eq(users.id, userId));
+      if (input.career !== undefined) {
+        await tx.delete(careerHistory).where(eq(careerHistory.userId, userId));
+        if (input.career.length) await tx.insert(careerHistory).values(input.career.map((item, sortOrder) => ({ ...item, description: sanitizeRichText(item.description) || null, id: undefined, userId, startDate: item.startDate ?? null, endDate: item.current ? null : item.endDate ?? null, sortOrder })));
+      }
+      if (input.education !== undefined) {
+        await tx.delete(educationHistory).where(eq(educationHistory.userId, userId));
+        if (input.education.length) await tx.insert(educationHistory).values(input.education.map((item, sortOrder) => ({ ...item, id: undefined, userId, sortOrder })));
+      }
     });
     await audit(viewer.id, "profile.updated", "user", userId);
     after(() => recomputeMemberRecommendations(userId));
-    return NextResponse.json({ success: true, username: input.username, publicProfilePath: `/${input.username}` });
+    const username = input.username ?? current.username;
+    return NextResponse.json({ success: true, username, publicProfilePath: `/${username}` });
   } catch (error) { return apiError(error); }
+}
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ userId: string }> }) {
+  return updateProfile(request, params, true);
+}
+
+export async function PUT(request: Request, { params }: { params: Promise<{ userId: string }> }) {
+  return updateProfile(request, params, false);
 }
