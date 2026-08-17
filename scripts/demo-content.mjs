@@ -1,8 +1,8 @@
 import postgres from "postgres";
 
 const mode = process.argv[2];
-if (!['seed', 'purge', 'status'].includes(mode)) {
-  console.error('Usage: node scripts/demo-content.mjs <seed|purge|status>');
+if (!['seed', 'network', 'purge', 'status'].includes(mode)) {
+  console.error('Usage: node scripts/demo-content.mjs <seed|network|purge|status>');
   process.exit(1);
 }
 
@@ -28,6 +28,12 @@ const people = [
   ['d2000000-0000-4000-8000-000000000013','Hannah Clarke','hannah','Learning Programme Designer','Education','Programme design','Learning experience','Employer partnerships',['Apprenticeships','Career access','Inclusive hiring'],'Glasgow','United Kingdom','remote','Designing clearer routes into meaningful work for people overlooked by traditional recruitment.','https://i.pravatar.cc/240?img=10'],
 ];
 
+// Give every demo member a useful, repeatable neighbourhood: adjacent members are
+// mutual connections while the wider offsets create one-way paths across professions.
+const demoFollows = people.flatMap((person, index) =>
+  [1, 2, 4, 7, 12].map(offset => [person[0], people[(index + offset) % people.length][0]])
+);
+
 const projectTeams = [
   [0,2,7], [4,11], [8,3,2], [], [5], [6,10,4], [3,2], [0], [], [3,6],
 ];
@@ -45,16 +51,33 @@ const projects = [
   {id:'d3000000-0000-4000-8000-000000000010',owner:people[9][0],title:'Neighbourhood pantry map',summary:'A live map connecting surplus ingredients, community fridges and low-cost cooking sessions so residents can find useful food support nearby.',industry:'Food & hospitality',stage:'building',accent:'#8a9c3c',city:'Birmingham',mode:'hybrid',roles:[['Mapping engineer','Technology',['Geospatial development']],['Community organiser','Community',['Community outreach']],['Food safety lead','Operations',['Food safety']]]},
 ];
 
+async function enableDemoNetworking(tx) {
+  for (const [id] of people) {
+    await tx`insert into privacy_settings (user_id,profile_visibility,message_permission,show_location,show_availability,show_followers,show_following,share_network_connections,show_network_key,use_activity_for_matching,allow_introductions)
+      values (${id},'network','connections',true,true,true,true,true,true,true,true)
+      on conflict (user_id) do update set profile_visibility='network',show_location=true,show_availability=true,show_followers=true,show_following=true,share_network_connections=true,show_network_key=true,use_activity_for_matching=true,allow_introductions=true,updated_at=now()`;
+  }
+  await tx`delete from network_map_hides where viewer_id = any(${people.map(person => person[0])}::uuid[])`;
+  for (const [followerId, followingId] of demoFollows) {
+    await tx`insert into follows (follower_id,following_id,created_at) values (${followerId},${followingId},now()) on conflict (follower_id,following_id) do nothing`;
+  }
+}
+
+async function enableNetwork() {
+  await sql.begin(enableDemoNetworking);
+}
+
 async function seed() {
   await sql.begin(async tx => {
     for (const [id,name,slug,profession,industry,primary,secondary,tertiary,interests,city,country,workMode,bio,image] of people) {
       await tx`insert into users (id,name,first_name,last_name,email,email_verified,image,age_band,profession,headline,bio,industry,primary_skill,secondary_skill,tertiary_skill,skills,interests,location,city,country,timezone,work_mode,availability,role,status,onboarding_completed_at)
         values (${id},${name},${name.split(' ')[0]},${name.split(' ').slice(1).join(' ')},${`${slug}@${DEMO_DOMAIN}`},now(),${image},'adult',${profession},${`${profession} · ${city}`},${bio},${industry},${primary},${secondary},${tertiary},${[primary,secondary,tertiary]},${interests},${`${city}, ${country}`},${city},${country},'Europe/London',${workMode},'open',${DEMO_ROLE},'active',now())
         on conflict (id) do update set name=excluded.name,image=excluded.image,profession=excluded.profession,headline=excluded.headline,bio=excluded.bio,industry=excluded.industry,primary_skill=excluded.primary_skill,secondary_skill=excluded.secondary_skill,tertiary_skill=excluded.tertiary_skill,skills=excluded.skills,interests=excluded.interests,city=excluded.city,country=excluded.country,work_mode=excluded.work_mode,role=${DEMO_ROLE},status='active',updated_at=now()`;
-      await tx`insert into privacy_settings (user_id,profile_visibility,message_permission,show_location,show_availability,use_activity_for_matching,allow_introductions) values (${id},'network','connections',true,true,true,true) on conflict (user_id) do nothing`;
       await tx`insert into career_history (id,user_id,title,company,location,start_date,current,description,sort_order) values (${`d4000000-0000-4000-8000-${id.slice(-12)}`},${id},${profession},${slug==='maya'?'Common Thread Studio':slug==='dev'?'Northstar Labs':slug==='sofia'?'City Futures':'Independent'},${city},'2022-01-01',true,${bio},0) on conflict (id) do nothing`;
       await tx`insert into education_history (id,user_id,institution,qualification,field_of_study,start_year,end_year,sort_order) values (${`d5000000-0000-4000-8000-${id.slice(-12)}`},${id},${city==='London'?'University of London':'n2 Professional Institute'},'Professional qualification',${primary},2016,2019,0) on conflict (id) do nothing`;
     }
+
+    await enableDemoNetworking(tx);
 
     for (let pIndex=0;pIndex<projects.length;pIndex++) {
       const p=projects[pIndex];
@@ -144,12 +167,23 @@ async function purge() {
 }
 
 async function status() {
-  const [row]=await sql`select (select count(*)::int from users where role=${DEMO_ROLE} and email like ${`%@${DEMO_DOMAIN}`}) as members,(select count(*)::int from projects where description like 'Demonstration project · n2 demo batch 2026-08%') as projects,(select count(*)::int from project_comments where id::text like 'd9000000-%') as comments,(select count(*)::int from meetings where id::text like 'da000000-%') as meetings,(select count(*)::int from timeline_posts where id::text like 'db000000-%') as posts,(select count(*)::int from post_replies where is_demo=true) as post_replies,(select count(*)::int from post_likes where is_demo=true) as post_likes,(select count(*)::int from post_reposts where is_demo=true) as post_reposts`;
+  const [row]=await sql`select
+    (select count(*)::int from users where role=${DEMO_ROLE} and email like ${`%@${DEMO_DOMAIN}`}) as members,
+    (select count(*)::int from users u join privacy_settings ps on ps.user_id=u.id where u.role=${DEMO_ROLE} and u.email like ${`%@${DEMO_DOMAIN}`} and ps.profile_visibility in ('public','network') and ps.show_followers and ps.show_following and ps.share_network_connections and ps.show_network_key and ps.allow_introductions) as network_enabled_members,
+    (select count(*)::int from follows f join users follower on follower.id=f.follower_id join users followed on followed.id=f.following_id where follower.role=${DEMO_ROLE} and followed.role=${DEMO_ROLE} and follower.email like ${`%@${DEMO_DOMAIN}`} and followed.email like ${`%@${DEMO_DOMAIN}`}) as demo_follows,
+    (select count(*)::int from projects where description like 'Demonstration project · n2 demo batch 2026-08%') as projects,
+    (select count(*)::int from project_comments where id::text like 'd9000000-%') as comments,
+    (select count(*)::int from meetings where id::text like 'da000000-%') as meetings,
+    (select count(*)::int from timeline_posts where id::text like 'db000000-%') as posts,
+    (select count(*)::int from post_replies where is_demo=true) as post_replies,
+    (select count(*)::int from post_likes where is_demo=true) as post_likes,
+    (select count(*)::int from post_reposts where is_demo=true) as post_reposts`;
   console.log(JSON.stringify(row));
 }
 
 try {
   if (mode==='seed') await seed();
+  if (mode==='network') await enableNetwork();
   if (mode==='purge') await purge();
   await status();
 } finally { await sql.end(); }

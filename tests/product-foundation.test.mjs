@@ -270,6 +270,12 @@ test("ships durable post threads, likes, reposts and purgeable demo activity", a
   assert.match(demo, /is_demo,created_at\) values/);
   assert.match(demo, /,'visible',true,/);
   assert.match(demo, /delete from post_replies where is_demo = true/);
+  assert.match(demo, /share_network_connections=true/);
+  assert.match(demo, /show_followers=true/);
+  assert.match(demo, /show_following=true/);
+  assert.match(demo, /const demoFollows/);
+  assert.match(demo, /insert into follows \(follower_id,following_id,created_at\)/);
+  assert.match(demo, /delete from network_map_hides where viewer_id/);
 });
 
 test("shares clean public URLs with rich social preview metadata", async () => {

@@ -18,6 +18,7 @@
     "db:studio": "drizzle-kit studio",
     "admin:bootstrap": "node scripts/bootstrap-admin.mjs",
     "demo:seed": "node scripts/demo-content.mjs seed",
+    "demo:network": "node scripts/demo-content.mjs network",
     "demo:purge": "node scripts/demo-content.mjs purge",
     "demo:status": "node scripts/demo-content.mjs status"
   },
