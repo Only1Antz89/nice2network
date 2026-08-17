@@ -42,6 +42,29 @@ function FounderProfile({ founder, index }: { founder: (typeof founders)[number]
   );
 }
 
+function BuildPartnerProfile() {
+  return (
+    <article className="founder-card founder-card--partner">
+      <Link
+        className="founder-portrait founder-portrait--partner"
+        href="https://www.intaillium.com/"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Visit IntAillium"
+      >
+        <Image src="/brand/intaillium-wordmark.png" alt="IntAillium" fill sizes="(max-width: 800px) 100vw, 48vw" />
+      </Link>
+      <div className="founder-copy">
+        <div className="founder-meta"><span>04 / BUILD PARTNER</span><small>Product · Design · Engineering</small></div>
+        <h3><Link href="https://www.intaillium.com/" target="_blank" rel="noreferrer">IntAillium</Link></h3>
+        <strong>Turning the founders’ vision into a working network.</strong>
+        <p>IntAillium works alongside Phillip, Nathan and Nicholas as nice 2 network’s build partner. The studio brings product strategy, design, engineering and systems thinking to the founders’ purpose—translating their ambition for more useful human connection into a platform people can actually use.</p>
+        <Link className="partner-profile-link" href="https://www.intaillium.com/" target="_blank" rel="noreferrer">Visit IntAillium <ArrowUpRight size={13} aria-hidden="true" /></Link>
+      </div>
+    </article>
+  );
+}
+
 export default function AboutPage() {
   return (
     <PublicSiteShell tone="noir">
@@ -91,12 +114,8 @@ export default function AboutPage() {
           <header><span className="about-index">04 / FOUNDERS</span><h2>Three founders.<br/>One useful network.</h2><p>nice 2 network was founded by Phillip Joseph, Nathan Baiden and Nicholas Wright—three perspectives united by a belief in what people can make possible together.</p></header>
           <div className="founder-grid">
             <div className="founder-column"><FounderProfile founder={founders[0]} index={0}/><FounderProfile founder={founders[2]} index={2}/></div>
-            <div className="founder-column founder-column--right"><FounderProfile founder={founders[1]} index={1}/></div>
+            <div className="founder-column founder-column--right"><FounderProfile founder={founders[1]} index={1}/><BuildPartnerProfile /></div>
           </div>
-          <aside className="build-partner">
-            <div><span>05 / BUILD PARTNER</span><Link className="build-partner-logo" href="https://www.intaillium.com/" target="_blank" rel="noreferrer" aria-label="Visit IntAillium"><Image src="/brand/intaillium-icon.png" alt="" width={64} height={64}/><b>INTAILLIUM</b><small>INTELLIGENT SYSTEMS</small></Link></div>
-            <div><small>BUILT IN PARTNERSHIP</small><h3>IntAillium</h3><strong>Working with the founders to build nice 2 network.</strong><p>IntAillium brings product strategy, design and engineering to the founders’ vision—shaping the systems and technology that help useful human collaboration happen.</p></div>
-          </aside>
         </section>
 
         <section className="about-cta"><span>THE NEXT USEFUL PERSON</span><h2>might already be here.</h2><div><Link href="/signin?mode=register">Join nice 2 network <ArrowUpRight size={14} strokeWidth={1.8} aria-hidden="true" /></Link><Link href="/community">Read our community code</Link></div></section>
