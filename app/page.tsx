@@ -3438,9 +3438,11 @@ function Feed({
           <button
             className="icon-button notification-button"
             onClick={authenticated ? onNotifications : onRequireAuth}
+            aria-label={authenticated && unread > 0 ? `Open notifications, ${unread} unread` : "Open notifications"}
           >
-            <Bell size={20} />
-            {authenticated && unread > 0 && <b>{unread > 9 ? "9+" : unread}</b>}
+            {authenticated && unread > 0
+              ? <b className="notification-count" aria-hidden="true">{unread > 9 ? "9+" : unread}</b>
+              : <Bell size={20} />}
           </button>
           {!authenticated && (
             <a className="public-mobile-signin" href="/signin?mode=register">
@@ -7051,6 +7053,50 @@ type PodcastInviteRole = "cohost" | "speaker" | "listener";
 type MeetVenue = { latitude: number; longitude: number; displayName: string };
 type MeetRoute = { durationSeconds: number; distanceMeters: number };
 
+function MeetCardActions({
+  meet,
+  onSave,
+  onDelete,
+}: {
+  meet: MeetingRecord;
+  onSave: (meet: MeetingRecord, action: "pin" | "bookmark") => void;
+  onDelete: (meet: MeetingRecord) => void;
+}) {
+  return (
+    <div className="meet-card-actions" role="group" aria-label={`Actions for ${meet.title}`}>
+      <button
+        type="button"
+        className={meet.isPinned ? "active" : ""}
+        aria-label={meet.isPinned ? `Unpin ${meet.title}` : `Pin ${meet.title}`}
+        title={meet.isPinned ? "Unpin" : "Pin"}
+        onClick={() => onSave(meet, "pin")}
+      >
+        <Pin size={14} fill={meet.isPinned ? "currentColor" : "none"} />
+      </button>
+      <button
+        type="button"
+        className={meet.isBookmarked ? "active" : ""}
+        aria-label={meet.isBookmarked ? `Remove ${meet.title} from bookmarks` : `Bookmark ${meet.title}`}
+        title={meet.isBookmarked ? "Remove bookmark" : "Bookmark"}
+        onClick={() => onSave(meet, "bookmark")}
+      >
+        <Bookmark size={14} fill={meet.isBookmarked ? "currentColor" : "none"} />
+      </button>
+      {meet.canEdit && (
+        <button
+          type="button"
+          className="danger"
+          aria-label={`Delete ${meet.title}`}
+          title="Delete"
+          onClick={() => onDelete(meet)}
+        >
+          <Trash2 size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function InPersonMeetMap({ location }: { location: string }) {
   const [venue, setVenue] = useState<MeetVenue | null>(null),
     [route, setRoute] = useState<MeetRoute | null>(null),
@@ -7312,6 +7358,8 @@ function MeetView() {
     [meetLocation, setMeetLocation] = useState(""),
     [meetThumbnail, setMeetThumbnail] = useState<string | null>(null);
   const [showAllPastMeets, setShowAllPastMeets] = useState(false);
+  const [pastMeetsCollapsed, setPastMeetsCollapsed] = useState(false);
+  const [deleteMeetTarget, setDeleteMeetTarget] = useState<MeetingRecord | null>(null);
   async function load() {
     const response = await fetch("/api/calendar/events");
     const data = response.ok ? await response.json() : { meetings: [] };
@@ -7479,6 +7527,7 @@ function MeetView() {
     load();
   }
   async function saveMeet(meet: MeetingRecord, action: "pin" | "bookmark") {
+    setError("");
     const response = await fetch("/api/saved-items", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -7498,8 +7547,22 @@ function MeetView() {
       isPinned: result.pinned,
       isBookmarked: result.bookmarked,
     };
-    setDetail(next);
+    setDetail((current) => current?.id === meet.id ? next : current);
     setMeets((rows) => rows.map((row) => (row.id === meet.id ? next : row)));
+  }
+  async function deleteMeet() {
+    if (!deleteMeetTarget) return false;
+    setError("");
+    const response = await fetch(`/api/meetings/${deleteMeetTarget.id}`, { method: "DELETE" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(result.error ?? "Could not delete this meet.");
+      setDeleteMeetTarget(null);
+      return false;
+    }
+    setMeets((rows) => rows.filter((row) => row.id !== deleteMeetTarget.id));
+    setDetail((current) => current?.id === deleteMeetTarget.id ? null : current);
+    return true;
   }
   function join(meet: MeetingRecord) {
     if (meet.provider === "in_person") {
@@ -7597,6 +7660,7 @@ function MeetView() {
         <h3>Upcoming</h3>
         <span>{upcomingMeets.length} meets</span>
       </div>
+      {error && !create && !editing && !detail && <p className="form-error meet-page-error" role="alert">{error}</p>}
       {upcomingMeets.length ? (
         upcomingMeets.map((meet) => {
           const start = new Date(meet.startsAt),
@@ -7608,6 +7672,7 @@ function MeetView() {
             isFuture = Boolean(clockNow) && clockNow < joinOpensAt;
           return (
             <div className="meet-card" key={meet.id}>
+              <MeetCardActions meet={meet} onSave={saveMeet} onDelete={setDeleteMeetTarget} />
               <div className="meet-time">
                 <strong>
                   {start.toLocaleTimeString([], {
@@ -7656,13 +7721,25 @@ function MeetView() {
       )}
       {pastMeets.length > 0 && <>
         <div className="section-title meet-history-title">
-          <h3>Past meets</h3>
-          {pastMeets.length > 5 ? <button onClick={() => setShowAllPastMeets(value => !value)}>{showAllPastMeets ? "Show recent" : `View all ${pastMeets.length}`}</button> : <span>{pastMeets.length} meets</span>}
+          <button
+            className="meet-history-toggle"
+            aria-expanded={!pastMeetsCollapsed}
+            aria-controls="past-meets-list"
+            onClick={() => setPastMeetsCollapsed(value => !value)}
+          >
+            <ChevronRight size={15} />
+            <h3>Past meets</h3>
+          </button>
+          <div className="meet-history-summary">
+            <span>{pastMeets.length} {pastMeets.length === 1 ? "meet" : "meets"}</span>
+            {!pastMeetsCollapsed && pastMeets.length > 5 && <button onClick={() => setShowAllPastMeets(value => !value)}>{showAllPastMeets ? "Show recent" : "View all"}</button>}
+          </div>
         </div>
-        <div className="meet-history-list">
+        <div className="meet-history-list" id="past-meets-list" hidden={pastMeetsCollapsed}>
           {pastMeets.slice(0, showAllPastMeets ? pastMeets.length : 5).map(meet => {
             const start = new Date(meet.startsAt);
             return <div className="meet-card meet-card-past" key={meet.id}>
+              <MeetCardActions meet={meet} onSave={saveMeet} onDelete={setDeleteMeetTarget} />
               <div className="meet-time"><strong>{start.toLocaleDateString(undefined, { day: "numeric", month: "short" })}</strong><span>{start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
               <div>
                 <div className="meet-card-meta">
@@ -7910,6 +7987,18 @@ function MeetView() {
             {detail.provider !== "in_person" && clockNow > new Date(detail.endsAt).getTime() && <div className="meet-not-ready ended"><Check size={17}/><div><strong>This meet has ended</strong><small>The room is no longer open.</small></div></div>}
           </section>
         </div>
+      )}
+      {deleteMeetTarget && (
+        <ActionDialog
+          eyebrow="DELETE MEET"
+          title={`Delete ${deleteMeetTarget.title}?`}
+          description="This removes the meet for everyone, including its invitations and room history. This cannot be undone."
+          confirmLabel="Delete meet"
+          cancelLabel="Keep meet"
+          danger
+          onClose={() => setDeleteMeetTarget(null)}
+          onConfirm={deleteMeet}
+        />
       )}
     </div>
   );
@@ -10740,10 +10829,9 @@ export default function HomePage() {
                 : "Open notifications"
             }
           >
-            <Bell size={20} />
-            {unreadNotifications > 0 && (
-              <b>{unreadNotifications > 9 ? "9+" : unreadNotifications}</b>
-            )}
+            {unreadNotifications > 0
+              ? <b className="notification-count" aria-hidden="true">{unreadNotifications > 9 ? "9+" : unreadNotifications}</b>
+              : <Bell size={20} />}
           </button>
         )}
         <div className="content-column">
@@ -10840,11 +10928,11 @@ export default function HomePage() {
               onClick={() =>
                 authenticated ? setNotificationsOpen(true) : requireSignIn()
               }
+              aria-label={authenticated && unreadNotifications > 0 ? `Open notifications, ${unreadNotifications} unread` : "Open notifications"}
             >
-              <Bell size={19} />
-              {authenticated && unreadNotifications > 0 && (
-                <b>{unreadNotifications > 9 ? "9+" : unreadNotifications}</b>
-              )}
+              {authenticated && unreadNotifications > 0
+                ? <b className="notification-count" aria-hidden="true">{unreadNotifications > 9 ? "9+" : unreadNotifications}</b>
+                : <Bell size={19} />}
             </button>
           </div>
           {!authenticated && (

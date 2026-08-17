@@ -2,7 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { meetingParticipants, meetings, users } from "@/db/schema";
+import { meetingParticipants, meetings, savedItems, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { MEETING_CAPACITY, requireMeetingAccess } from "@/lib/meetings";
@@ -125,6 +125,25 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ me
     })));
     await audit(member.id, "meeting.updated", "meeting", meetingId, { before: existing, after: updated, attendeeIds: input.attendeeIds });
     return NextResponse.json(updated);
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+export async function DELETE(_: Request, { params }: { params: Promise<{ meetingId: string }> }) {
+  try {
+    const member = await requireMember();
+    const { meetingId } = await params;
+    const db = getDb();
+    const [existing] = await db.select().from(meetings).where(eq(meetings.id, meetingId)).limit(1);
+    if (!existing) throw new ApiError(404, "Meet not found");
+    if (existing.createdBy !== member.id) throw new ApiError(403, "Only the meet host can delete it");
+    await db.transaction(async tx => {
+      await tx.delete(savedItems).where(and(eq(savedItems.entityType, "meeting"), eq(savedItems.entityId, meetingId)));
+      await tx.delete(meetings).where(eq(meetings.id, meetingId));
+    });
+    await audit(member.id, "meeting.deleted", "meeting", meetingId, { title: existing.title, startsAt: existing.startsAt });
+    return NextResponse.json({ success: true });
   } catch (error) {
     return apiError(error);
   }
