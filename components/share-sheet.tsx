@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { N2Mark } from "@/components/network-brand";
+import shareStyles from "./share-sheet.module.css";
 
 type ShareConversation = {
   id: string;
@@ -229,7 +230,7 @@ export default function ShareSheet({
                   </span>
                 </button>
                 {more && (
-                  <div className="share-more-menu">
+                  <div className={`share-more-menu ${shareStyles.socialShare}`}>
                     <button onClick={nativeShare}>
                       <Share2 size={16} />
                       Device share
@@ -238,6 +239,7 @@ export default function ShareSheet({
                       href={`https://wa.me/?text=${encoded}`}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={() => track("whatsapp")}
                     >
                       <MessageCircle size={16} />
                       WhatsApp
@@ -246,6 +248,7 @@ export default function ShareSheet({
                       href={`https://www.linkedin.com/sharing/share-offsite/?url=${encoded}`}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={() => track("linkedin")}
                     >
                       <UsersRound size={16} />
                       LinkedIn
@@ -254,6 +257,7 @@ export default function ShareSheet({
                       href={`https://www.facebook.com/sharer/sharer.php?u=${encoded}`}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={() => track("facebook")}
                     >
                       <UsersRound size={16} />
                       Facebook
@@ -262,6 +266,7 @@ export default function ShareSheet({
                       href={`https://twitter.com/intent/tweet?url=${encoded}`}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={() => track("x")}
                     >
                       <Share2 size={16} />X
                     </a>
@@ -269,12 +274,14 @@ export default function ShareSheet({
                       href={`https://t.me/share/url?url=${encoded}`}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={() => track("telegram")}
                     >
                       <Send size={16} />
                       Telegram
                     </a>
                     <a
                       href={`mailto:?subject=${encodeURIComponent(item.title)}&body=${encoded}`}
+                      onClick={() => track("email")}
                     >
                       <Mail size={16} />
                       Email

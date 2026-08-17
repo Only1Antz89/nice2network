@@ -1,0 +1,24 @@
+/* Use inline app icons so the social row never requests CSP-blocked images. */
+.socialShare a::before {
+  display: none !important;
+  background-image: none !important;
+}
+
+.socialShare a svg {
+  display: block;
+  box-sizing: border-box;
+  width: 34px;
+  height: 34px;
+  padding: 7px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--paper);
+  stroke: currentColor;
+}
+
+.socialShare a:nth-of-type(1) svg { background: #25d366; color: #fff; }
+.socialShare a:nth-of-type(2) svg { background: #0a66c2; color: #fff; }
+.socialShare a:nth-of-type(3) svg { background: #0866ff; color: #fff; }
+.socialShare a:nth-of-type(4) svg { background: #111; color: #fff; }
+.socialShare a:nth-of-type(5) svg { background: #26a5e4; color: #fff; }
+.socialShare a:nth-of-type(6) svg { background: #ea4335; color: #fff; }
