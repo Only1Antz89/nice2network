@@ -106,6 +106,14 @@ test("mobile navigation omits the current page while full profiles retain banner
   assert.match(publicStyles, /\.rail-help-link/);
 });
 
+test("the home greeting remains welcoming throughout the day", () => {
+  const page = read("app/page.tsx");
+  assert.match(page, /if \(hour < 12\) return "Good morning"/);
+  assert.match(page, /if \(hour < 18\) return "Good afternoon"/);
+  assert.match(page, /return "Good evening"/);
+  assert.doesNotMatch(page, /Good night/);
+});
+
 test("notifications use a dedicated responsive page instead of a mobile floating control", () => {
   const page = read("app/page.tsx");
   const styles = read("app/globals.css");

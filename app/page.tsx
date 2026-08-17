@@ -440,11 +440,9 @@ function relativeNetworkAge(value: Date | string) {
 
 function localGreeting(value: Date) {
   const hour = value.getHours();
-  if (hour < 5) return "Good night";
   if (hour < 12) return "Good morning";
   if (hour < 18) return "Good afternoon";
-  if (hour < 22) return "Good evening";
-  return "Good night";
+  return "Good evening";
 }
 
 function firstUrl(value?: string | null) {
