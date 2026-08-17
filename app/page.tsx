@@ -194,28 +194,6 @@ const PROJECT_INDUSTRIES = [
   "Other",
 ] as const;
 
-const COMMON_TIMEZONES = [
-  "Europe/London",
-  "Europe/Dublin",
-  "Europe/Paris",
-  "Europe/Berlin",
-  "Europe/Madrid",
-  "Africa/Accra",
-  "Africa/Lagos",
-  "Africa/Johannesburg",
-  "Asia/Dubai",
-  "Asia/Kolkata",
-  "Asia/Singapore",
-  "Asia/Tokyo",
-  "Australia/Sydney",
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Los_Angeles",
-  "America/Toronto",
-  "America/Sao_Paulo",
-  "UTC",
-] as const;
 type BlueprintRole = {
   phase: "now" | "next" | "later";
   department: string;
@@ -656,6 +634,150 @@ function FreeChoiceInput({
               </button>
             )}
         </div>
+      )}
+    </div>
+  );
+}
+
+type LocationOption = {
+  id: number;
+  city: string;
+  country: string;
+  countryCode: string;
+  timezone: string;
+  region: string | null;
+  label: string;
+};
+
+function ProjectLocationInput({
+  query,
+  selected,
+  onQueryChange,
+  onSelect,
+}: {
+  query: string;
+  selected: Pick<LocationOption, "city" | "country" | "timezone" | "label"> | null;
+  onQueryChange: (query: string) => void;
+  onSelect: (location: LocationOption) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [options, setOptions] = useState<LocationOption[]>([]);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const searchId = "project-location";
+
+  useEffect(() => {
+    const term = query.trim();
+    if (term.length < 3 || term === selected?.label) {
+      setOptions([]);
+      setLoading(false);
+      setError("");
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await fetch(`/api/locations/search?q=${encodeURIComponent(term)}`, {
+          signal: controller.signal,
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "Could not search locations.");
+        setOptions(Array.isArray(result.results) ? result.results : []);
+        setActiveIndex(-1);
+        setOpen(true);
+      } catch (searchError) {
+        if (controller.signal.aborted) return;
+        setOptions([]);
+        setError(searchError instanceof Error ? searchError.message : "Could not search locations.");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }, 320);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, selected?.label]);
+
+  function choose(location: LocationOption) {
+    onSelect(location);
+    setOptions([]);
+    setOpen(false);
+    setActiveIndex(-1);
+    setError("");
+  }
+
+  return (
+    <div className="project-location-picker">
+      <label htmlFor={searchId}>Location</label>
+      <div className="project-location-combobox">
+        <MapPin size={16} aria-hidden="true" />
+        <input
+          id={searchId}
+          role="combobox"
+          autoComplete="off"
+          value={query}
+          placeholder="Start typing a city or town"
+          aria-autocomplete="list"
+          aria-controls={`${searchId}-results`}
+          aria-expanded={open}
+          aria-activedescendant={activeIndex >= 0 ? `${searchId}-option-${activeIndex}` : undefined}
+          onFocus={() => query.trim().length >= 3 && query !== selected?.label && setOpen(true)}
+          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+          onChange={(event) => {
+            onQueryChange(event.target.value);
+            setOpen(true);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown" && options.length) {
+              event.preventDefault();
+              setOpen(true);
+              setActiveIndex((index) => Math.min(index + 1, options.length - 1));
+            } else if (event.key === "ArrowUp" && options.length) {
+              event.preventDefault();
+              setActiveIndex((index) => Math.max(index - 1, 0));
+            } else if (event.key === "Enter" && activeIndex >= 0 && options[activeIndex]) {
+              event.preventDefault();
+              choose(options[activeIndex]);
+            } else if (event.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+        />
+        {loading && <span className="project-location-loading" aria-label="Searching locations" />}
+      </div>
+      {open && query.trim().length >= 3 && (
+        <div id={`${searchId}-results`} className="project-location-results" role="listbox">
+          {options.map((location, index) => (
+            <button
+              id={`${searchId}-option-${index}`}
+              type="button"
+              role="option"
+              aria-selected={index === activeIndex}
+              key={`${location.id}-${location.countryCode}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => setActiveIndex(index)}
+              onClick={() => choose(location)}
+            >
+              <MapPin size={14} />
+              <span><strong>{location.city}</strong><small>{[location.region, location.country].filter(Boolean).join(", ")}</small></span>
+              <b>{location.countryCode}</b>
+            </button>
+          ))}
+          {!loading && !error && options.length === 0 && <p>No matching locations found.</p>}
+          {error && <p className="form-error">{error}</p>}
+        </div>
+      )}
+      {selected ? (
+        <div className="project-location-confirmed" aria-live="polite">
+          <Check size={14} />
+          <span><strong>{selected.country}</strong><small>Timezone assigned automatically: {selected.timezone}</small></span>
+        </div>
+      ) : (
+        <small className="project-location-help">Choose a suggestion to assign its country and timezone.</small>
       )}
     </div>
   );
@@ -1606,6 +1728,7 @@ function CreateProject({
   currentMember: MemberPerson;
 }) {
   const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
+  const [locationQuery, setLocationQuery] = useState("");
   const [form, setForm] = useState({
     title: "",
     summary: "",
@@ -1616,9 +1739,8 @@ function CreateProject({
     stage: "idea",
     workMode: "remote",
     city: "",
-    country: "United Kingdom",
-    timezone:
-      Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/London",
+    country: "",
+    timezone: "",
     allowRemoteFallback: true,
   });
   const [projectId, setProjectId] = useState(""),
@@ -1637,6 +1759,10 @@ function CreateProject({
     [error, setError] = useState(""),
     [similarProjects, setSimilarProjects] = useState<SimilarProjectSuggestion[]>([]);
   async function mapTeam() {
+    if (!form.city || !form.country || !form.timezone) {
+      setError("Choose a location from the suggestions so its country and timezone can be assigned.");
+      return;
+    }
     setBusy(true);
     setError("");
     const draftResponse = await fetch("/api/projects/drafts", {
@@ -1906,43 +2032,29 @@ function CreateProject({
                 </select>
               </label>
             </div>
-            <div className="field-row location-time-row">
-              <fieldset className="location-fields">
-                <legend>Location</legend>
-                <div>
-                  <input
-                    aria-label="City"
-                    value={form.city}
-                    onChange={(e) => setForm({ ...form, city: e.target.value })}
-                    placeholder="City"
-                  />
-                  <input
-                    aria-label="Country"
-                    value={form.country}
-                    onChange={(e) =>
-                      setForm({ ...form, country: e.target.value })
-                    }
-                    placeholder="Country"
-                  />
-                </div>
-              </fieldset>
-              <label>
-                Timezone
-                <input
-                  list="n2-timezones"
-                  value={form.timezone}
-                  onChange={(e) =>
-                    setForm({ ...form, timezone: e.target.value })
-                  }
-                  placeholder="Europe/London"
-                />
-                <datalist id="n2-timezones">
-                  {COMMON_TIMEZONES.map((timezone) => (
-                    <option key={timezone} value={timezone} />
-                  ))}
-                </datalist>
-              </label>
-            </div>
+            <ProjectLocationInput
+              query={locationQuery}
+              selected={form.city && form.country && form.timezone ? {
+                city: form.city,
+                country: form.country,
+                timezone: form.timezone,
+                label: locationQuery,
+              } : null}
+              onQueryChange={(query) => {
+                setLocationQuery(query);
+                setForm((current) => ({ ...current, city: "", country: "", timezone: "" }));
+              }}
+              onSelect={(location) => {
+                setLocationQuery(location.label);
+                setForm((current) => ({
+                  ...current,
+                  city: location.city,
+                  country: location.country,
+                  timezone: location.timezone,
+                }));
+                setError("");
+              }}
+            />
             <section className="project-visual-fields">
               <div>
                 <span>Timeline accent</span>
@@ -2019,7 +2131,10 @@ function CreateProject({
               disabled={
                 busy ||
                 form.title.trim().length < 4 ||
-                form.summary.trim().length < 20
+                form.summary.trim().length < 20 ||
+                !form.city ||
+                !form.country ||
+                !form.timezone
               }
               onClick={mapTeam}
             >
