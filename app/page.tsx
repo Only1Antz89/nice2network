@@ -6801,7 +6801,7 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
           )}
           {chatQuery && !visibleMessages.length && <div className="chat-search-empty">No messages match “{chatQuery}”.</div>}
           {visibleMessages.map((message) => (
-            <div className={`chat-message-row ${message.senderId === currentMember.id ? "mine" : "theirs"}`} key={message.id}>
+            <div className={`chat-message-row ${message.senderId === currentMember.id ? "mine" : "theirs"}`} key={message.id} tabIndex={message.status === "deleted" ? undefined : 0}>
             <div
               className={`bubble ${message.senderId === currentMember.id ? "mine" : "theirs"} ${message.status === "deleted" ? "deleted" : ""}`}
             >
@@ -6833,8 +6833,8 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
                 {message.editedAt && " · edited"}
               </small>
               {message.status !== "deleted" && <div className="message-actions">
-                <button onClick={() => send("nudge")} disabled={isSending} title="Nudge for a response"><NudgeMark/><span>Nudge</span></button>
-                {message.senderId === currentMember.id && <><button onClick={() => setEditMessageTarget(message)}><Pencil size={11}/><span>Edit</span></button><button onClick={() => setDeleteMessageTarget(message)}><Trash2 size={11}/><span>Delete</span></button></>}
+                {message.senderId !== currentMember.id && <button onClick={() => send("nudge")} disabled={isSending} title="Nudge for a response"><NudgeMark/><span>Nudge</span></button>}
+                {message.senderId === currentMember.id && <><button onClick={() => setEditMessageTarget(message)} title="Edit message" aria-label="Edit message"><Pencil size={11}/><span>Edit</span></button><button onClick={() => setDeleteMessageTarget(message)} title="Delete message" aria-label="Delete message"><Trash2 size={11}/><span>Delete</span></button></>}
               </div>}
             </div>
             </div>

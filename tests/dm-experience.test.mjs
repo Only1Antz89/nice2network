@@ -28,13 +28,22 @@ test("direct messages expose empty, sending, attachment, and error states", () =
 
 test("message hover controls and participant activity stay attached to chat messages", () => {
   assert.match(page, /className="message-footer"/);
+  assert.match(page, /tabIndex=\{message\.status === "deleted" \? undefined : 0\}/);
   assert.match(page, /<NudgeMark\/>/);
+  assert.match(page, /message\.senderId !== currentMember\.id && <button[\s\S]*?<NudgeMark\/>/);
   assert.match(page, /setEditMessageTarget\(message\)/);
   assert.match(page, /setDeleteMessageTarget\(message\)/);
+  assert.match(page, /aria-label="Edit message"/);
+  assert.match(page, /aria-label="Delete message"/);
   assert.match(page, /className="chat-participant-activity"/);
   assert.match(page, /onPlay=\{\(\) => setSpeakingMessageId\(message\.id\)\}/);
   assert.match(styles, /\.chat-message-row:hover \.message-actions/);
+  assert.match(styles, /Message actions stay contextual[\s\S]*?\.message-footer \.message-actions\{opacity:0;visibility:hidden/);
   assert.match(styles, /\.nudge-mark em:first-child[\s\S]*?font-size:15px[\s\S]*?\.nudge-mark em:last-child[\s\S]*?font-size:9px/);
+});
+
+test("the edit-message field uses a neutral focus treatment", () => {
+  assert.match(styles, /\.action-dialog \.n2-editor-fields textarea:focus[\s\S]*?outline:none!important;[\s\S]*?box-shadow:none!important/);
 });
 
 test("conversation rows reveal archive, snooze, and delete controls on hover", () => {

@@ -862,6 +862,23 @@ img,video,canvas,svg{max-width:100%}
 
 @media(prefers-reduced-motion:reduce){.typing-dots i,.voice-message.speaking .voice-wave i{animation:none}}
 
+/* Message actions stay contextual: hover on pointer devices, focus/tap otherwise. */
+.chat-message-row{outline:0}
+@media(max-width:700px){
+  .message-footer .message-actions{opacity:0;visibility:hidden;transform:translateY(-2px)}
+  .chat-message-row:hover .message-actions,.chat-message-row:focus-within .message-actions{opacity:1;visibility:visible;transform:translateY(0)}
+}
+
+/* Keep edit fields calm and monochrome, including enhanced-focus mode. */
+.action-dialog .n2-editor-fields input:focus,
+.action-dialog .n2-editor-fields textarea:focus,
+.action-dialog .n2-editor-fields select:focus{
+  border-color:var(--ink);
+  outline:none!important;
+  outline-offset:0!important;
+  box-shadow:none!important;
+}
+
 .timeline-post>.post-thread-trigger{display:block;width:calc(100% - 32px);border:0;background:none;padding:0;text-align:left;font-family:inherit;color:inherit;font-size:12px;line-height:1.6;white-space:pre-wrap;margin:9px 16px 12px}
 
 .route-state-page{min-height:100svh;display:grid;place-items:center;align-content:center;gap:14px;text-align:center;padding:28px;background:var(--paper);color:var(--ink)}.route-state-mark{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:#111;color:#fff;font-weight:800}.route-state-page h1{max-width:620px;margin:2px 0;font-size:clamp(27px,5vw,48px);letter-spacing:-.04em}.route-state-page p{max-width:520px;margin:0;color:var(--muted);font-size:12px;line-height:1.65}.route-state-page small{color:var(--muted);font:8px var(--font-geist-mono)}.route-state-progress{width:min(260px,70vw);height:3px;overflow:hidden;border-radius:999px;background:var(--line)}.route-state-progress i{display:block;width:42%;height:100%;border-radius:inherit;background:#ff6b35;animation:n2-route-loading 1.2s ease-in-out infinite}.route-state-actions{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}.route-state-actions a{text-decoration:none}@keyframes n2-route-loading{0%{transform:translateX(-105%)}100%{transform:translateX(245%)}}@media(prefers-reduced-motion:reduce){.route-state-progress i{animation:none;transform:none;width:100%}}
