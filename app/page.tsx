@@ -7752,10 +7752,12 @@ function ProfileView({
   member,
   userId,
   onEdit,
+  onProfile,
 }: {
   member: MemberPerson;
   userId?: string | null;
   onEdit: () => void;
+  onProfile: (userId: string) => void;
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
@@ -7943,7 +7945,12 @@ function ProfileView({
             </div>
             <div className="following-list">
               {networkPeople.map((item) => (
-                <article key={item.id}>
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onProfile(item.id)}
+                  aria-label={`Open ${item.name ?? "n2 member"}'s profile`}
+                >
                   <Avatar
                     person={{
                       name: item.name ?? "n2 member",
@@ -7956,7 +7963,7 @@ function ProfileView({
                     <strong>{item.name}</strong>
                     <small>{item.profession}</small>
                   </span>
-                </article>
+                </button>
               ))}
               {!networkPeople.length && (
                 <p className="profile-empty">
@@ -10633,6 +10640,7 @@ export default function HomePage() {
                     setEditProfileRequested(true);
                     go("settings");
                   }}
+                  onProfile={openProfile}
                 />
               )}
               {authenticated && view === "settings" && (
