@@ -1,12 +1,25 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Smile } from "lucide-react";
-import { EmojiStyle, SkinTonePickerLocation, SkinTones, SuggestionMode, Theme, type EmojiClickData } from "emoji-picker-react";
+import { Clock3, Flag, Lightbulb, PawPrint, Plane, Shapes, Smile, Trophy, Utensils } from "lucide-react";
+import { Categories, EmojiStyle, SkinTonePickerLocation, SkinTones, SuggestionMode, Theme, type CategoryIcons, type EmojiClickData } from "emoji-picker-react";
 import { useEffect, useRef, useState } from "react";
+import styles from "./emoji-picker.module.css";
 
 const FullEmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 const SKIN_TONE_KEY = "n2-emoji-skin-tone";
+const CATEGORY_ICON_SIZE = 18;
+const categoryIcons: CategoryIcons = {
+  [Categories.SUGGESTED]: <Clock3 aria-hidden="true" size={CATEGORY_ICON_SIZE} />,
+  [Categories.SMILEYS_PEOPLE]: <Smile aria-hidden="true" size={CATEGORY_ICON_SIZE} />,
+  [Categories.ANIMALS_NATURE]: <PawPrint aria-hidden="true" size={CATEGORY_ICON_SIZE} />,
+  [Categories.FOOD_DRINK]: <Utensils aria-hidden="true" size={CATEGORY_ICON_SIZE} />,
+  [Categories.TRAVEL_PLACES]: <Plane aria-hidden="true" size={CATEGORY_ICON_SIZE} />,
+  [Categories.ACTIVITIES]: <Trophy aria-hidden="true" size={CATEGORY_ICON_SIZE} />,
+  [Categories.OBJECTS]: <Lightbulb aria-hidden="true" size={CATEGORY_ICON_SIZE} />,
+  [Categories.SYMBOLS]: <Shapes aria-hidden="true" size={CATEGORY_ICON_SIZE} />,
+  [Categories.FLAGS]: <Flag aria-hidden="true" size={CATEGORY_ICON_SIZE} />,
+};
 
 function savedSkinTone(): SkinTones {
   if (typeof window === "undefined") return SkinTones.NEUTRAL;
@@ -43,16 +56,18 @@ export default function EmojiPicker({ onSelect, align = "left" }: { onSelect: (e
     window.localStorage.setItem(SKIN_TONE_KEY, next);
   }
 
-  return <div className={`emoji-picker ${align}`} ref={root}>
-    <button type="button" className="emoji-trigger" aria-label="Add emoji" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(value => !value)}><Smile size={17}/></button>
-    {open && <div className="emoji-popover" role="dialog" aria-label="Choose an emoji">
+  return <div className={`emoji-picker ${align} ${styles.root}`} ref={root}>
+    <button type="button" className={`emoji-trigger ${styles.trigger}`} aria-label="Add emoji" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(value => !value)}><Smile aria-hidden="true" size={17}/></button>
+    {open && <div className={`emoji-popover ${styles.popover}`} role="dialog" aria-label="Choose an emoji">
       <FullEmojiPicker
+        className={styles.panel}
         onEmojiClick={choose}
         onSkinToneChange={changeSkinTone}
         defaultSkinTone={savedSkinTone()}
         skinTonePickerLocation={SkinTonePickerLocation.SEARCH}
         emojiStyle={EmojiStyle.NATIVE}
-        theme={Theme.LIGHT}
+        theme={Theme.AUTO}
+        categoryIcons={categoryIcons}
         searchPlaceHolder="Search emojis"
         suggestedEmojisMode={SuggestionMode.RECENT}
         previewConfig={{ showPreview: false }}
