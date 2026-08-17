@@ -1605,7 +1605,7 @@ function CreateProject({
   onPublish: (project: ProjectRecord) => void;
   currentMember: MemberPerson;
 }) {
-  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
   const [form, setForm] = useState({
     title: "",
     summary: "",
@@ -1759,7 +1759,7 @@ function CreateProject({
         const suggestions = Array.isArray(result.suggestions) ? result.suggestions as SimilarProjectSuggestion[] : [];
         if (result.enabled !== false && suggestions.length) {
           setSimilarProjects(suggestions);
-          setStep(2);
+          setStep(3);
           setBusy(false);
           return;
         }
@@ -1839,8 +1839,16 @@ function CreateProject({
           <button className="icon-button" onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
-          <span>{step === 0 ? "New project" : step === 1 ? "Review your team map" : "Similar projects"}</span>
-          <span className="step-count">{step === 0 ? "1/2" : step === 1 ? "2/2" : "Review"}</span>
+          <span>
+            {step === 0
+              ? "New project"
+              : step === 1
+                ? "Guided roadmap"
+                : step === 2
+                  ? "Suggested recruitment"
+                  : "Similar projects"}
+          </span>
+          <span className="step-count">{step < 3 ? `${step + 1}/3` : "Review"}</span>
         </div>
         {step === 0 ? (
           <div className="modal-content">
@@ -2007,7 +2015,7 @@ function CreateProject({
             </div>
             {error && <p className="form-error">{error}</p>}
             <button
-              className="primary-button wide"
+              className="primary-button wide project-plan-button"
               disabled={
                 busy ||
                 form.title.trim().length < 4 ||
@@ -2019,12 +2027,12 @@ function CreateProject({
                 "Mapping the project…"
               ) : (
                 <>
-                  Find the gaps <N2Mark inverse />
+                  Build my project plan <N2Mark />
                 </>
               )}
             </button>
           </div>
-        ) : step === 2 ? (
+        ) : step === 3 ? (
           <div className="modal-content similar-project-review">
             <div className="ai-orbit"><N2Mark /><span>n2 project check</span></div>
             <span className="eyebrow">SIMILAR WORK FOUND</span>
@@ -2048,11 +2056,11 @@ function CreateProject({
             </div>
             {error && <p className="form-error">{error}</p>}
             <div className="similar-project-actions">
-              <button type="button" className="secondary-button" onClick={() => setStep(1)} disabled={busy}><ArrowLeft size={15}/> Back</button>
+              <button type="button" className="secondary-button" onClick={() => setStep(2)} disabled={busy}><ArrowLeft size={15}/> Back</button>
               <button type="button" className="primary-button" onClick={continueWithProject} disabled={busy}>{busy ? "Publishing…" : "Continue with my project"}</button>
             </div>
           </div>
-        ) : (
+        ) : step === 1 ? (
           <div className="modal-content ai-result">
             <div className="ai-orbit">
               <N2Mark />
@@ -2060,17 +2068,17 @@ function CreateProject({
             </div>
             <h2 id="modal-title">{blueprint?.outcome}</h2>
             <p>
-              Review every role before it affects matching. n2 never sends
-              automatic invitations.
+              Shape the suggested steps into a practical roadmap for your
+              project. You can edit, reorder or add to it.
             </p>
             {blueprint?.usedFallback && (
               <div className="blueprint-fallback">
                 <ShieldCheck size={16} />
                 <span>
-                  <strong>Your editable team map is ready</strong>
+                  <strong>Your editable roadmap is ready</strong>
                   <small>
-                    Review the suggested roles and adjust them to fit the team
-                    you want to build.
+                    Adjust these suggested steps to fit the way you want to
+                    deliver the project.
                   </small>
                 </span>
               </div>
@@ -2224,6 +2232,37 @@ function CreateProject({
                 </article>
               ))}
             </section>
+            <div className="project-wizard-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setStep(0)}
+                disabled={busy}
+              >
+                <ArrowLeft size={15} /> Back
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => setStep(2)}
+                disabled={busy || roadmap.length === 0}
+              >
+                Continue to recruitment <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="modal-content ai-result project-recruitment-step">
+            <div className="ai-orbit">
+              <N2Mark />
+              <span>n2 team match</span>
+            </div>
+            <span className="eyebrow">SUGGESTED RECRUITMENT</span>
+            <h2 id="modal-title">Build the team your project needs</h2>
+            <p>
+              Review and edit each suggested role before it affects matching.
+              n2 never sends automatic invitations.
+            </p>
             <div className="blueprint-roles">
               {roles.map((role, index) => (
                 <article key={`${index}-${role.title}`}>
@@ -2320,19 +2359,30 @@ function CreateProject({
               <Plus size={16} /> Add another role
             </button>
             {error && <p className="form-error">{error}</p>}
-            <button
-              className="primary-button wide"
-              disabled={busy || roles.length === 0}
-              onClick={checkSimilarityAndPublish}
-            >
-              {busy ? (
-                "Publishing and matching…"
-              ) : (
-                <>
-                  Approve map & publish <ArrowUpRight size={17} />
-                </>
-              )}
-            </button>
+            <div className="project-wizard-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setStep(1)}
+                disabled={busy}
+              >
+                <ArrowLeft size={15} /> Back
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={busy || roles.length === 0}
+                onClick={checkSimilarityAndPublish}
+              >
+                {busy ? (
+                  "Publishing and matching…"
+                ) : (
+                  <>
+                    Review matches & publish <ArrowUpRight size={17} />
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
       </section>
