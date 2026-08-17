@@ -3257,6 +3257,15 @@ function FeedFilters({
   );
 }
 
+function NotificationUnreadIndicator({ unread }: { unread: number }) {
+  return (
+    <span className="notification-unread-indicator" aria-hidden="true">
+      <b className="notification-count">{unread > 9 ? "9+" : unread}</b>
+      <Bell className="notification-count-bell" size={18} />
+    </span>
+  );
+}
+
 function Feed({
   onCreate,
   onShareIdea,
@@ -3441,7 +3450,7 @@ function Feed({
             aria-label={authenticated && unread > 0 ? `Open notifications, ${unread} unread` : "Open notifications"}
           >
             {authenticated && unread > 0
-              ? <b className="notification-count" aria-hidden="true">{unread > 9 ? "9+" : unread}</b>
+              ? <NotificationUnreadIndicator unread={unread} />
               : <Bell size={20} />}
           </button>
           {!authenticated && (
@@ -10819,7 +10828,7 @@ export default function HomePage() {
             }
           >
             {unreadNotifications > 0
-              ? <b className="notification-count" aria-hidden="true">{unreadNotifications > 9 ? "9+" : unreadNotifications}</b>
+              ? <NotificationUnreadIndicator unread={unreadNotifications} />
               : <Bell size={20} />}
           </button>
         )}
@@ -10920,7 +10929,7 @@ export default function HomePage() {
               aria-label={authenticated && unreadNotifications > 0 ? `Open notifications, ${unreadNotifications} unread` : "Open notifications"}
             >
               {authenticated && unreadNotifications > 0
-                ? <b className="notification-count" aria-hidden="true">{unreadNotifications > 9 ? "9+" : unreadNotifications}</b>
+                ? <NotificationUnreadIndicator unread={unreadNotifications} />
                 : <Bell size={19} />}
             </button>
           </div>

@@ -156,8 +156,9 @@ test("ships durable notifications, search, projects and sharing", async () => {
   assert.match(projects, /scope === "mine"/);
   assert.match(eyes, /project_eye_added/);
   assert.match(page, /ShareSheet/);
-  assert.match(page, /className="notification-count"/);
-  assert.match(page, /unreadNotifications > 0\s*\? <b className="notification-count"[\s\S]*: <Bell/);
+  assert.match(page, /function NotificationUnreadIndicator/);
+  assert.match(page, /unreadNotifications > 0\s*\? <NotificationUnreadIndicator/);
+  assert.match(page, /className="notification-count-bell"/);
   assert.match(shareSheet, /WhatsApp/);
   assert.match(shareSheet, /LinkedIn/);
 });
