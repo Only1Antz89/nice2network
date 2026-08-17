@@ -121,6 +121,12 @@ test("notifications use a dedicated responsive page instead of a mobile floating
   assert.match(page, /label: "Notifications", icon: Bell/);
   assert.match(page, /<NotificationsPage onUnread=\{setUnreadNotifications\}/);
   for (const section of ["LATEST NOTIFICATION", "Reactions to projects", "Reactions to posts", "New followers", "Updates from people you follow"]) assert.match(notificationsPage, new RegExp(section));
+  assert.match(notificationsPage, /role="tablist" aria-label="Notification categories"/);
+  assert.match(notificationsPage, /role="tabpanel"/);
+  assert.match(notificationsPage, /<b>\{group\.items\.length\}<\/b>/);
+  assert.match(notificationsPage, /\{item\.actorName \?\? "nice 2 network"\}/);
+  assert.doesNotMatch(notificationsPage, /group\.items\.slice\(0, 8\)/);
+  assert.match(styles, /\.notification-tabs\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
   assert.match(notificationsPage, /followedUpdates/);
   assert.match(api, /entityType: notifications\.entityType/);
   assert.match(schema, /followedUpdates: boolean\("followed_updates"\)/);

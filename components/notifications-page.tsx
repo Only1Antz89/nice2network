@@ -30,6 +30,7 @@ function NotificationRow({ item, onRead }: { item: NotificationRecord; onRead: (
     <a className={`notifications-page-row ${item.readAt ? "" : "unread"}`} href={item.href ?? "#"} onClick={() => onRead(item)}>
       <Avatar person={{ name: item.actorName ?? "nice 2 network", role: "", img: item.actorImage }} size="sm" />
       <span>
+        <em>{item.actorName ?? "nice 2 network"}</em>
         <strong>{item.title}</strong>
         <p>{item.body}</p>
         <small>{new Date(item.createdAt).toLocaleString()}</small>
@@ -45,6 +46,7 @@ export default function NotificationsPage({ onUnread }: { onUnread: (count: numb
   const [loading, setLoading] = useState(true);
   const [preferences, setPreferences] = useState(defaultPreferences);
   const [savingPreference, setSavingPreference] = useState(false);
+  const [activeGroupId, setActiveGroupId] = useState("projects");
 
   useEffect(() => {
     fetch("/api/notifications", { cache: "no-store" })
@@ -125,6 +127,8 @@ export default function NotificationsPage({ onUnread }: { onUnread: (count: numb
   ], [items, preferences.followedUpdates]);
 
   const latest = items[0];
+  const activeGroup = groups.find((group) => group.id === activeGroupId) ?? groups[0];
+  const ActiveGroupIcon = activeGroup.icon;
   return (
     <div className="subpage notifications-page">
       <header className="notifications-page-head">
@@ -141,23 +145,39 @@ export default function NotificationsPage({ onUnread }: { onUnread: (count: numb
         {loading ? <p className="notifications-page-empty">Loading notifications…</p> : latest ? <NotificationRow item={latest} onRead={read} /> : <div className="notifications-page-empty"><Bell size={23} /><strong>You’re all caught up</strong><p>New activity will appear here.</p></div>}
       </section>
 
-      <div className="notifications-breakdown">
+      <div className="notification-tabs" role="tablist" aria-label="Notification categories">
         {groups.map((group) => {
-          const Icon = group.icon;
+          const selected = group.id === activeGroup.id;
           return (
-            <section key={group.id} className="notification-group">
-              <header>
-                <span><i><Icon size={17} /></i><span><strong>{group.title}</strong><small>{group.description}</small></span></span>
-                <div>
-                  <b>{group.items.length}</b>
-                  {group.preference && <button className={`toggle ${preferences.followedUpdates ? "on" : ""}`} aria-label={`${preferences.followedUpdates ? "Disable" : "Enable"} followed-member updates`} aria-pressed={preferences.followedUpdates} disabled={savingPreference} onClick={toggleFollowedUpdates}><i /></button>}
-                </div>
-              </header>
-              {group.items.length ? <div>{group.items.slice(0, 8).map((item) => <NotificationRow key={item.id} item={item} onRead={read} />)}</div> : <p className="notification-group-empty">Nothing here yet.</p>}
-            </section>
+            <button
+              key={group.id}
+              type="button"
+              role="tab"
+              id={`notification-tab-${group.id}`}
+              aria-selected={selected}
+              aria-controls={`notification-panel-${group.id}`}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => setActiveGroupId(group.id)}
+            >
+              <span>{group.title}</span>
+              <b>{group.items.length}</b>
+            </button>
           );
         })}
       </div>
+
+      <section
+        className="notification-group notification-tab-panel"
+        role="tabpanel"
+        id={`notification-panel-${activeGroup.id}`}
+        aria-labelledby={`notification-tab-${activeGroup.id}`}
+      >
+        <header>
+          <span><i><ActiveGroupIcon size={17} /></i><span><strong>{activeGroup.title}</strong><small>{activeGroup.description}</small></span></span>
+          {activeGroup.preference && <button className={`toggle ${preferences.followedUpdates ? "on" : ""}`} aria-label={`${preferences.followedUpdates ? "Disable" : "Enable"} followed-member updates`} aria-pressed={preferences.followedUpdates} disabled={savingPreference} onClick={toggleFollowedUpdates}><i /></button>}
+        </header>
+        {activeGroup.items.length ? <div>{activeGroup.items.map((item) => <NotificationRow key={item.id} item={item} onRead={read} />)}</div> : <p className="notification-group-empty">Nothing here yet.</p>}
+      </section>
     </div>
   );
 }
