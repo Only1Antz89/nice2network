@@ -349,7 +349,7 @@ test("bounds, explains and safely introduces through the scalable network map", 
     read("db/schema.ts"), read("app/api/network/graph/route.ts"), read("app/api/network/introductions/route.ts"), read("app/api/network/introductions/[id]/route.ts"), read("app/api/network/hides/route.ts"), read("app/api/network/explain/route.ts"), read("app/page.tsx"), read("app/network.css"), read("app/onboarding/page.tsx"), read("drizzle/0023_common_jetstream.sql"),
   ]);
   for (const table of ["networkMapHides", "introductionRequests"]) assert.match(schema, new RegExp(`export const ${table} = pgTable`));
-  assert.match(graph, /MAX_PEOPLE = 52/); assert.match(graph, /MAX_EDGES = 240/); assert.match(graph, /PAGE_SIZE = 25/); assert.match(graph, /kind: "cluster"/); assert.match(graph, /relevance desc/);
+  assert.match(graph, /MAX_PEOPLE = 52/); assert.match(graph, /MAX_EDGES = 240/); assert.match(graph, /PAGE_SIZE = 5/); assert.match(graph, /kind: "cluster"/); assert.match(graph, /relevance desc/);
   assert.match(graph, /MAX_CONTEXT_PEOPLE = 5/); assert.match(graph, /connected_to_focus/); assert.match(graph, /focus_mutual/); assert.match(graph, /edges\.push\(\.\.\.people\.filter/);
   assert.doesNotMatch(graph, /and not exists\(select 1 from follows mine where \(mine\.follower_id/);
   assert.doesNotMatch(graph, /popularity|order by\s+followers_count/i);
@@ -361,12 +361,12 @@ test("bounds, explains and safely introduces through the scalable network map", 
   assert.match(page, /network-display-menu/); assert.match(page, /Show following/); assert.match(page, /Show followers/);
   assert.match(page, /search-closed/); assert.match(page, /aria-pressed/); assert.match(page, /layoutFocusedNetwork/); assert.match(page, /reservedRects/);
   assert.match(page, /network-node-orbits/);
-  assert.doesNotMatch(page, /Hide from map/); assert.match(page, /network-connection-scroll/);
+  assert.doesNotMatch(page, /Hide from map/); assert.match(page, /network-connection-page/); assert.match(page, /connectionPageLoading/);
   assert.match(page, /ResizeObserver/); assert.match(page, /requestAnimationFrame/); assert.match(styles, /density-extreme/);
   assert.match(styles, /network-map-toolbar\.search-closed/); assert.match(styles, /network-menu-deploy/);
   assert.match(styles, /network-back-float[^}]*var\(--surface\)[^}]*color:var\(--ink\)/);
   assert.match(styles, /network-focus-label[^}]*var\(--surface\)[^}]*color:var\(--ink\)/);
-  assert.match(styles, /network-brief\.connections-open/); assert.match(styles, /network-connection-scroll[^}]*overflow-y:auto/);
+  assert.match(styles, /network-brief\.connections-open/); assert.match(styles, /network-connection-page[^}]*overflow:hidden/);
   assert.match(styles, /semantic-far/); assert.match(styles, /touch-action:none/); assert.match(styles, /safe-area-inset-bottom/);
   assert.match(onboarding, /NETWORK VISIBILITY/); assert.match(onboarding, /allowIntroductions:true/);
 });

@@ -5670,7 +5670,7 @@ type NetworkGraphRecord = {
   nodes: NetworkGraphNode[];
   edges: NetworkEdgeRecord[];
   totals?: { visible: number; rendered: number; aggregated: number; hidden: number };
-  list?: { items: NetworkNodeRecord[]; cursor: string | null; nextCursor: string | null; total: number };
+  list?: { items: NetworkNodeRecord[]; cursor: string | null; nextCursor: string | null; total: number; page: number; pageCount: number; from: number; to: number };
   viewport?: { minScale: number; maxScale: number; suggestedScale: number };
   preferences?: { showNetworkKey: boolean };
   focus?: {
@@ -5722,6 +5722,7 @@ function NetworkView({
     [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null),
     [sheetLevel, setSheetLevel] = useState<"collapsed" | "mid" | "full">("mid"),
     [detailTab, setDetailTab] = useState<"profile" | "connections">("profile"),
+    [connectionPageLoading, setConnectionPageLoading] = useState(false),
     [whyReasons, setWhyReasons] = useState<string[]>([]),
     [introTarget, setIntroTarget] = useState<NetworkNodeRecord | null>(null),
     [incomingIntroduction, setIncomingIntroduction] = useState<IncomingIntroduction | null>(null),
@@ -6036,13 +6037,19 @@ function NetworkView({
     if (result.conversationId) window.location.assign("/?view=messages");
   }
   async function loadConnectionPage(cursor: string | null) {
+    if (connectionPageLoading) return;
     const params = new URLSearchParams({ mode: data.focus ? "focus" : "overview" });
     if (data.focus?.id) params.set("focus", data.focus.id);
     if (cursor) params.set("cursor", cursor);
     if (skill.trim()) params.set("query", skill.trim());
     if (profession !== "All professions") params.set("cluster", profession);
-    const response = await fetch(`/api/network/graph?${params}`, { cache: "no-store" });
-    if (response.ok) setData(await response.json());
+    setConnectionPageLoading(true);
+    try {
+      const response = await fetch(`/api/network/graph?${params}`, { cache: "no-store" });
+      if (response.ok) setData(await response.json());
+    } finally {
+      setConnectionPageLoading(false);
+    }
   }
   return (
     <div className="subpage network-page">
@@ -6323,12 +6330,12 @@ function NetworkView({
                   <button className="secondary-button" onClick={() => setIntroTarget(selected)}><UserPlus size={14} /> Ask for an introduction</button>
                 </div>}
                 <button className="primary-button wide" onClick={() => { fetch("/api/network/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: "profile_opened", targetId: selected.id }), keepalive: true }).catch(() => undefined); onProfile(selected.id); }}>View full profile <ArrowUpRight size={15} /></button>
-              </> : <div className="network-connection-list" role="tabpanel">
-                <div className="network-connection-scroll">
+              </> : <div className={`network-connection-list${connectionPageLoading ? " is-loading" : ""}`} role="tabpanel" aria-busy={connectionPageLoading}>
+                <div className="network-connection-page">
                   {(data.list?.items ?? []).map((item) => <button key={item.id} onClick={() => setSelected(item)}><Avatar person={{ name: item.name ?? "n2 member", role: item.profession ?? "Member", img: item.image }} size="sm" /><span><strong>{item.name}</strong><small>{item.reasons[0]}</small></span><ArrowUpRight size={14} /></button>)}
                   {!data.list?.items.length && <p>No visible connections in this view.</p>}
                 </div>
-                <footer><button disabled={!data.list?.cursor} onClick={() => loadConnectionPage(data.list?.cursor ?? null)}><ChevronLeft size={14} /> Previous</button><small>{data.list?.total ?? 0} visible</small><button disabled={!data.list?.nextCursor} onClick={() => loadConnectionPage(data.list?.nextCursor ?? null)}>Next <ChevronRight size={14} /></button></footer>
+                <footer><button disabled={connectionPageLoading || !data.list?.cursor} onClick={() => loadConnectionPage(data.list?.cursor ?? null)}><ChevronLeft size={14} /> Previous</button><small aria-live="polite">{connectionPageLoading ? "Loading…" : `${data.list?.from ?? 0}–${data.list?.to ?? 0} of ${data.list?.total ?? 0}`}</small><button disabled={connectionPageLoading || !data.list?.nextCursor} onClick={() => loadConnectionPage(data.list?.nextCursor ?? null)}>Next <ChevronRight size={14} /></button></footer>
               </div>}
             </aside>
           )}

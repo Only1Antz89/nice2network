@@ -8,7 +8,7 @@ const MAX_PEOPLE = 52;
 const MAX_CONTEXT_PEOPLE = 5;
 const MAX_CLUSTERS = 8;
 const MAX_EDGES = 240;
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 5;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const categories = ["Finance", "Technology", "Design & creative", "Education", "Operations & community", "Other"] as const;
 type Category = (typeof categories)[number];
@@ -280,6 +280,7 @@ export async function GET(request: Request) {
     if (cluster) await trackProductEvent({ actorId: member.id, event: "network_cluster_opened", entityType: "network", properties: { result: cluster } });
 
     const [hiddenCountRow] = (await db.execute(sql`select count(*)::int as count from network_map_hides where viewer_id=${member.id}`)) as unknown as Array<{ count: number }>;
+    const listTotal = mode === "focus" ? focusTotal : total;
     return NextResponse.json({
       mode,
       current,
@@ -289,8 +290,12 @@ export async function GET(request: Request) {
       list: {
         items: listRows.map((row) => personNode(row, Boolean(focus?.allow_introductions))),
         cursor: offset ? encodeCursor(Math.max(0, offset - PAGE_SIZE)) : null,
-        nextCursor: offset + listRows.length < (mode === "focus" ? focusTotal : total) ? encodeCursor(offset + PAGE_SIZE) : null,
-        total: mode === "focus" ? focusTotal : total,
+        nextCursor: offset + listRows.length < listTotal ? encodeCursor(offset + PAGE_SIZE) : null,
+        total: listTotal,
+        page: Math.floor(offset / PAGE_SIZE) + 1,
+        pageCount: Math.max(1, Math.ceil(listTotal / PAGE_SIZE)),
+        from: listRows.length ? offset + 1 : 0,
+        to: offset + listRows.length,
       },
       preferences: { showNetworkKey: viewerPreferences?.show_network_key ?? true },
       focus: focusId ? { id: focusId, expanded: focusAllowed, visibleCount: focusTotal, followingCount: Number(graphRows[0]?.focus_following_count ?? 0), followerCount: Number(graphRows[0]?.focus_follower_count ?? 0), reason: !focus ? "not-following" : focusAllowed ? null : "private" } : null,
