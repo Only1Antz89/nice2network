@@ -6,20 +6,23 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { privacySettings, projectRoles, projects, users, verificationTokens } from "@/db/schema";
 import { trackProductEvent } from "@/lib/analytics";
+import { ONBOARDING_BIO_MIN_LENGTH, hasUniqueValues, isMeaningfulOnboardingBio, isMeaningfulOnboardingValue } from "@/lib/onboarding-profile";
 import { recommendPeople } from "@/lib/people-recommendations";
 
 const schema = z.object({
-  profession: z.string().trim().min(2, "Profession must be at least 2 characters.").max(100, "Profession must be 100 characters or fewer."),
-  industry: z.string().trim().min(2, "Industry must be at least 2 characters.").max(100, "Industry must be 100 characters or fewer."),
-  bio: z.string().trim().min(10, "Short bio must be at least 10 characters.").max(600, "Short bio must be 600 characters or fewer."),
-  primarySkill: z.string().trim().min(1, "Enter your primary skill.").max(80, "Primary skill must be 80 characters or fewer."),
-  secondarySkill: z.string().trim().min(1, "Enter your secondary skill.").max(80, "Secondary skill must be 80 characters or fewer."),
-  tertiarySkill: z.string().trim().min(1, "Enter your tertiary skill.").max(80, "Tertiary skill must be 80 characters or fewer."),
-  interests: z.array(z.string().trim().min(1).max(50, "Each interest must be 50 characters or fewer.")).min(1, "Enter at least one interest.").max(20, "Add no more than 20 interests."),
+  profession: z.string().trim().min(2, "Choose a suggestion or enter a specific profession.").max(100, "Profession must be 100 characters or fewer.").refine(isMeaningfulOnboardingValue, "Choose a suggestion or enter a specific profession."),
+  industry: z.string().trim().min(2, "Choose a suggestion or enter a specific industry.").max(100, "Industry must be 100 characters or fewer.").refine(isMeaningfulOnboardingValue, "Choose a suggestion or enter a specific industry."),
+  bio: z.string().trim().min(ONBOARDING_BIO_MIN_LENGTH, `Short bio must be at least ${ONBOARDING_BIO_MIN_LENGTH} characters.`).max(600, "Short bio must be 600 characters or fewer.").refine(isMeaningfulOnboardingBio, "Write at least 6 words about your experience and what you want to contribute."),
+  primarySkill: z.string().trim().min(2, "Choose a suggestion or enter a specific primary skill.").max(80, "Primary skill must be 80 characters or fewer.").refine(isMeaningfulOnboardingValue, "Choose a suggestion or enter a specific primary skill."),
+  secondarySkill: z.string().trim().min(2, "Choose a suggestion or enter a specific secondary skill.").max(80, "Secondary skill must be 80 characters or fewer.").refine(isMeaningfulOnboardingValue, "Choose a suggestion or enter a specific secondary skill."),
+  tertiarySkill: z.string().trim().min(2, "Choose a suggestion or enter a specific tertiary skill.").max(80, "Tertiary skill must be 80 characters or fewer.").refine(isMeaningfulOnboardingValue, "Choose a suggestion or enter a specific tertiary skill."),
+  interests: z.array(z.string().trim().min(2, "Each interest should be a meaningful topic.").max(50, "Each interest must be 50 characters or fewer.").refine(isMeaningfulOnboardingValue, "Each interest should be a meaningful topic.")).min(2, "Choose or enter at least two interests.").max(20, "Add no more than 20 interests.").refine(hasUniqueValues, "Remove duplicate interests."),
   location: z.string().trim().min(2, "Location must be at least 2 characters.").max(100, "Location must be 100 characters or fewer."),
   workMode: z.enum(["remote", "hybrid", "in_person"]),
   shareNetworkConnections: z.boolean().default(true),
   allowIntroductions: z.boolean().default(true),
+}).superRefine((input,context)=>{
+  if(!hasUniqueValues([input.primarySkill,input.secondarySkill,input.tertiarySkill]))context.addIssue({code:"custom",path:["secondarySkill"],message:"Choose three different skills so your profile has a clear range."});
 });
 
 export async function POST(request: Request) {

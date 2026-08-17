@@ -283,6 +283,34 @@ html[data-colour-theme="dark"] {
   color: var(--ink) !important;
   border-color: var(--line) !important;
 }
+.onboarding-suggestions > div {
+  gap: 7px;
+}
+.onboarding-suggestions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--control);
+  color: var(--ink);
+  padding: 6px 10px;
+  font-size: 9px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.onboarding-suggestions button:hover,
+.onboarding-suggestions button:focus-visible {
+  background: var(--control-hover);
+  border-color: var(--ink);
+}
+.onboarding-suggestions button.active {
+  background: var(--solid);
+  color: var(--solid-ink);
+  border-color: var(--solid);
+}
 
 .modal-content textarea,
 .auth-card select,
