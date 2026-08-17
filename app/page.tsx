@@ -48,6 +48,7 @@ import {
   Underline,
   Video,
   Archive,
+  Accessibility,
   X,
 } from "lucide-react";
 import { FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -61,6 +62,8 @@ import NotificationPanel, {
 import SearchOverlay from "@/components/search-overlay";
 import ShareSheet from "@/components/share-sheet";
 import N2OrbitMark from "@/components/n2-orbit-mark";
+import ActionDialog from "@/components/action-dialog";
+import PeopleDiscoveryPanel from "@/components/people-discovery-panel";
 import {
   Avatar,
   DemoBadge,
@@ -71,6 +74,15 @@ import {
   type MemberPerson,
 } from "@/components/network-brand";
 import { sanitizeRichText } from "@/lib/rich-text";
+import {
+  ACCESSIBILITY_STORAGE_KEY,
+  ACCESSIBILITY_EVENT,
+  DEFAULT_ACCESSIBILITY_PREFERENCES,
+  applyAccessibilityPreferences,
+  normaliseAccessibilityPreferences,
+  storeAndApplyAccessibilityPreferences,
+  type AccessibilityPreferences,
+} from "@/lib/accessibility-preferences";
 
 type View =
   | "feed"
@@ -2270,6 +2282,7 @@ function TimelinePostCard({
   const [menuOpen, setMenuOpen] = useState(false),
     [editOpen, setEditOpen] = useState(false),
     [deleteOpen, setDeleteOpen] = useState(false),
+    [reportOpen, setReportOpen] = useState(false),
     menuRef = useRef<HTMLDivElement>(null),
     owner = post.authorId === currentMember.id;
   useEffect(() => {
@@ -2354,31 +2367,15 @@ function TimelinePostCard({
     } else onToast(result.error ?? "Could not delete this post.");
     setDeleteOpen(false);
   }
-  async function report() {
-    const reason = window.prompt(
-      "Why are you reporting this post? Enter spam, harassment, fraud, misinformation, privacy, or other.",
-      "spam",
-    );
-    if (!reason) return;
-    const allowed = [
-        "spam",
-        "harassment",
-        "fraud",
-        "misinformation",
-        "privacy",
-        "other",
-      ],
-      selected = allowed.includes(reason.toLowerCase())
-        ? reason.toLowerCase()
-        : "other";
+  async function report({ reason, details }: Record<string, string>) {
     const response = await fetch("/api/moderation/reports", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         targetType: "post",
         targetId: post.id,
-        reason: selected,
-        details: selected === "other" ? reason : undefined,
+        reason,
+        details: details || undefined,
       }),
     });
     onToast(
@@ -2386,7 +2383,7 @@ function TimelinePostCard({
         ? "Post reported to the n2 team."
         : "Could not submit the report.",
     );
-    setMenuOpen(false);
+    return response.ok;
   }
   async function react(action: "like" | "repost") {
     if (!canEngage) {
@@ -2509,7 +2506,7 @@ function TimelinePostCard({
               ) : (
                 <>
                   <hr />
-                  <button onClick={report}>
+                  <button onClick={() => { setMenuOpen(false); setReportOpen(true); }}>
                     <ShieldCheck size={15} />
                     Report post
                   </button>
@@ -2620,6 +2617,27 @@ function TimelinePostCard({
           </footer>
         </section>
       </div>
+    )}
+    {reportOpen && (
+      <ActionDialog
+        eyebrow="REPORT POST"
+        title="Tell the n2 team what happened."
+        description="Reports are reviewed privately. Choose the closest reason and add useful context if needed."
+        confirmLabel="Submit report"
+        fields={[
+          { name: "reason", label: "Reason", kind: "select", defaultValue: "spam", required: true, options: [
+            { value: "spam", label: "Spam" },
+            { value: "harassment", label: "Harassment" },
+            { value: "fraud", label: "Fraud" },
+            { value: "misinformation", label: "Misinformation" },
+            { value: "privacy", label: "Privacy" },
+            { value: "other", label: "Other" },
+          ] },
+          { name: "details", label: "Details (optional)", placeholder: "Describe what the review team should know", maxLength: 2000 },
+        ]}
+        onClose={() => setReportOpen(false)}
+        onConfirm={report}
+      />
     )}
     </>
   );
@@ -3978,7 +3996,9 @@ function UpdatesPanel({
       type: "image" | "video" | "file";
       url: string;
       name: string;
-    } | null>(null);
+    } | null>(null),
+    [editTarget, setEditTarget] = useState<ProjectDetailRecord["updates"][number] | null>(null),
+    [deleteTarget, setDeleteTarget] = useState<ProjectDetailRecord["updates"][number] | null>(null);
   async function refresh() {
     const response = await fetch(`/api/projects/${project.id}`),
       data = await response.json();
@@ -4025,36 +4045,37 @@ function UpdatesPanel({
     onToast("Project update published.");
     await refresh();
   }
-  async function edit(update: ProjectDetailRecord["updates"][number]) {
-    const body = window.prompt("Edit project update", update.body);
-    if (!body) return;
-    const response = await fetch(`/api/project-updates/${update.id}`, {
+  async function saveEdit({ body }: Record<string, string>) {
+    if (!editTarget) return false;
+    const response = await fetch(`/api/project-updates/${editTarget.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           body,
-          type: update.type,
-          milestoneId: update.milestoneId,
+          type: editTarget.type,
+          milestoneId: editTarget.milestoneId,
         }),
       }),
       data = await response.json();
     if (!response.ok) {
       onToast(data.error ?? "Could not edit this update.");
-      return;
+      return false;
     }
     await refresh();
+    return true;
   }
-  async function remove(update: ProjectDetailRecord["updates"][number]) {
-    if (!window.confirm("Remove this project update?")) return;
-    const response = await fetch(`/api/project-updates/${update.id}`, {
+  async function remove() {
+    if (!deleteTarget) return false;
+    const response = await fetch(`/api/project-updates/${deleteTarget.id}`, {
         method: "DELETE",
       }),
       data = await response.json();
     if (!response.ok) {
       onToast(data.error ?? "Could not remove this update.");
-      return;
+      return false;
     }
     await refresh();
+    return true;
   }
   return (
     <section className="project-updates-panel">
@@ -4167,8 +4188,8 @@ function UpdatesPanel({
               {(update.authorId === project.currentUserId ||
                 project.isOwner) && (
                 <footer>
-                  <button onClick={() => edit(update)}>Edit</button>
-                  <button onClick={() => remove(update)}>Delete</button>
+                  <button onClick={() => setEditTarget(update)}>Edit</button>
+                  <button onClick={() => setDeleteTarget(update)}>Delete</button>
                 </footer>
               )}
             </div>
@@ -4178,6 +4199,12 @@ function UpdatesPanel({
           <p className="profile-empty">No project updates yet.</p>
         )}
       </div>
+      {editTarget && (
+        <ActionDialog eyebrow="EDIT UPDATE" title="Refine this project update." confirmLabel="Save changes" fields={[{ name: "body", label: "Update", defaultValue: editTarget.body, required: true, maxLength: 3000 }]} onClose={() => setEditTarget(null)} onConfirm={saveEdit} />
+      )}
+      {deleteTarget && (
+        <ActionDialog eyebrow="DELETE UPDATE" title="Remove this project update?" description="It will no longer appear in the project history." confirmLabel="Delete update" cancelLabel="Keep update" danger onClose={() => setDeleteTarget(null)} onConfirm={remove} />
+      )}
     </section>
   );
 }
@@ -5943,7 +5970,9 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
     [showArchived, setShowArchived] = useState(false),
     [conversationError, setConversationError] = useState(""),
     [isSending, setIsSending] = useState(false),
-    [sendError, setSendError] = useState("");
+    [sendError, setSendError] = useState(""),
+    [editMessageTarget, setEditMessageTarget] = useState<ChatMessage | null>(null),
+    [deleteMessageTarget, setDeleteMessageTarget] = useState<ChatMessage | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const selectedConversationId = selected?.id;
   const latestMessageId = messagesList.at(-1)?.id;
@@ -6145,10 +6174,9 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
       });
     reader.readAsDataURL(file);
   }
-  async function editMessage(message: ChatMessage) {
-    const body = window.prompt("Edit message", message.body);
-    if (!body) return;
-    const response = await fetch(`/api/messages/${message.id}`, {
+  async function saveMessage({ body }: Record<string, string>) {
+    if (!editMessageTarget) return false;
+    const response = await fetch(`/api/messages/${editMessageTarget.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ body }),
@@ -6156,21 +6184,22 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
     if (response.ok)
       setMessagesList((rows) =>
         rows.map((row) =>
-          row.id === message.id
+          row.id === editMessageTarget.id
             ? { ...row, body, editedAt: new Date().toISOString() }
             : row,
         ),
       );
+    return response.ok;
   }
-  async function deleteMessage(message: ChatMessage) {
-    if (!window.confirm("Delete this message?")) return;
-    const response = await fetch(`/api/messages/${message.id}`, {
+  async function deleteMessage() {
+    if (!deleteMessageTarget) return false;
+    const response = await fetch(`/api/messages/${deleteMessageTarget.id}`, {
       method: "DELETE",
     });
     if (response.ok)
       setMessagesList((rows) =>
         rows.map((row) =>
-          row.id === message.id
+          row.id === deleteMessageTarget.id
             ? {
                 ...row,
                 body: "Message deleted",
@@ -6180,6 +6209,7 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
             : row,
         ),
       );
+    return response.ok;
   }
   if (selected) {
     const status = typingNames.length
@@ -6188,6 +6218,7 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
         ? `${selected.members.length} members`
         : "Direct conversation";
     return (
+      <>
       <div className="subpage messages-page conversation-page">
         <div className="conversation-head">
           <button
@@ -6268,8 +6299,8 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
               {message.senderId === currentMember.id &&
                 message.status !== "deleted" && (
                   <div className="message-actions">
-                    <button onClick={() => editMessage(message)}>Edit</button>
-                    <button onClick={() => deleteMessage(message)}>
+                    <button onClick={() => setEditMessageTarget(message)}>Edit</button>
+                    <button onClick={() => setDeleteMessageTarget(message)}>
                       Delete
                     </button>
                   </div>
@@ -6365,6 +6396,13 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
           </form>
         </div>
       </div>
+      {editMessageTarget && (
+        <ActionDialog eyebrow="EDIT MESSAGE" title="Edit your message." confirmLabel="Save message" fields={[{ name: "body", label: "Message", defaultValue: editMessageTarget.body, required: true, maxLength: 5000 }]} onClose={() => setEditMessageTarget(null)} onConfirm={saveMessage} />
+      )}
+      {deleteMessageTarget && (
+        <ActionDialog eyebrow="DELETE MESSAGE" title="Delete this message?" description="Other people in the conversation will see that the message was deleted." confirmLabel="Delete message" cancelLabel="Keep message" danger onClose={() => setDeleteMessageTarget(null)} onConfirm={deleteMessage} />
+      )}
+      </>
     );
   }
   const filtered = conversationsList.filter(
@@ -7379,7 +7417,8 @@ function ProfileView({
         details: Record<string, unknown>;
       }>
     >([]),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [unfollowOpen, setUnfollowOpen] = useState(false);
   useEffect(() => {
     if (!userId) return;
     fetch(`/api/profiles/${userId}`, { cache: "no-store" })
@@ -7405,11 +7444,11 @@ function ProfileView({
   }, [section, userId, profile?.isCurrent]);
   async function connect() {
     if (!profile || profile.isCurrent || busy) return;
-    if (
-      profile.isFollowing &&
-      !window.confirm(`Stop following ${profile.name ?? "this member"}?`)
-    )
-      return;
+    if (profile.isFollowing) { setUnfollowOpen(true); return; }
+    await updateFollow();
+  }
+  async function updateFollow() {
+    if (!profile || profile.isCurrent || busy) return false;
     setBusy(true);
     const response = await fetch(`/api/users/${profile.id}/follow`, {
         method: profile.isFollowing ? "DELETE" : "POST",
@@ -7432,6 +7471,7 @@ function ProfileView({
       );
     }
     setBusy(false);
+    return response.ok;
   }
   const person: MemberPerson = profile
       ? {
@@ -7447,6 +7487,9 @@ function ProfileView({
     skills = profile?.rankedSkills?.slice(0, 3) ?? [];
   return (
     <div className="subpage profile-page">
+      {unfollowOpen && (
+        <ActionDialog eyebrow="UNFOLLOW MEMBER" title={`Stop following ${profile?.name ?? "this member"}?`} description="Their updates will no longer be prioritised in your network feed. You can follow them again later." confirmLabel="Stop following" cancelLabel="Keep following" danger onClose={() => setUnfollowOpen(false)} onConfirm={updateFollow} />
+      )}
       <div
         className="profile-cover"
         style={
@@ -8338,7 +8381,7 @@ function SettingsView({
   const [recommendations, setRecommendations] = useState(true);
   const [availability, setAvailability] = useState(true);
   const [panel, setPanel] = useState<
-    "root" | "profile" | "notifications" | "calendar" | "privacy" | "security"
+    "root" | "profile" | "notifications" | "calendar" | "privacy" | "accessibility" | "security"
   >(initialPanel);
   const [saved, setSaved] = useState(false);
   const [saveStatus, setSaveStatus] = useState({ busy: false, error: "" });
@@ -8406,6 +8449,9 @@ function SettingsView({
     muteFollowNotifications: false,
     messages: "Connections and project members",
   });
+  const [accessibility, setAccessibility] = useState<AccessibilityPreferences>(
+    DEFAULT_ACCESSIBILITY_PREFERENCES,
+  );
   async function uploadProfileMedia(type: "avatar" | "banner", file?: File) {
     if (!file || !profileUserId) return;
     if (file.size > (type === "avatar" ? 650_000 : 1_100_000)) {
@@ -8441,6 +8487,12 @@ function SettingsView({
         } catch {
           /* Keep safe defaults when local settings are invalid. */
         }
+      try {
+        const storedAccessibility = JSON.parse(localStorage.getItem(ACCESSIBILITY_STORAGE_KEY) ?? "null");
+        setAccessibility(normaliseAccessibilityPreferences(storedAccessibility));
+      } catch {
+        setAccessibility(DEFAULT_ACCESSIBILITY_PREFERENCES);
+      }
       fetch("/api/auth/session")
         .then((r) => r.json())
         .then(async (session) => {
@@ -8506,9 +8558,19 @@ function SettingsView({
             });
         })
         .catch(() => undefined);
+      fetch("/api/accessibility")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data) setAccessibility(normaliseAccessibilityPreferences(data));
+        })
+        .catch(() => undefined);
     });
     return () => cancelAnimationFrame(frame);
   }, []);
+  useEffect(() => {
+    applyAccessibilityPreferences(accessibility);
+    window.dispatchEvent(new CustomEvent(ACCESSIBILITY_EVENT, { detail: accessibility }));
+  }, [accessibility]);
   async function saveSettings() {
     if (saveStatus.busy) return;
     setSaved(false);
@@ -8613,6 +8675,15 @@ function SettingsView({
         });
         if (!response.ok) throw new Error("We couldn't save your notification settings.");
       }
+      if (panel === "accessibility") {
+        const response = await fetch("/api/accessibility", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(accessibility),
+        });
+        if (!response.ok) throw new Error("We couldn't save your accessibility settings.");
+        storeAndApplyAccessibilityPreferences(accessibility);
+      }
       localStorage.setItem(
         "n2-settings",
         JSON.stringify({ calendarPrefs, privacy, recommendations, availability }),
@@ -8687,6 +8758,10 @@ function SettingsView({
       privacy: [
         "Privacy and visibility",
         "Decide who can find, contact and understand you.",
+      ],
+      accessibility: [
+        "Accessibility",
+        "Adjust the platform to make it comfortable and clear for you.",
       ],
       security: [
         "Security and password",
@@ -9388,6 +9463,98 @@ function SettingsView({
             </div>
           </div>
         )}
+        {panel === "accessibility" && (
+          <div className="settings-form accessibility-settings">
+            <div className="settings-section-title">
+              <strong>Vision and reading</strong>
+              <small>Make text, colour and controls easier to see and read.</small>
+            </div>
+            <label className="select-setting">
+              <span>
+                <strong>Colour theme</strong>
+                <small>Follow your device, or keep the platform light or dark.</small>
+              </span>
+              <select aria-label="Colour theme" value={accessibility.colourTheme} onChange={(e) => setAccessibility({ ...accessibility, colourTheme: e.target.value as AccessibilityPreferences["colourTheme"] })}>
+                <option value="system">Use device setting</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <label className="select-setting">
+              <span>
+                <strong>Text size</strong>
+                <small>Increase interface text without relying on browser zoom.</small>
+              </span>
+              <select aria-label="Text size" value={accessibility.textSize} onChange={(e) => setAccessibility({ ...accessibility, textSize: e.target.value as AccessibilityPreferences["textSize"] })}>
+                <option value="default">Default (100%)</option>
+                <option value="large">Large (112%)</option>
+                <option value="extra-large">Extra large (125%)</option>
+              </select>
+            </label>
+            <label className="select-setting">
+              <span>
+                <strong>Contrast</strong>
+                <small>Strengthen text, borders and interactive controls.</small>
+              </span>
+              <select aria-label="Contrast" value={accessibility.contrast} onChange={(e) => setAccessibility({ ...accessibility, contrast: e.target.value as AccessibilityPreferences["contrast"] })}>
+                <option value="standard">Standard</option>
+                <option value="high">High contrast</option>
+              </select>
+            </label>
+            {[
+              ["Readable font", "Use a simple, widely spaced font for longer reading.", "readableFont"],
+              ["Underline links", "Show links with an underline instead of colour alone.", "underlineLinks"],
+            ].map(([title, copy, key]) => (
+              <div className="preference-row" key={key}>
+                <span><strong>{title}</strong><small>{copy}</small></span>
+                {toggle(accessibility[key as keyof AccessibilityPreferences] === true, () => setAccessibility({ ...accessibility, [key]: !accessibility[key as keyof AccessibilityPreferences] }), `Toggle ${title}`)}
+              </div>
+            ))}
+
+            <div className="settings-section-title accessibility-section-break">
+              <strong>Movement and interaction</strong>
+              <small>Reduce distraction and make keyboard or pointer use clearer.</small>
+            </div>
+            <label className="select-setting">
+              <span>
+                <strong>Animation and motion</strong>
+                <small>Reduced motion removes transitions, pulses and smooth scrolling.</small>
+              </span>
+              <select aria-label="Animation and motion" value={accessibility.motion} onChange={(e) => setAccessibility({ ...accessibility, motion: e.target.value as AccessibilityPreferences["motion"] })}>
+                <option value="system">Use device setting</option>
+                <option value="reduced">Reduce motion</option>
+              </select>
+            </label>
+            {[
+              ["Enhanced keyboard focus", "Add a strong outline to the control you are using.", "enhancedFocus"],
+              ["Large pointer", "Use a larger pointer on supported desktop browsers.", "largePointer"],
+            ].map(([title, copy, key]) => (
+              <div className="preference-row" key={key}>
+                <span><strong>{title}</strong><small>{copy}</small></span>
+                {toggle(accessibility[key as keyof AccessibilityPreferences] === true, () => setAccessibility({ ...accessibility, [key]: !accessibility[key as keyof AccessibilityPreferences] }), `Toggle ${title}`)}
+              </div>
+            ))}
+
+            <div className="settings-section-title accessibility-section-break">
+              <strong>Audio and video</strong>
+              <small>Control how media behaves across posts and meetings.</small>
+            </div>
+            {[
+              ["Prefer captions", "Show captions by default whenever a video provides them.", "captions"],
+              ["Prevent media autoplay", "Require a deliberate action before audio or video starts.", "preventAutoplay"],
+            ].map(([title, copy, key]) => (
+              <div className="preference-row" key={key}>
+                <span><strong>{title}</strong><small>{copy}</small></span>
+                {toggle(accessibility[key as keyof AccessibilityPreferences] === true, () => setAccessibility({ ...accessibility, [key]: !accessibility[key as keyof AccessibilityPreferences] }), `Toggle ${title}`)}
+              </div>
+            ))}
+            <div className="accessibility-note" role="note">
+              <Accessibility size={18}/>
+              <span><strong>Assistive technology is always supported</strong><small>Semantic labels, keyboard navigation and screen-reader announcements stay enabled regardless of these choices.</small></span>
+            </div>
+            <button className="accessibility-reset" onClick={() => setAccessibility(DEFAULT_ACCESSIBILITY_PREFERENCES)}>Reset to recommended defaults</button>
+          </div>
+        )}
         {panel === "security" && (
           <div className="settings-form password-settings">
             <div className="settings-section-title">
@@ -9508,6 +9675,7 @@ function SettingsView({
           ["notifications", "Messages and notifications"],
           ["calendar", "Calendar connections"],
           ["privacy", "Privacy and visibility"],
+          ["accessibility", "Accessibility"],
           ["security", "Security and password"],
         ].map(([id, label], i) => (
           <button key={id} onClick={() => setPanel(id as typeof panel)}>
@@ -9528,187 +9696,6 @@ function SettingsView({
           </small>
         </span>
       </div>
-    </div>
-  );
-}
-
-function PeopleDiscoveryPanel({
-  onClose,
-  onProfile,
-  onToast,
-}: {
-  onClose: () => void;
-  onProfile: (id: string) => void;
-  onToast: (message: string) => void;
-}) {
-  const [items, setItems] = useState<PeopleSuggestionRecord[]>([]),
-    [query, setQuery] = useState(""),
-    [filter, setFilter] = useState("all"),
-    [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const params = new URLSearchParams({ limit: "40", filter });
-    if (query.trim()) params.set("q", query.trim());
-    const timer = setTimeout(
-      () =>
-        fetch(`/api/people/suggestions?${params}`)
-          .then((response) =>
-            response.ok ? response.json() : { suggestions: [] },
-          )
-          .then((data) => setItems(data.suggestions ?? []))
-          .finally(() => setLoading(false)),
-      200,
-    );
-    return () => clearTimeout(timer);
-  }, [query, filter]);
-  async function follow(item: PeopleSuggestionRecord) {
-    const response = await fetch(`/api/users/${item.id}/follow`, {
-        method: "POST",
-      }),
-      result = await response.json();
-    if (response.ok) {
-      signalNetworkChanged();
-      setItems((rows) => rows.filter((row) => row.id !== item.id));
-      onToast(
-        result.mutual
-          ? `You and ${item.name} are now mutually connected.`
-          : `You’re now following ${item.name}.`,
-      );
-    } else onToast(result.error ?? "Could not follow this member.");
-  }
-  async function feedback(
-    item: PeopleSuggestionRecord,
-    signal: "hide" | "not_relevant",
-  ) {
-    const reason =
-      signal === "not_relevant"
-        ? (window.prompt("What made this suggestion irrelevant? (optional)") ??
-          undefined)
-        : undefined;
-    const response = await fetch("/api/people/suggestions/feedback", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        recommendationId: item.recommendationId,
-        signal,
-        reason,
-      }),
-    });
-    if (response.ok)
-      setItems((rows) => rows.filter((row) => row.id !== item.id));
-  }
-  return (
-    <div
-      className="panel-backdrop"
-      role="presentation"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
-    >
-      <aside
-        className="people-discovery-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-label="People to know"
-      >
-        <header>
-          <div>
-            <span className="eyebrow">USEFUL PEOPLE</span>
-            <h2>People to know</h2>
-            <p>Suggested for credible collaboration, not popularity.</p>
-          </div>
-          <button className="icon-button" onClick={onClose}>
-            <X size={19} />
-          </button>
-        </header>
-        <label className="help-search">
-          <Search size={17} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search profession, skill, industry or location"
-          />
-        </label>
-        <div className="people-filter-tabs">
-          <button
-            className={filter === "all" ? "active" : ""}
-            onClick={() => setFilter("all")}
-          >
-            All
-          </button>
-          <button
-            className={filter === "project" ? "active" : ""}
-            onClick={() => setFilter("project")}
-          >
-            Project fit
-          </button>
-          <button
-            className={filter === "local" ? "active" : ""}
-            onClick={() => setFilter("local")}
-          >
-            Near you
-          </button>
-        </div>
-        <div className="people-discovery-list">
-          {loading ? (
-            <p>Finding useful people…</p>
-          ) : (
-            items.map((item) => (
-              <article key={item.id}>
-                <button
-                  className="people-profile"
-                  onClick={() => {
-                    onProfile(item.id);
-                    onClose();
-                  }}
-                >
-                  <Avatar
-                    person={{
-                      name: item.name ?? "n2 member",
-                      role: item.profession ?? "Member",
-                      img: item.image,
-                    }}
-                    size="md"
-                  />
-                  <span>
-                    <strong>{item.name ?? "n2 member"}</strong>
-                    <small>
-                      {item.profession ?? "Member"}
-                      {item.location ? ` · ${item.location}` : ""}
-                    </small>
-                    <i>{item.reasons.join(" · ")}</i>
-                  </span>
-                </button>
-                <div>
-                  <button
-                    className="secondary-button"
-                    onClick={() => follow(item)}
-                  >
-                    <Plus size={14} /> Follow
-                  </button>
-                  <button
-                    className="icon-button"
-                    aria-label="Hide suggestion"
-                    onClick={() => feedback(item, "hide")}
-                  >
-                    <X size={14} />
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => feedback(item, "not_relevant")}
-                  >
-                    Not relevant
-                  </button>
-                </div>
-              </article>
-            ))
-          )}
-          {!loading && !items.length && (
-            <div className="onboarding-empty">
-              <UsersRound size={22} />
-              <strong>Your useful network is growing</strong>
-              <p>Complete your profile or return as more live members join.</p>
-            </div>
-          )}
-        </div>
-      </aside>
     </div>
   );
 }
@@ -9986,6 +9973,7 @@ export default function HomePage() {
     <div
       className={`app-shell ${view === "network" && !selectedProjectId ? "network-shell" : ""}`}
     >
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <div>
           <Logo onClick={() => go("feed")} />
@@ -10059,7 +10047,7 @@ export default function HomePage() {
           )}
         </div>
       </aside>
-      <main className="main-content">
+      <main className="main-content" id="main-content" tabIndex={-1}>
         <button
           className="mobile-menu"
           onClick={() => setMenuOpen(!menuOpen)}
@@ -10327,6 +10315,7 @@ export default function HomePage() {
           onClose={() => setPeopleOpen(false)}
           onProfile={openProfile}
           onToast={setToast}
+          onNetworkChanged={signalNetworkChanged}
         />
       )}
       {authenticated && notificationsOpen && (

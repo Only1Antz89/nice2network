@@ -5,10 +5,12 @@ import { projectEyes, projectRecommendations, projects, recommendationEvents, sa
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { createNotification } from "@/lib/notifications";
 import { trackProductEvent } from "@/lib/analytics";
+import { requireProjectView } from "@/lib/content-access";
 
 export async function POST(_: Request, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const member = await requireMember(), { projectId } = await params, db = getDb();
+    await requireProjectView(member.id, projectId);
     const [project] = await db.select({ ownerId: projects.ownerId, title: projects.title, status: projects.status }).from(projects).where(eq(projects.id, projectId)).limit(1);
     if (!project) throw new ApiError(404, "Project not found");
     if (project.ownerId === member.id) throw new ApiError(400, "Project owners cannot add a view to their own project");

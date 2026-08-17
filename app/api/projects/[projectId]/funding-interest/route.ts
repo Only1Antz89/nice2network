@@ -6,12 +6,14 @@ import { projects, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { trackProductEvent } from "@/lib/analytics";
 import { createNotification } from "@/lib/notifications";
+import { requireProjectView } from "@/lib/content-access";
 
 const inputSchema=z.object({type:z.enum(["invest","donate","contribute","share_request"]),amount:z.number().positive().max(1_000_000).optional(),message:z.string().trim().max(600).optional()});
 
 export async function POST(request:Request,{params}:{params:Promise<{projectId:string}>}){
   try{
     const member=await requireMember(),{projectId}=await params,input=inputSchema.parse(await request.json()),db=getDb();
+    await requireProjectView(member.id,projectId);
     const [project]=await db.select({ownerId:projects.ownerId,title:projects.title,status:projects.status,visibility:projects.visibility}).from(projects).where(eq(projects.id,projectId)).limit(1);
     if(!project||project.status!=="active"||project.visibility==="private")throw new ApiError(404,"Project is not open for public contribution interest");
     if(project.ownerId===member.id)throw new ApiError(400,"Project owners cannot register interest in their own project");

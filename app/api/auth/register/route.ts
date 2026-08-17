@@ -9,13 +9,14 @@ import { eq } from "drizzle-orm";
 import { ageBand, ageFromDateOfBirth } from "@/lib/age";
 import { trackProductEvent } from "@/lib/analytics";
 import { isSecureRequest } from "@/lib/http";
+import { enforceRateLimit, RateLimitError, requestIp } from "@/lib/rate-limit";
 
 const schema = z.object({
   title: z.enum(["Mr", "Ms", "Mrs", "Miss", "Mx", "Dr", "Prof"]),
   firstName: z.string().trim().min(2).max(50),
   lastName: z.string().trim().min(2).max(50),
   dateOfBirth: z.coerce.date(),
-  image: z.string().max(700_000).refine((value) => !value || value.startsWith("data:image/"), "Choose a valid profile photo").optional(),
+  image: z.string().max(700_000).refine((value) => !value || /^data:image\/(jpeg|png|webp);base64,/i.test(value), "Choose a valid profile photo").optional(),
   email: z.email(),
   password: z.string().min(10).max(128),
 });
@@ -23,6 +24,7 @@ const schema = z.object({
 export async function POST(request: Request) {
   let createdEmail: string | undefined;
   try {
+    enforceRateLimit(`register:${requestIp(request)}`, 5, 60 * 60_000);
     const input = schema.parse(await request.json());
     const age = ageFromDateOfBirth(input.dateOfBirth);
     if (age < 16 || age > 120) return NextResponse.json({ error: "Members must be 16 or older." }, { status: 400 });
@@ -53,6 +55,7 @@ export async function POST(request: Request) {
     if (createdEmail) {
       try { await getDb().delete(users).where(eq(users.email, createdEmail)); } catch { /* The original registration error remains authoritative. */ }
     }
+    if (error instanceof RateLimitError) return NextResponse.json({ error: error.message }, { status: error.status });
     const message = error instanceof Error && /unique/i.test(error.message) ? "An account already exists for that email." : error instanceof Error && /email delivery/i.test(error.message) ? "The verification email could not be sent. Please try again shortly." : "Could not create your account.";
     return NextResponse.json({ error: message }, { status: 400 });
   }

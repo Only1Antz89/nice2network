@@ -1,0 +1,81 @@
+"use client";
+
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { Trash2, X } from "lucide-react";
+
+export type ActionDialogField = {
+  name: string;
+  label: string;
+  kind?: "input" | "textarea" | "select";
+  defaultValue?: string;
+  placeholder?: string;
+  required?: boolean;
+  maxLength?: number;
+  options?: Array<{ value: string; label: string }>;
+};
+
+export default function ActionDialog({ eyebrow, title, description, confirmLabel, cancelLabel = "Cancel", danger = false, fields = [], onClose, onConfirm }: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  fields?: ActionDialogField[];
+  onClose: () => void;
+  onConfirm: (values: Record<string, string>) => boolean | void | Promise<boolean | void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const firstField = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(null);
+
+  useEffect(() => {
+    firstField.current?.focus();
+    function closeWithEscape(event: KeyboardEvent) {
+      if (event.key === "Escape" && !busy) onClose();
+    }
+    document.addEventListener("keydown", closeWithEscape);
+    return () => document.removeEventListener("keydown", closeWithEscape);
+  }, [busy, onClose]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    const data = new FormData(event.currentTarget);
+    const values = Object.fromEntries(fields.map((field) => [field.name, String(data.get(field.name) ?? "").trim()]));
+    const result = await onConfirm(values);
+    setBusy(false);
+    if (result !== false) onClose();
+  }
+
+  return (
+    <div className="modal-backdrop action-dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
+      <form className="n2-editor-modal action-dialog" role="dialog" aria-modal="true" aria-labelledby="action-dialog-title" onSubmit={submit}>
+        <header>
+          <div><span className="eyebrow">{eyebrow}</span><h2 id="action-dialog-title">{title}</h2></div>
+          <button type="button" className="icon-button" aria-label="Close dialog" onClick={onClose} disabled={busy}><X size={18} /></button>
+        </header>
+        <div className="n2-editor-fields">
+          {description && <p>{description}</p>}
+          {fields.map((field, index) => (
+            <label key={field.name}>
+              <span>{field.label}</span>
+              {field.kind === "select" ? (
+                <select ref={index === 0 ? firstField as React.RefObject<HTMLSelectElement> : undefined} name={field.name} defaultValue={field.defaultValue} required={field.required}>
+                  {field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              ) : field.kind === "input" ? (
+                <input ref={index === 0 ? firstField as React.RefObject<HTMLInputElement> : undefined} name={field.name} defaultValue={field.defaultValue} placeholder={field.placeholder} required={field.required} maxLength={field.maxLength} />
+              ) : (
+                <textarea ref={index === 0 ? firstField as React.RefObject<HTMLTextAreaElement> : undefined} name={field.name} defaultValue={field.defaultValue} placeholder={field.placeholder} required={field.required} maxLength={field.maxLength} />
+              )}
+            </label>
+          ))}
+        </div>
+        <footer>
+          <button type="button" className="secondary-button" onClick={onClose} disabled={busy}>{cancelLabel}</button>
+          <button className={`primary-button ${danger ? "danger" : ""}`} disabled={busy}>{danger && <Trash2 size={15} />} {busy ? "Saving…" : confirmLabel}</button>
+        </footer>
+      </form>
+    </div>
+  );
+}

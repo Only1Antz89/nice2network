@@ -6,12 +6,14 @@ import { postLikes, postReposts, timelinePosts } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
 import { createNotification } from "@/lib/notifications";
 import { trackProductEvent } from "@/lib/analytics";
+import { requirePostView } from "@/lib/content-access";
 
 const schema=z.object({action:z.enum(["like","repost"])});
 
 export async function POST(request:Request,{params}:{params:Promise<{postId:string}>}){
   try{
     const member=await requireMember(),{postId}=await params,{action}=schema.parse(await request.json()),db=getDb();
+    await requirePostView(member.id, postId);
     const [post]=await db.select({id:timelinePosts.id,authorId:timelinePosts.authorId,body:timelinePosts.body}).from(timelinePosts).where(and(eq(timelinePosts.id,postId),eq(timelinePosts.status,"visible"))).limit(1);
     if(!post)return NextResponse.json({error:"Post not found"},{status:404});
     const table=action==="like"?postLikes:postReposts;

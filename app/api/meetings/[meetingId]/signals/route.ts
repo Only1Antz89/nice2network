@@ -10,7 +10,7 @@ const schema = z.object({
   recipientId: z.uuid().nullable().optional(),
   type: z.enum(["join", "heartbeat", "offer", "answer", "ice", "media", "leave", "end", "stage"]),
   payload: z.record(z.string(), z.unknown()).default({}),
-});
+}).refine((value) => JSON.stringify(value.payload).length <= 64_000, "Signal payload is too large");
 
 export async function GET(request: Request, { params }: { params: Promise<{ meetingId: string }> }) {
   try {

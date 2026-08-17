@@ -6,12 +6,14 @@ import { adminAssignments, postLikes, postReplies, postReposts, timelinePosts, u
 import { apiError, requireMember } from "@/lib/api";
 import { createNotification } from "@/lib/notifications";
 import { trackProductEvent } from "@/lib/analytics";
+import { requirePostView } from "@/lib/content-access";
 
 const replySchema = z.object({ body: z.string().trim().min(1).max(2000) });
 
 export async function GET(_request:Request,{params}:{params:Promise<{postId:string}>}) {
   try {
     const member=await requireMember(), {postId}=await params, db=getDb();
+    await requirePostView(member.id, postId);
     const [post]=await db.select({
       id:timelinePosts.id,body:timelinePosts.body,createdAt:timelinePosts.createdAt,authorId:users.id,authorName:users.name,authorImage:users.image,authorProfession:users.profession,
       authorIsAdmin:sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`,isDemo:sql<boolean>`${users.role} = 'demo_member'`,
@@ -28,6 +30,7 @@ export async function GET(_request:Request,{params}:{params:Promise<{postId:stri
 export async function POST(request:Request,{params}:{params:Promise<{postId:string}>}) {
   try {
     const member=await requireMember(), {postId}=await params, input=replySchema.parse(await request.json()), db=getDb();
+    await requirePostView(member.id, postId);
     const [post]=await db.select({id:timelinePosts.id,authorId:timelinePosts.authorId}).from(timelinePosts).where(and(eq(timelinePosts.id,postId),eq(timelinePosts.status,"visible"))).limit(1);
     if(!post)return NextResponse.json({error:"Post not found"},{status:404});
     const [reply]=await db.insert(postReplies).values({postId,authorId:member.id,body:input.body}).returning();

@@ -313,6 +313,21 @@ export const privacySettings = pgTable("privacy_settings", {
   userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }), profileVisibility: text("profile_visibility").notNull().default("network"), messagePermission: text("message_permission").notNull().default("connections"), showLocation: boolean("show_location").notNull().default(true), showAvailability: boolean("show_availability").notNull().default(true), showFollowers: boolean("show_followers").notNull().default(true), showFollowing: boolean("show_following").notNull().default(true), muteFollowNotifications: boolean("mute_follow_notifications").notNull().default(false), useActivityForMatching: boolean("use_activity_for_matching").notNull().default(true), allowIntroductions: boolean("allow_introductions").notNull().default(true), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const accessibilitySettings = pgTable("accessibility_settings", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  colourTheme: text("colour_theme").notNull().default("system"),
+  textSize: text("text_size").notNull().default("default"),
+  contrast: text("contrast").notNull().default("standard"),
+  readableFont: boolean("readable_font").notNull().default(false),
+  underlineLinks: boolean("underline_links").notNull().default(false),
+  motion: text("motion").notNull().default("system"),
+  enhancedFocus: boolean("enhanced_focus").notNull().default(true),
+  largePointer: boolean("large_pointer").notNull().default(false),
+  captions: boolean("captions").notNull().default(false),
+  preventAutoplay: boolean("prevent_autoplay").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const matchFeedback = pgTable("match_feedback", {
   id: uuid("id").defaultRandom().primaryKey(), userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }), matchedUserId: uuid("matched_user_id").references(() => users.id, { onDelete: "cascade" }), matchKey: text("match_key").notNull(), signal: text("signal").notNull(), reason: text("reason"), scoreSnapshot: integer("score_snapshot"), features: jsonb("features").$type<Record<string, number>>().default({}), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("feedback_match_idx").on(table.matchKey), index("feedback_user_idx").on(table.userId)]);
@@ -587,5 +602,5 @@ export const recommendationJobs = pgTable("recommendation_jobs", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
 }, (table) => [index("recommendation_jobs_status_idx").on(table.status, table.createdAt)]);
 
-export const usersRelations = relations(users, ({ many, one }) => ({ ownedProjects: many(projects), memberships: many(projectMembers), privacy: one(privacySettings), notifications: many(notifications), careerHistory: many(careerHistory), educationHistory: many(educationHistory), recommendations: many(projectRecommendations) }));
+export const usersRelations = relations(users, ({ many, one }) => ({ ownedProjects: many(projects), memberships: many(projectMembers), privacy: one(privacySettings), accessibility: one(accessibilitySettings), notifications: many(notifications), careerHistory: many(careerHistory), educationHistory: many(educationHistory), recommendations: many(projectRecommendations) }));
 export const projectsRelations = relations(projects, ({ one, many }) => ({ owner: one(users, { fields: [projects.ownerId], references: [users.id] }), roles: many(projectRoles), members: many(projectMembers), milestones: many(milestones), updates: many(projectUpdates), comments: many(projectComments), blueprints: many(projectBlueprints), recommendations: many(projectRecommendations) }));

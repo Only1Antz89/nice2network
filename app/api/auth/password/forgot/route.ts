@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { users, verificationTokens } from "@/db/schema";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { enforceRateLimit, RateLimitError, requestIp } from "@/lib/rate-limit";
 
 const schema = z.object({ email: z.email() });
 
@@ -13,6 +14,7 @@ export async function POST(request: Request) {
   try {
     const { email: rawEmail } = schema.parse(await request.json());
     const email = rawEmail.trim().toLowerCase();
+    enforceRateLimit(`password-forgot:${requestIp(request)}:${email}`, 5, 60 * 60_000);
     const db = getDb();
     const [member] = await db.select({ firstName: users.firstName, name: users.name, email: users.email, passwordHash: users.passwordHash, status: users.status }).from(users).where(eq(users.email, email)).limit(1);
     if (!member?.passwordHash || !["active", "pending_onboarding", "onboarding"].includes(member.status)) return generic;
@@ -24,7 +26,7 @@ export async function POST(request: Request) {
     const resetUrl = `${appUrl}/reset-password?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
     await sendPasswordResetEmail({ email, firstName: member.firstName ?? member.name?.split(" ")[0] ?? "there", resetUrl });
   } catch (error) {
-    console.error("Password reset request failed", error);
+    if (!(error instanceof RateLimitError)) console.error("Password reset request failed", error);
   }
   return generic;
 }

@@ -10,6 +10,7 @@ import { ApiError, apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { decrypt, encrypt } from "@/lib/integrations";
 import { isSecureRequest } from "@/lib/http";
+import { enforceRateLimit, requestIp } from "@/lib/rate-limit";
 
 export async function GET() {
   try {
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
     if (!identity) throw new ApiError(403, "Administrator access required");
     if (identity.forcePasswordChange) throw new ApiError(428, "Change your temporary password first");
     const input = z.discriminatedUnion("action", [z.object({ action: z.literal("setup") }), z.object({ action: z.literal("verify"), code: z.string().regex(/^\d{6}$/) })]).parse(await request.json());
+    if (input.action === "verify") enforceRateLimit(`admin-mfa:${identity.user.id}:${requestIp(request)}`, 8, 10 * 60_000);
     const db = getDb();
     let [record] = await db.select().from(adminMfa).where(eq(adminMfa.userId, identity.user.id)).limit(1);
     if (input.action === "setup") {
