@@ -8518,7 +8518,7 @@ function ProfileView({
           {person.name} {person.isN2Admin && <N2AdminBadge />}
         </h1>
         {profile?.username && (
-          profile.visibility === "public"
+          profile.visibility === "public" && !profile.isCurrent
             ? <a className="profile-username" href={`/${profile.username}`}>@{profile.username} <ArrowUpRight size={12} /></a>
             : <span className="profile-username">@{profile.username}</span>
         )}

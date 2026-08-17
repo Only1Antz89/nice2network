@@ -28,6 +28,7 @@ test("members can see and safely change their public-profile username", async ()
   assert.match(settings, /Public address:/);
   assert.match(settings, /Set profile visibility to Public before sharing/);
   assert.match(settings, /className="profile-username"/);
+  assert.match(settings, /profile\.visibility === "public" && !profile\.isCurrent/);
   assert.match(styles, /\.username-field/);
 });
 

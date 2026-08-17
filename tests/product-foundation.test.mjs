@@ -70,8 +70,9 @@ test("onboarding bio communicates and enforces the server character limits", asy
 });
 
 test("project creation explains its summary limit and returns field-specific validation", async () => {
-  const [page, drafts, projects, projectEdit] = await Promise.all([
+  const [page, styles, drafts, projects, projectEdit] = await Promise.all([
     read("app/page.tsx"),
+    read("app/globals.css"),
     read("app/api/projects/drafts/route.ts"),
     read("app/api/projects/route.ts"),
     read("app/api/projects/[projectId]/route.ts"),
@@ -81,6 +82,7 @@ test("project creation explains its summary limit and returns field-specific val
   assert.match(page, /summaryLength > 500/);
   assert.match(page, /character-fill/);
   assert.match(page, /\/500/);
+  assert.match(styles, /conic-gradient\(var\(--orange\) var\(--character-fill\)/);
   assert.match(page, /role="alert" aria-live="polite"/);
   assert.match(drafts, /Project summary must be 500 characters or fewer/);
   assert.match(drafts, /field: String\(issue\.path\[0\]/);
