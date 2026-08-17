@@ -77,3 +77,18 @@ test("dark mode separates text, surface and solid-action colours", () => {
   assert.match(styles, /\.sidebar nav button:hover,.sidebar nav button.active/);
   assert.match(styles, /html\[data-colour-theme="dark"\]\[data-contrast="high"\]/);
 });
+
+test("profile navigation uses member identity without a profile banner", () => {
+  const page = read("app/page.tsx");
+  const styles = read("app/globals.css");
+  const publicStyles = read("app/public.css");
+  assert.match(page, /\{ id: "feed" as View, label: "Home", icon: Home \},\s+\{ id: "profile" as View, label: "Profile", icon: UserRound \},\s+\{ id: "projects"/);
+  assert.match(page, /isProfile && authenticated\s+\? <Avatar person=\{currentMember\} size="sm"/);
+  assert.doesNotMatch(page, /className="profile-cover"/);
+  assert.doesNotMatch(page, /className="banner-upload"/);
+  assert.match(page, /className="admin-nav-link admin-profile-slot"/);
+  assert.match(page, /className="sidebar-account-divider"/);
+  assert.match(page, /className="rail-help-link"/);
+  assert.match(styles, /grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
+  assert.match(publicStyles, /\.rail-help-link/);
+});

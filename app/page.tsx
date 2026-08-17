@@ -12,7 +12,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   CircleHelp,
   CircleAlert,
   Clock3,
@@ -252,7 +251,6 @@ type ProfileRecord = {
   id: string;
   name: string | null;
   image: string | null;
-  coverImage?: string | null;
   profession: string | null;
   headline: string | null;
   bio: string | null;
@@ -730,6 +728,7 @@ function RichTextEditor({ id, value, onChange }: { id: string; value: string; on
 
 const nav = [
   { id: "feed" as View, label: "Home", icon: Home },
+  { id: "profile" as View, label: "Profile", icon: UserRound },
   { id: "projects" as View, label: "Projects", icon: BriefcaseBusiness },
   { id: "network" as View, label: "Networks", icon: NetworkGraphIcon },
   { id: "messages" as View, label: "Messages", icon: MessageCircle },
@@ -7707,17 +7706,7 @@ function ProfileView({
       {unfollowOpen && (
         <ActionDialog eyebrow="UNFOLLOW MEMBER" title={`Stop following ${profile?.name ?? "this member"}?`} description="Their updates will no longer be prioritised in your network feed. You can follow them again later." confirmLabel="Stop following" cancelLabel="Keep following" danger onClose={() => setUnfollowOpen(false)} onConfirm={updateFollow} />
       )}
-      <div
-        className="profile-cover"
-        style={
-          profile?.coverImage
-            ? { backgroundImage: `url(${profile.coverImage})` }
-            : undefined
-        }
-      >
-        <span>{profile?.coverImage ? "" : "n2"}</span>
-      </div>
-      <div className="profile-main">
+      <div className="profile-main profile-main-no-cover">
         <Avatar person={person} size="xl" ring />
         <button
           className={`secondary-button ${profile?.isMutual ? "connected" : ""}`}
@@ -8642,8 +8631,7 @@ function SettingsView({
       description: string;
     }>,
   });
-  const [profileImage, setProfileImage] = useState(""),
-    [coverImage, setCoverImage] = useState("");
+  const [profileImage, setProfileImage] = useState("");
   const [notifications, setNotifications] = useState({
     messages: true,
     projects: true,
@@ -8670,9 +8658,9 @@ function SettingsView({
   const [accessibility, setAccessibility] = useState<AccessibilityPreferences>(
     DEFAULT_ACCESSIBILITY_PREFERENCES,
   );
-  async function uploadProfileMedia(type: "avatar" | "banner", file?: File) {
+  async function uploadProfileMedia(file?: File) {
     if (!file || !profileUserId) return;
-    if (file.size > (type === "avatar" ? 650_000 : 1_100_000)) {
+    if (file.size > 650_000) {
       return;
     }
     const reader = new FileReader();
@@ -8681,12 +8669,9 @@ function SettingsView({
       const response = await fetch(`/api/profiles/${profileUserId}/media`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type, data }),
+        body: JSON.stringify({ type: "avatar", data }),
       });
-      if (response.ok) {
-        if (type === "avatar") setProfileImage(data);
-        else setCoverImage(data);
-      }
+      if (response.ok) setProfileImage(data);
     };
     reader.readAsDataURL(file);
   }
@@ -8720,7 +8705,6 @@ function SettingsView({
           if (!response.ok) return;
           const { profile: record } = await response.json();
           setProfileImage(record.image ?? "");
-          setCoverImage(record.coverImage ?? "");
           setProfile({
             name: record.name ?? "",
             headline: record.headline ?? "",
@@ -9036,25 +9020,6 @@ function SettingsView({
         {panel === "profile" && (
           <div className="settings-form">
             <div className="profile-media-editor">
-              <label
-                className="banner-upload"
-                style={
-                  coverImage
-                    ? { backgroundImage: `url(${coverImage})` }
-                    : undefined
-                }
-              >
-                <span>
-                  <ImageIcon size={16} /> Change banner
-                </span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(e) =>
-                    uploadProfileMedia("banner", e.target.files?.[0])
-                  }
-                />
-              </label>
               <div className="profile-settings-lead">
                 <Avatar
                   person={{
@@ -9075,9 +9040,7 @@ function SettingsView({
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
-                    onChange={(e) =>
-                      uploadProfileMedia("avatar", e.target.files?.[0])
-                    }
+                    onChange={(e) => uploadProfileMedia(e.target.files?.[0])}
                   />
                 </label>
               </div>
@@ -10228,13 +10191,16 @@ export default function HomePage() {
           <nav>
             {nav.map((item) => {
               const Icon = item.icon;
+              const isProfile = item.id === "profile";
               return (
                 <button
                   key={item.id}
                   className={view === item.id ? "active" : ""}
-                  onClick={() => go(item.id)}
+                  onClick={() => isProfile ? openOwnProfile() : go(item.id)}
                 >
-                  <Icon size={20} />
+                  {isProfile && authenticated
+                    ? <Avatar person={currentMember} size="sm" />
+                    : <Icon size={20} />}
                   <span>{item.label}</span>
                   {!authenticated && item.id !== "feed" && (
                     <i className="preview-lock" aria-label="Sign in required" />
@@ -10247,13 +10213,7 @@ export default function HomePage() {
         <div className="sidebar-bottom">
           {authenticated ? (
             <>
-              {currentMember.isN2Admin && (
-                <a className="admin-nav-link" href="/admin">
-                  <ShieldCheck size={20} />
-                  <span>Admin console</span>
-                  <N2AdminBadge />
-                </a>
-              )}
+              <div className="sidebar-account-divider" aria-hidden="true" />
               <button
                 onClick={() => {
                   setEditProfileRequested(false);
@@ -10264,25 +10224,17 @@ export default function HomePage() {
                 <Settings size={20} />
                 <span>Settings</span>
               </button>
-              <button onClick={() => setHelpOpen(true)}>
-                <CircleHelp size={20} />
-                <span>Help</span>
-              </button>
               <button onClick={() => signOut({ redirectTo: "/signin" })}>
                 <LogOut size={20} />
                 <span>Log out</span>
               </button>
-              <button className="profile-chip" onClick={openOwnProfile}>
-                <Avatar person={currentMember} size="sm" />
-                <span>
-                  <strong>
-                    {currentMember.name}{" "}
-                    {currentMember.isN2Admin && <N2AdminBadge />}
-                  </strong>
-                  <small>View profile</small>
-                </span>
-                <ChevronDown size={16} />
-              </button>
+              {currentMember.isN2Admin && (
+                <a className="admin-nav-link admin-profile-slot" href="/admin">
+                  <ShieldCheck size={20} />
+                  <span>Admin console</span>
+                  <N2AdminBadge />
+                </a>
+              )}
             </>
           ) : (
             <div className="public-sidebar-auth">
@@ -10499,30 +10451,32 @@ export default function HomePage() {
               <a href="/privacy">Privacy</a>
               <a href="/terms">T&amp;C</a>
               <a href="/community">Community</a>
+              <button className="rail-help-link" onClick={() => setHelpOpen(true)}>
+                <CircleHelp size={10} />
+                <span>Help</span>
+              </button>
             </div>
             <small>© 2026 nice 2 network · Built by IntAillium</small>
           </footer>
         </aside>
       )}
       <nav className="mobile-nav" aria-label="Mobile navigation">
-        {nav
-          .slice(0, 5)
-          .filter((item) => item.id !== view)
-          .map((item) => {
+        {nav.map((item) => {
             const Icon = item.icon;
+            const isProfile = item.id === "profile";
             return (
-              <button key={item.id} onClick={() => go(item.id)}>
-                <Icon size={21} />
+              <button
+                key={item.id}
+                className={view === item.id ? "active" : ""}
+                onClick={() => isProfile ? openOwnProfile() : go(item.id)}
+              >
+                {isProfile && authenticated
+                  ? <Avatar person={currentMember} size="sm" />
+                  : <Icon size={21} />}
                 <span>{item.label}</span>
               </button>
             );
           })}
-        {view !== "profile" && (
-          <button onClick={openOwnProfile}>
-            <UserRound size={21} />
-            <span>Me</span>
-          </button>
-        )}
       </nav>
       {authenticated && createOpen && (
         <CreateProject
@@ -10573,7 +10527,7 @@ export default function HomePage() {
           onUnread={setUnreadNotifications}
         />
       )}
-      {authenticated && helpOpen && (
+      {helpOpen && (
         <HelpPanel onClose={() => setHelpOpen(false)} onNavigate={go} />
       )}
       {!authenticated && guestAuthMode && (

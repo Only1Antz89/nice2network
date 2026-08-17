@@ -833,3 +833,15 @@ html[data-colour-theme="dark"] .form-error{color:#ff9b86!important}
   html[data-colour-theme="system"] .meet-history-status{background:var(--surface-subtle);color:var(--muted)}
   html[data-colour-theme="system"] .form-error{color:#ff9b86!important}
 }
+
+/* Primary profile navigation and separated account/admin actions. */
+.sidebar nav button>.avatar{width:20px;height:20px}
+.sidebar-account-divider{height:1px;background:var(--line);margin:0 0 8px}
+.admin-profile-slot{min-height:62px;border-top:1px solid var(--line);border-radius:0;margin-top:8px;padding:16px 0 0}
+.admin-profile-slot:hover{color:var(--ink)}
+.profile-main-no-cover{padding-top:22px}
+.profile-main-no-cover>.avatar{margin-top:0}
+@media(max-width:980px){
+  .mobile-nav{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .mobile-nav button>.avatar{width:21px;height:21px}
+}
