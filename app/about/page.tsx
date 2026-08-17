@@ -71,7 +71,7 @@ export default function AboutPage() {
       <main className="about-page">
         <section className="about-hero">
           <div className="about-issue">N2 / ABOUT / 2026</div>
-          <div className="about-orbit" aria-hidden="true"><i/><i/><i/><i/><span>n2</span></div>
+          <div className="about-orbit" aria-hidden="true"><span><Image src="/brand/nice-2-network-mark.svg" alt="" width={260} height={260} /></span></div>
           <div className="about-hero-copy">
             <p>Ideas rarely fail for lack of possibility.</p>
             <h1>They need the<br/><em>right people.</em></h1>
