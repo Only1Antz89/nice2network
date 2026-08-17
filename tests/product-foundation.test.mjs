@@ -308,10 +308,11 @@ test("ships durable project-first people discovery and mutual following", async 
 
 test("opens profiles from follower and following account rows", async () => {
   const page = await read("app/page.tsx");
-  assert.match(page, /function ProfileView\(\{[\s\S]*?onProfile,/);
-  assert.match(page, /onClick=\{\(\) => onProfile\(item\.id\)\}/);
+  assert.match(page, /href=\{`\/\?profile=\$\{encodeURIComponent\(item\.id\)\}`\}/);
   assert.match(page, /aria-label=\{`Open \$\{item\.name \?\? "n2 member"\}'s profile`\}/);
-  assert.match(page, /<ProfileView[\s\S]*?onProfile=\{openProfile\}/);
+  assert.match(page, /profileId = params\.get\("profile"\)/);
+  assert.match(page, /setSelectedProfileId\(profileId\)/);
+  assert.match(page, /setView\("profile"\)/);
 });
 
 test("ships a connected-member network map with profession and skill discovery", async () => {

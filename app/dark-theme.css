@@ -81,7 +81,7 @@ html[data-colour-theme="dark"] {
 .ai-role-recommendations article,
 .free-choice-list,
 .free-choice-list button,
-.following-list > button,
+.following-list > a,
 .new-joiner-card,
 .new-joiner-card > button,
 .saved-list article,

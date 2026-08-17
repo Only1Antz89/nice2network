@@ -7824,12 +7824,10 @@ function ProfileView({
   member,
   userId,
   onEdit,
-  onProfile,
 }: {
   member: MemberPerson;
   userId?: string | null;
   onEdit: () => void;
-  onProfile: (userId: string) => void;
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
@@ -8017,10 +8015,9 @@ function ProfileView({
             </div>
             <div className="following-list">
               {networkPeople.map((item) => (
-                <button
+                <a
                   key={item.id}
-                  type="button"
-                  onClick={() => onProfile(item.id)}
+                  href={`/?profile=${encodeURIComponent(item.id)}`}
                   aria-label={`Open ${item.name ?? "n2 member"}'s profile`}
                 >
                   <Avatar
@@ -8035,7 +8032,7 @@ function ProfileView({
                     <strong>{item.name}</strong>
                     <small>{item.profession}</small>
                   </span>
-                </button>
+                </a>
               ))}
               {!networkPeople.length && (
                 <p className="profile-empty">
@@ -10372,7 +10369,13 @@ export default function HomePage() {
   }, []);
   useEffect(() => {
     if (!authenticated || deepLinkHandled.current) return;
-    const params = new URLSearchParams(window.location.search), projectId = params.get("project"), roleId = params.get("role");
+    const params = new URLSearchParams(window.location.search), profileId = params.get("profile"), projectId = params.get("project"), roleId = params.get("role");
+    if (profileId) {
+      deepLinkHandled.current = true;
+      setSelectedProfileId(profileId);
+      setView("profile");
+      return;
+    }
     if (!projectId) return;
     deepLinkHandled.current = true;
     setView("projects");
@@ -10712,7 +10715,6 @@ export default function HomePage() {
                     setEditProfileRequested(true);
                     go("settings");
                   }}
-                  onProfile={openProfile}
                 />
               )}
               {authenticated && view === "settings" && (
