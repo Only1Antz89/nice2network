@@ -10495,11 +10495,12 @@ export default function HomePage() {
             <Logo />
             <p>Useful people, brought together.</p>
             <div>
-              <button>About</button>
-              <button>Privacy</button>
-              <button>Community</button>
+              <a href="/about">About</a>
+              <a href="/privacy">Privacy</a>
+              <a href="/terms">T&amp;C</a>
+              <a href="/community">Community</a>
             </div>
-            <small>© 2026 nice 2 network</small>
+            <small>© 2026 nice 2 network · Built by IntAillium</small>
           </footer>
         </aside>
       )}

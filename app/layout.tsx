@@ -3,8 +3,10 @@ import { Geist, Geist_Mono, Noto_Color_Emoji } from "next/font/google";
 import "./globals.css";
 import "./people.css";
 import "./network.css";
+import "./public.css";
 import SiteAnalytics from "./site-analytics";
 import AccessibilityController from "@/components/accessibility-controller";
+import CookieBanner from "@/components/cookie-banner";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -30,5 +32,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable} ${notoColorEmoji.variable}`}><AccessibilityController/>{children}<SiteAnalytics/></body></html>;
+  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable} ${notoColorEmoji.variable}`}><AccessibilityController/>{children}<CookieBanner/><SiteAnalytics/></body></html>;
 }
