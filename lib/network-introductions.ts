@@ -33,7 +33,6 @@ export async function validateIntroductionPath(
     select
       exists(select 1 from follows f where f.follower_id=${requesterId} and f.following_id=${connectorId}) as requester_follows_connector,
       coalesce(cps.share_network_connections,true) as connector_shares,
-      coalesce(tps.share_network_connections,true) as target_shares,
       (
         (exists(select 1 from follows f where f.follower_id=${connectorId} and f.following_id=${targetId}) and coalesce(cps.show_following,true) and coalesce(tps.show_followers,true))
         or
@@ -43,8 +42,8 @@ export async function validateIntroductionPath(
     left join privacy_settings cps on cps.user_id=${connectorId}
     left join privacy_settings tps on tps.user_id=${targetId}
     where connector.id=${connectorId}
-  `)) as unknown as Array<{ requester_follows_connector: boolean; connector_shares: boolean; target_shares: boolean; connector_knows_target: boolean }>;
-  if (!path?.requester_follows_connector || !path.connector_shares || !path.target_shares || !path.connector_knows_target) throw new ApiError(403, "This introduction path is no longer available");
+  `)) as unknown as Array<{ requester_follows_connector: boolean; connector_shares: boolean; connector_knows_target: boolean }>;
+  if (!path?.requester_follows_connector || !path.connector_shares || !path.connector_knows_target) throw new ApiError(403, "This introduction path is no longer available");
 
   const [restricted] = (await db.execute(sql`
     select 1 from blocks b

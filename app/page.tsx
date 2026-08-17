@@ -5637,6 +5637,7 @@ type NetworkNodeRecord = {
   relevance: number;
   reasons: string[];
   introduction_eligible: boolean;
+  connected_to_focus: boolean;
 };
 type NetworkClusterRecord = {
   kind: "cluster";
@@ -5819,15 +5820,26 @@ function NetworkView({
   const positions = new Map<string, { x: number; y: number }>();
   const focusedId = data.focus?.id,
     focusNode = peopleNodes.find((node) => node.id === focusedId),
-    orbitNodes = nodes.filter((node) => node.id !== focusedId);
+    orbitNodes = nodes.filter((node) => node.id !== focusedId),
+    focusOrbitNodes = focusNode ? orbitNodes.filter((node) => node.kind === "cluster" || node.connected_to_focus) : orbitNodes,
+    contextOrbitNodes = focusNode ? orbitNodes.filter((node): node is NetworkNodeRecord => node.kind === "person" && !node.connected_to_focus) : [];
   if (focusNode) positions.set(focusNode.id, { x: 43, y: 32 });
-  orbitNodes.forEach((node, index) => {
-    const angle = -Math.PI / 2 + (index / Math.max(1, orbitNodes.length)) * Math.PI * 2,
-      clusterOffset = node.kind === "cluster" ? 8 : 0,
-      xRadius = focusNode ? 30 + clusterOffset : (index % 2 ? 38 : 30) + clusterOffset,
-      yRadius = focusNode ? 25 + clusterOffset * 0.6 : (index % 2 ? 34 : 27) + clusterOffset * 0.5,
+  focusOrbitNodes.forEach((node, index) => {
+    const innerRingSize = Math.min(16, focusOrbitNodes.length),
+      outer = index >= innerRingSize,
+      ringIndex = outer ? index - innerRingSize : index,
+      ringSize = outer ? focusOrbitNodes.length - innerRingSize : innerRingSize,
+      angle = -Math.PI / 2 + (ringIndex / Math.max(1, ringSize)) * Math.PI * 2,
+      clusterOffset = node.kind === "cluster" ? 5 : 0,
+      xRadius = focusNode ? (outer ? 40 : 26) + clusterOffset : (index % 2 ? 38 : 30) + clusterOffset,
+      yRadius = focusNode ? (outer ? 34 : 21) + clusterOffset * 0.6 : (index % 2 ? 34 : 27) + clusterOffset * 0.5,
       centre = focusNode ? { x: 43, y: 36 } : { x: 50, y: 47 };
     positions.set(node.id, { x: centre.x + Math.cos(angle) * xRadius, y: centre.y + Math.sin(angle) * yRadius });
+  });
+  contextOrbitNodes.forEach((node, index) => {
+    const fraction = contextOrbitNodes.length === 1 ? 0.5 : 0.08 + (index / (contextOrbitNodes.length - 1)) * 0.84,
+      angle = Math.PI * fraction;
+    positions.set(node.id, { x: 50 + Math.cos(angle) * 31, y: 79 - Math.sin(angle) * 13 });
   });
   const basePoint = (id: string) => id === currentMember.id
     ? (focusNode ? { x: 50, y: 78 } : { x: 50, y: 47 })
@@ -6062,7 +6074,7 @@ function NetworkView({
             return (
               <button
                 key={node.id}
-                className={`network-node ${node.degree === 2 ? "second-degree" : "direct"} ${data.focus?.id === node.id ? "network-focus" : ""} ${selected?.id === node.id ? "selected" : ""}`}
+                className={`network-node ${node.degree === 2 ? "second-degree" : "direct"} ${data.focus && !node.connected_to_focus && data.focus.id !== node.id ? "network-context-node" : ""} ${data.focus?.id === node.id ? "network-focus" : ""} ${selected?.id === node.id ? "selected" : ""}`}
                 style={
                   {
                     left: `${position.x}%`,
@@ -6084,6 +6096,7 @@ function NetworkView({
                 <span>{node.name}</span>
                 <small>{category}</small>
                 {node.degree === 2 && <em>via {peopleNodes.find((item) => item.id === node.shared_by)?.name ?? "your network"}</em>}
+                {data.focus && !node.connected_to_focus && data.focus.id !== node.id && <em>your connection</em>}
               </button>
             );
           })}
