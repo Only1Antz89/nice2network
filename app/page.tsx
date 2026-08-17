@@ -10867,6 +10867,7 @@ export default function HomePage() {
       if (event.key === "Escape") {
         setSearchOpen(false);
         setMatchOpen(false);
+        setMenuOpen(false);
       }
     };
     window.addEventListener("keydown", key);
@@ -10915,7 +10916,15 @@ export default function HomePage() {
       className={`app-shell ${view === "network" && !selectedProjectId ? "network-shell" : ""}`}
     >
       <a className="skip-link" href="#main-content">Skip to main content</a>
-      <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
+      {menuOpen && (
+        <button
+          type="button"
+          className="mobile-sidebar-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
+      <aside id="mobile-sidebar" className={`sidebar ${menuOpen ? "open" : ""}`}>
         <div>
           <Logo onClick={() => go("feed")} />
           <nav>
@@ -10982,7 +10991,9 @@ export default function HomePage() {
         <button
           className="mobile-menu"
           onClick={() => setMenuOpen(!menuOpen)}
-          aria-label="Open navigation"
+          aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={menuOpen}
+          aria-controls="mobile-sidebar"
         >
           {menuOpen ? <ArrowLeft /> : <Menu />}
         </button>

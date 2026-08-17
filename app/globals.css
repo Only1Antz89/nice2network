@@ -954,11 +954,15 @@ html[data-colour-theme="dark"] .form-error{color:#ff9b86!important}
 }
 
 /* Primary profile navigation and separated account/admin actions. */
-.sidebar nav button>.avatar{width:20px;height:20px}
+.sidebar nav button>.avatar{width:24px;height:24px}
+.mobile-sidebar-backdrop{display:none}
 .sidebar-account-divider{height:1px;background:var(--line);margin:0 0 8px}
 .admin-profile-slot{min-height:62px;border-top:1px solid var(--line);border-radius:0;margin-top:8px;padding:16px 0 0}
 .admin-profile-slot:hover{color:var(--ink)}
 @media(max-width:980px){
+  .sidebar{z-index:40}
+  .mobile-menu{z-index:41}
+  .mobile-sidebar-backdrop{display:block;position:fixed;inset:0;z-index:35;border:0;padding:0;background:rgba(0,0,0,.38);cursor:default}
   .mobile-nav button>.avatar{width:21px;height:21px}
 }
 
