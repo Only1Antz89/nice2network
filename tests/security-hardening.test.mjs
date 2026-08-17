@@ -13,6 +13,12 @@ test("applies browser security headers and cross-site write protection", async (
   assert.match(proxy, /new URL\(origin\)\.origin !== new URL\(configured\)\.origin/);
 });
 
+test("development CSP supports Next hydration without weakening production", async () => {
+  const config = await read("next.config.ts");
+  assert.match(config, /NODE_ENV === "development"[\s\S]*?'unsafe-eval'/);
+  assert.doesNotMatch(config, /script-src 'self' 'unsafe-inline' 'unsafe-eval'/);
+});
+
 test("pins link preview requests to a validated public DNS result", async () => {
   const route = await read("app/api/link-preview/route.ts");
   const imageRoute = await read("app/api/link-preview/image/route.ts");

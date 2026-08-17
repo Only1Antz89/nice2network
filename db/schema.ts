@@ -10,6 +10,7 @@ export const users = pgTable("users", {
   dateOfBirth: date("date_of_birth", { mode: "date" }),
   ageBand: text("age_band").notNull().default("adult"),
   name: text("name"),
+  username: text("username").notNull(),
   email: text("email").notNull(),
   emailVerified: timestamp("email_verified", { mode: "date" }),
   image: text("image"),
@@ -37,7 +38,7 @@ export const users = pgTable("users", {
   onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [uniqueIndex("users_email_unique").on(table.email)]);
+}, (table) => [uniqueIndex("users_email_unique").on(table.email), uniqueIndex("users_username_unique").on(table.username)]);
 
 export const accounts = pgTable("accounts", {
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -460,6 +461,7 @@ export const conversations = pgTable("conversations", {
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
   initiatedBy: uuid("initiated_by").notNull().references(() => users.id),
   name: text("name"),
+  image: text("image"),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

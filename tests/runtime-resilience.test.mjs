@@ -48,7 +48,7 @@ test("conversation meet action stays compact and highlights on hover", () => {
 test("a nudge can be sent without message text or an attachment", () => {
   const route = read("app/api/conversations/[conversationId]/messages/route.ts");
   assert.match(route, /v\.type==="nudge"\|\|v\.body\|\|v\.attachmentUrl/);
-  assert.match(route, /input\.type==="nudge"\?"👋 Nudge/);
+  assert.match(route, /input\.type==="nudge"\?"⚡ Nudge/);
 });
 
 test("in-person meets provide a private, opt-in map and ETA flow", () => {

@@ -37,6 +37,19 @@ export function N2AdminBadge() {
     </span>
   );
 }
+
+export function N2IntAilliumWordmark() {
+  return (
+    <span
+      className="n2-intaillium-wordmark"
+      aria-label="n2 / IntAillium"
+    >
+      <b aria-hidden="true">n2</b>
+      <i aria-hidden="true">/</i>
+      <span aria-hidden="true">IntAillium</span>
+    </span>
+  );
+}
 export function N2FounderLabel() {
   return <span className="n2-founder-label">n2 Founder</span>;
 }

@@ -666,6 +666,31 @@ html[data-colour-theme="dark"] .person-suggest > .follow-person-button:focus-vis
 }
 
 /* Mobile chrome uses the same surface stack and safe-area behaviour. */
+.logo-mark,
+.public-mobile-signin,
+.public-sidebar-auth a.join,
+.public-rail-auth a:last-child {
+  background: var(--solid);
+  color: var(--solid-ink);
+}
+
+.public-sidebar-auth a:not(.join),
+.public-rail-auth a:first-child {
+  background: var(--control);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.public-mobile-signin:hover,
+.public-mobile-signin:focus-visible,
+.public-sidebar-auth a.join:hover,
+.public-sidebar-auth a.join:focus-visible,
+.public-rail-auth a:last-child:hover,
+.public-rail-auth a:last-child:focus-visible {
+  background: var(--solid-hover);
+  color: var(--solid-ink);
+}
+
 .mobile-nav {
   background: var(--surface-glass);
   color: var(--ink);

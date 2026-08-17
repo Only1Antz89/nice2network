@@ -4,6 +4,7 @@
 import {
   ArrowLeft,
   ArrowUpRight,
+  AudioLines,
   Bell,
   Bold,
   Bookmark,
@@ -72,6 +73,7 @@ import {
   Logo,
   N2AdminBadge,
   N2FounderLabel,
+  N2IntAilliumWordmark,
   N2Mark,
   type MemberPerson,
 } from "@/components/network-brand";
@@ -6340,6 +6342,7 @@ function NetworkView({
 type ConversationRecord = {
   id: string;
   name: string | null;
+  image?: string | null;
   projectId?: string | null;
   archivedAt?: string | null;
   snoozedUntil?: string | null;
@@ -6363,6 +6366,9 @@ type ChatMessage = {
   senderName: string | null;
   senderImage: string | null;
 };
+function NudgeMark() {
+  return <span className="nudge-mark" aria-hidden="true"><b>(</b><i>(</i><span><em>⚡</em><em>⚡</em></span><i>)</i><b>)</b></span>;
+}
 function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
   const [conversationsList, setConversationsList] = useState<
       ConversationRecord[]
@@ -6387,9 +6393,20 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
     [conversationError, setConversationError] = useState(""),
     [isSending, setIsSending] = useState(false),
     [sendError, setSendError] = useState(""),
+    [chatQuery, setChatQuery] = useState(""),
+    [showChatSearch, setShowChatSearch] = useState(false),
+    [showChatDetails, setShowChatDetails] = useState(false),
+    [showAttachments, setShowAttachments] = useState(false),
+    [isRecording, setIsRecording] = useState(false),
+    [recordingSeconds, setRecordingSeconds] = useState(0),
+    [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null),
+    [chatDeleteTarget, setChatDeleteTarget] = useState<ConversationRecord | null>(null),
     [editMessageTarget, setEditMessageTarget] = useState<ChatMessage | null>(null),
     [deleteMessageTarget, setDeleteMessageTarget] = useState<ChatMessage | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingSecondsRef = useRef(0);
   const selectedConversationId = selected?.id;
   const latestMessageId = messagesList.at(-1)?.id;
   const title = (row: ConversationRecord) =>
@@ -6464,11 +6481,11 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
     }, 250);
     return () => clearTimeout(timer);
   }, [memberSearch]);
-  async function send(type: "message" | "nudge" = "message") {
+  async function send(type: "message" | "nudge" = "message", voice?: { url: string; body: string }) {
     if (
       !selected ||
       isSending ||
-      (!draft.trim() && !attachment && type === "message")
+      (!draft.trim() && !attachment && !voice && type === "message")
     )
       return;
     setIsSending(true);
@@ -6480,9 +6497,9 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            body: draft,
-            attachmentType: attachment?.type,
-            attachmentUrl: attachment?.url,
+            body: voice?.body ?? draft,
+            attachmentType: voice ? "audio" : attachment?.type,
+            attachmentUrl: voice?.url ?? attachment?.url,
             type,
           }),
         },
@@ -6511,6 +6528,52 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
       setIsSending(false);
     }
   }
+  function formatDuration(seconds: number) {
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  }
+  async function startVoiceRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setSendError("Voice messages are not supported by this browser.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordingChunksRef.current = [];
+      recordingSecondsRef.current = 0;
+      setRecordingSeconds(0);
+      recorder.ondataavailable = (event) => event.data.size && recordingChunksRef.current.push(event.data);
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        if (blob.size > 2_000_000) {
+          setSendError("Voice messages must be shorter than about two minutes.");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => send("message", { url: String(reader.result), body: `Voice message · ${formatDuration(recordingSecondsRef.current)}` });
+        reader.readAsDataURL(blob);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecording(true);
+    } catch {
+      setSendError("Microphone access is needed to record a voice message.");
+    }
+  }
+  function finishVoiceRecording() {
+    if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+    setIsRecording(false);
+  }
+  useEffect(() => {
+    if (!isRecording) return;
+    const timer = window.setInterval(() => {
+      recordingSecondsRef.current += 1;
+      setRecordingSeconds(recordingSecondsRef.current);
+      if (recordingSecondsRef.current >= 120) finishVoiceRecording();
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isRecording]);
   async function conversationAction(
     action: "archive" | "restore" | "snooze" | "delete",
   ) {
@@ -6529,6 +6592,55 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
     });
     setSelected(null);
     load();
+  }
+  async function conversationListAction(row: ConversationRecord, action: "archive" | "restore" | "snooze" | "delete") {
+    const response = await fetch("/api/conversations", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        conversationId: row.id,
+        action,
+      }),
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      setConversationError(result.error ?? "The chat could not be updated.");
+      return false;
+    }
+    setConversationError("");
+    await load();
+    return true;
+  }
+  async function updateConversation(action: "rename" | "set_image" | "add_member", values: Record<string, unknown>) {
+    if (!selected) return false;
+    const response = await fetch("/api/conversations", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ conversationId: selected.id, action, ...values }),
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      setConversationError(result.error ?? "The chat could not be updated.");
+      return false;
+    }
+    await load();
+    setSelected((row) => {
+      if (!row) return row;
+      const added = action === "add_member" ? memberResults.find((person) => String(person.id) === values.userId) : null;
+      return {
+        ...row,
+        ...(action === "rename" ? { name: String(values.name || "") || null } : {}),
+        ...(action === "set_image" ? { image: values.image as string | null } : {}),
+        ...(added ? { members: [...row.members, { userId: String(added.id), name: String(added.name ?? "n2 member"), image: added.image as string | null, profession: added.profession as string | null }] } : {}),
+      };
+    });
+    return true;
+  }
+  function changeChatImage(file?: File) {
+    if (!file || file.size > 2_000_000) return;
+    const reader = new FileReader();
+    reader.onload = () => updateConversation("set_image", { image: String(reader.result) });
+    reader.readAsDataURL(file);
   }
   async function createConversation() {
     setConversationError("");
@@ -6628,14 +6740,22 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
     return response.ok;
   }
   if (selected) {
-    const status = typingNames.length
+    const speakingMessage = messagesList.find((message) => message.id === speakingMessageId);
+    const status = speakingMessage
+      ? `${speakingMessage.senderId === currentMember.id ? "You are" : `${speakingMessage.senderName ?? "Someone"} is`} speaking…`
+      : typingNames.length
       ? `${typingNames.join(", ")} ${typingNames.length === 1 ? "is" : "are"} typing…`
       : selected.members.length > 2
         ? `${selected.members.length} members`
         : "Direct conversation";
+    const visibleMessages = chatQuery.trim()
+      ? messagesList.filter((message) => message.body.toLowerCase().includes(chatQuery.trim().toLowerCase()))
+      : messagesList;
+    const sharedMedia = messagesList.filter((message) => message.attachmentUrl);
     return (
       <>
       <div className="subpage messages-page conversation-page">
+        <div className="conversation-top">
         <div className="conversation-head">
           <button
             className="icon-button border"
@@ -6643,29 +6763,17 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
           >
             <ArrowLeft size={18} />
           </button>
-          <Avatar
-            person={{ name: title(selected), role: "Conversation" }}
-            size="md"
-          />
-          <div>
-            <strong>{title(selected)}</strong>
-            <span>{status}</span>
-          </div>
-          <button
-            className="icon-button border"
-            onClick={() =>
-              conversationAction(selected.archivedAt ? "restore" : "archive")
-            }
-            title={selected.archivedAt ? "Restore" : "Archive"}
-          >
-            <Archive size={16} />
+          <button className="conversation-identity" onClick={() => { setShowChatDetails(true); setMemberSearch(""); }} aria-label="Open chat details">
+            <Avatar person={{ name: title(selected), role: "Conversation", img: selected.image }} size="md" />
+            <span><strong>{title(selected)}</strong><small>{status}</small></span>
           </button>
           <button
             className="icon-button border"
-            onClick={() => conversationAction("snooze")}
-            title="Snooze"
+            onClick={() => setShowChatSearch((value) => !value)}
+            title="Search in chat"
+            aria-label="Search in chat"
           >
-            <Clock3 size={16} />
+            <Search size={16} />
           </button>
           <button
             className="icon-button border conversation-meet-button"
@@ -6675,6 +6783,8 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
           >
             <Video size={16} />
           </button>
+        </div>
+        {showChatSearch && <div className="conversation-search"><Search size={15}/><input autoFocus value={chatQuery} onChange={(event) => setChatQuery(event.target.value)} placeholder="Search in this chat"/><button onClick={() => { setChatQuery(""); setShowChatSearch(false); }} aria-label="Close chat search"><X size={15}/></button></div>}
         </div>
         <div className="chat-flow" role="log" aria-live="polite">
           <div className="chat-date">CONVERSATION</div>
@@ -6689,10 +6799,11 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
               </p>
             </div>
           )}
-          {messagesList.map((message) => (
+          {chatQuery && !visibleMessages.length && <div className="chat-search-empty">No messages match “{chatQuery}”.</div>}
+          {visibleMessages.map((message) => (
+            <div className={`chat-message-row ${message.senderId === currentMember.id ? "mine" : "theirs"}`} key={message.id}>
             <div
               className={`bubble ${message.senderId === currentMember.id ? "mine" : "theirs"} ${message.status === "deleted" ? "deleted" : ""}`}
-              key={message.id}
             >
               {message.attachmentType === "image" && message.attachmentUrl && (
                 <img src={message.attachmentUrl} alt="Message attachment" />
@@ -6705,8 +6816,13 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
                   Download file
                 </a>
               )}
+              {message.attachmentType === "audio" && message.attachmentUrl && (
+                <div className={`voice-message ${speakingMessageId === message.id ? "speaking" : ""}`}><AudioLines size={20}/><span className="voice-wave" aria-hidden="true">{Array.from({length: 12},(_, index)=><i key={index}/>)}</span><audio src={message.attachmentUrl} controls preload="metadata" onPlay={() => setSpeakingMessageId(message.id)} onPause={() => setSpeakingMessageId((id) => id === message.id ? null : id)} onEnded={() => setSpeakingMessageId((id) => id === message.id ? null : id)}/></div>
+              )}
               <span><LinkifiedText text={message.body} /></span>
               {message.status !== "deleted" && <RichLinkPreview text={message.body} />}
+            </div>
+            <div className="message-footer">
               <small className="message-meta">
                 <time dateTime={message.createdAt}>
                   {new Date(message.createdAt).toLocaleTimeString([], {
@@ -6716,28 +6832,18 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
                 </time>
                 {message.editedAt && " · edited"}
               </small>
-              {message.senderId === currentMember.id &&
-                message.status !== "deleted" && (
-                  <div className="message-actions">
-                    <button onClick={() => setEditMessageTarget(message)}>Edit</button>
-                    <button onClick={() => setDeleteMessageTarget(message)}>
-                      Delete
-                    </button>
-                  </div>
-                )}
+              {message.status !== "deleted" && <div className="message-actions">
+                <button onClick={() => send("nudge")} disabled={isSending} title="Nudge for a response"><NudgeMark/><span>Nudge</span></button>
+                {message.senderId === currentMember.id && <><button onClick={() => setEditMessageTarget(message)}><Pencil size={11}/><span>Edit</span></button><button onClick={() => setDeleteMessageTarget(message)}><Trash2 size={11}/><span>Delete</span></button></>}
+              </div>}
+            </div>
             </div>
           ))}
+          {typingNames.length > 0 && <div className="chat-participant-activity" role="status"><span className="typing-dots" aria-hidden="true"><i/><i/><i/></span><strong>{typingNames.join(", ")}</strong><small>{typingNames.length === 1 ? "is" : "are"} typing</small></div>}
+          {speakingMessage && <div className="chat-participant-activity speaking" role="status"><AudioLines size={15}/><strong>{speakingMessage.senderId === currentMember.id ? "You" : speakingMessage.senderName ?? "Someone"}</strong><small>{speakingMessage.senderId === currentMember.id ? "are" : "is"} speaking</small></div>}
           <div ref={chatEndRef} />
         </div>
         <div className="conversation-composer-dock">
-          <div className="chat-extra-actions">
-            <button onClick={() => send("nudge")} disabled={isSending}>
-              <span className="emoji-glyph">👋</span> Nudge for a response
-            </button>
-            <button onClick={() => conversationAction("delete")}>
-              <Trash2 size={13} /> Delete chat
-            </button>
-          </div>
           {attachment && (
             <div className="chat-attachment" role="status">
               <span>
@@ -6757,12 +6863,24 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
             className="dm-composer"
             onSubmit={(event) => {
               event.preventDefault();
-              send();
+              if (draft.trim() || attachment) send();
+              else if (isRecording) finishVoiceRecording();
+              else startVoiceRecording();
             }}
           >
+            <div className="dm-add-wrap">
+              <button type="button" className={`dm-circle-button dm-add-button ${showAttachments ? "active" : ""}`} onClick={() => setShowAttachments((value) => !value)} aria-label="Add to message" aria-expanded={showAttachments}><Plus size={20}/></button>
+              {showAttachments && <div className="dm-attachment-menu" aria-label="Message attachments">
+                <EmojiPicker onSelect={(emoji) => { setDraft((value) => `${value}${emoji}`); setShowAttachments(false); }}/>
+                <label title="Add image"><ImageIcon size={18}/><span>Photo</span><input type="file" accept="image/*" onChange={(event) => { attach(event.target.files?.[0]); setShowAttachments(false); }}/></label>
+                <label title="Add video"><Video size={18}/><span>Video</span><input type="file" accept="video/*" onChange={(event) => { attach(event.target.files?.[0]); setShowAttachments(false); }}/></label>
+                <label title="Add file"><Paperclip size={18}/><span>File</span><input type="file" accept=".pdf,.zip,.doc,.docx" onChange={(event) => { attach(event.target.files?.[0]); setShowAttachments(false); }}/></label>
+              </div>}
+            </div>
             <div className="dm-composer-main">
+              {isRecording ? <div className="voice-recording" role="status"><span className="voice-wave recording" aria-hidden="true">{Array.from({length:16},(_,index)=><i key={index}/>)}</span><strong>{formatDuration(recordingSeconds)}</strong><small>Recording voice message</small></div> :
               <textarea
-                rows={3}
+                rows={1}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
@@ -6773,49 +6891,34 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
                 }}
                 placeholder={`Write a message to ${title(selected)}…`}
                 aria-label={`Message ${title(selected)}`}
-              />
-              <div className="dm-composer-toolbar">
-                <EmojiPicker
-                  onSelect={(emoji) => setDraft((value) => `${value}${emoji}`)}
-                />
-                <label title="Add image" aria-label="Add image">
-                  <ImageIcon size={18} />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => attach(event.target.files?.[0])}
-                  />
-                </label>
-                <label title="Add video" aria-label="Add video">
-                  <Video size={18} />
-                  <input
-                    type="file"
-                    accept="video/*"
-                    onChange={(event) => attach(event.target.files?.[0])}
-                  />
-                </label>
-                <label title="Add file" aria-label="Add file">
-                  <Paperclip size={18} />
-                  <input
-                    type="file"
-                    accept=".pdf,.zip,.doc,.docx"
-                    onChange={(event) => attach(event.target.files?.[0])}
-                  />
-                </label>
-                <span>Enter to send · Shift + Enter for a new line</span>
-              </div>
+              />}
             </div>
             <button
-              className="dm-send-button"
-              aria-label="Send message"
-              disabled={isSending || (!draft.trim() && !attachment)}
+              className="dm-circle-button dm-send-button"
+              aria-label={draft.trim() || attachment || isRecording ? "Send message" : "Record voice message"}
+              title={draft.trim() || attachment || isRecording ? "Send" : "Record voice message"}
+              disabled={isSending}
             >
-              <Send size={19} />
-              <span>{isSending ? "Sending" : "Send"}</span>
+              {draft.trim() || attachment || isRecording ? <ArrowUpRight size={20} strokeWidth={1.8}/> : <Mic size={19}/>}
             </button>
           </form>
         </div>
       </div>
+      {showChatDetails && <div className="modal-backdrop chat-details-backdrop" role="presentation"><section className="chat-details-panel" role="dialog" aria-modal="true" aria-labelledby="chat-details-title">
+        <header><div><span className="eyebrow">CHAT DETAILS</span><h2 id="chat-details-title">{title(selected)}</h2></div><button className="icon-button" onClick={() => setShowChatDetails(false)} aria-label="Close chat details"><X size={18}/></button></header>
+        <div className="chat-details-profile">
+          <Avatar person={{name:title(selected),role:"Conversation",img:selected.image}} size="lg"/>
+          <label className="media-change"><ImageIcon size={14}/> Change chat picture<input type="file" accept="image/*" onChange={(event)=>changeChatImage(event.target.files?.[0])}/></label>
+        </div>
+        <form className="chat-name-form" onSubmit={async event=>{event.preventDefault();const data=new FormData(event.currentTarget);await updateConversation("rename",{name:data.get("name")});}}><label>Chat name<input name="name" defaultValue={selected.name??""} placeholder={title(selected)} maxLength={100}/></label><button className="secondary-button">Save</button></form>
+        <section className="chat-details-section"><div className="chat-details-heading"><strong>Members</strong><span>{selected.members.length}</span></div><div className="chat-member-list">{selected.members.map(member=><article key={member.userId}><Avatar person={{name:member.name??"n2 member",role:member.profession??"Member",img:member.image}} size="sm"/><span><strong>{member.name??"n2 member"}</strong><small>{member.userId===currentMember.id?"You":member.profession??"Member"}</small></span></article>)}</div>
+          <div className="message-search compact"><UserPlus size={15}/><input value={memberSearch} onChange={event=>setMemberSearch(event.target.value)} placeholder="Add a member"/></div>
+          {memberSearch.trim().length>=2&&<div className="chat-add-results">{memberResults.filter(person=>person.canMessage!==false&&!selected.members.some(member=>member.userId===String(person.id))).slice(0,4).map(person=><button key={String(person.id)} onClick={()=>updateConversation("add_member",{userId:String(person.id)})}><Avatar person={{name:String(person.name),role:String(person.profession??"Member"),img:person.image as string|null}} size="sm"/><span><strong>{String(person.name)}</strong><small>{String(person.profession??"Member")}</small></span><Plus size={15}/></button>)}</div>}
+        </section>
+        <section className="chat-details-section"><div className="chat-details-heading"><strong>Media and files</strong><span>{sharedMedia.length}</span></div>{sharedMedia.length?<div className="chat-media-grid">{sharedMedia.map(message=>message.attachmentType==="image"?<a key={message.id} href={message.attachmentUrl!} target="_blank" rel="noreferrer"><img src={message.attachmentUrl!} alt="Shared chat media"/></a>:<a key={message.id} href={message.attachmentUrl!} download><span>{message.attachmentType==="video"?<Video size={19}/>:message.attachmentType==="audio"?<AudioLines size={19}/>:<Paperclip size={19}/>}</span><small>{message.attachmentType}</small></a>)}</div>:<p className="chat-details-empty">Media and files shared in this chat will appear here.</p>}</section>
+        {conversationError&&<p className="messages-error"><CircleAlert size={15}/>{conversationError}</p>}
+        <footer><button className="secondary-button" onClick={()=>conversationAction(selected.archivedAt?"restore":"archive")}><Archive size={15}/>{selected.archivedAt?"Restore chat":"Archive chat"}</button><button className="secondary-button danger" onClick={()=>conversationAction("delete")}><Trash2 size={15}/>Delete chat</button></footer>
+      </section></div>}
       {editMessageTarget && (
         <ActionDialog eyebrow="EDIT MESSAGE" title="Edit your message." confirmLabel="Save message" fields={[{ name: "body", label: "Message", defaultValue: editMessageTarget.body, required: true, maxLength: 5000 }]} onClose={() => setEditMessageTarget(null)} onConfirm={saveMessage} />
       )}
@@ -6876,12 +6979,13 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
       </div>
       <div className="message-list">
         {filtered.map((row) => (
-          <button onClick={() => setSelected(row)} key={row.id}>
+          <article className="message-list-row" key={row.id}>
+          <button className="message-list-row-main" onClick={() => setSelected(row)}>
             <Avatar
               person={{
                 name: title(row),
                 role: "Conversation",
-                img: row.members.find(
+                img: row.image ?? row.members.find(
                   (member) => member.userId !== currentMember.id,
                 )?.image,
               }}
@@ -6894,6 +6998,8 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
                 {row.lastMessage?.body ?? "Start the conversation"}
               </small>
             </span>
+          </button>
+          <div className="message-list-row-end">
             <time>
               {row.lastMessage
                 ? new Date(row.lastMessage.created_at).toLocaleDateString(
@@ -6902,7 +7008,13 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
                   )
                 : "New"}
             </time>
-          </button>
+            <div className="message-list-row-actions" aria-label={`Actions for ${title(row)}`}>
+              <button onClick={() => conversationListAction(row, row.archivedAt ? "restore" : "archive")} title={row.archivedAt ? "Restore chat" : "Archive chat"} aria-label={row.archivedAt ? `Restore ${title(row)}` : `Archive ${title(row)}`}><Archive size={15}/></button>
+              <button onClick={() => conversationListAction(row, "snooze")} title="Snooze for one day" aria-label={`Snooze ${title(row)} for one day`}><Clock3 size={15}/></button>
+              <button className="danger" onClick={() => setChatDeleteTarget(row)} title="Delete chat" aria-label={`Delete ${title(row)}`}><Trash2 size={15}/></button>
+            </div>
+          </div>
+          </article>
         ))}
         {!filtered.length && (
           <div className="empty-meets">
@@ -6918,6 +7030,7 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
           </div>
         )}
       </div>
+      {chatDeleteTarget && <ActionDialog eyebrow="DELETE CHAT" title={`Delete ${title(chatDeleteTarget)}?`} description="This removes the chat from your messages. Other members will keep their copy." confirmLabel="Delete chat" cancelLabel="Keep chat" danger onClose={() => setChatDeleteTarget(null)} onConfirm={() => conversationListAction(chatDeleteTarget, "delete")}/>}
       {compose && (
         <div className="modal-backdrop">
           <section className="new-chat-modal">
@@ -8139,7 +8252,13 @@ function ProfileView({
           {person.name} {person.isN2Admin && <N2AdminBadge />}
         </h1>
         <p className="profile-role">
-          {profile?.isFounder ? <N2FounderLabel /> : person.role}
+          {profile?.isFounder ? (
+            <N2FounderLabel />
+          ) : profile?.isN2Admin && person.role === "n2 member" ? (
+            <N2IntAilliumWordmark />
+          ) : (
+            person.role
+          )}
           {profile?.location ? ` · ${profile.location}` : ""}
         </p>
         <div className="profile-network-counts">
@@ -9196,6 +9315,21 @@ function SettingsView({
         .then((r) => (r.ok ? r.json() : null))
         .then((settings) => {
           if (!settings) return;
+          setPrivacy((current) => ({
+            ...current,
+            visibility:
+              settings.profileVisibility === "public"
+                ? "Public"
+                : settings.profileVisibility === "connections"
+                  ? "Connections only"
+                  : settings.profileVisibility === "private"
+                    ? "Private"
+                    : "Network only",
+            showLocation: settings.showLocation ?? current.showLocation,
+            showFollowers: settings.showFollowers ?? current.showFollowers,
+            showFollowing: settings.showFollowing ?? current.showFollowing,
+            muteFollowNotifications: settings.muteFollowNotifications ?? current.muteFollowNotifications,
+          }));
           setNetworking({
             shareNetworkConnections: settings.shareNetworkConnections ?? true,
             allowIntroductions: settings.allowIntroductions ?? true,
@@ -9297,7 +9431,9 @@ function SettingsView({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           profileVisibility:
-            privacy.visibility === "Network only"
+            privacy.visibility === "Public"
+              ? "public"
+              : privacy.visibility === "Network only"
               ? "network"
               : privacy.visibility === "Connections only"
                 ? "connections"
@@ -10074,6 +10210,7 @@ function SettingsView({
                   setPrivacy({ ...privacy, visibility: e.target.value })
                 }
               >
+                <option>Public</option>
                 <option>Network only</option>
                 <option>Connections only</option>
                 <option>Private</option>
@@ -10488,6 +10625,8 @@ export default function HomePage() {
   const [guestAuthMode, setGuestAuthMode] = useState<
     "register" | "signin" | null
   >(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [initialGuestPrompt, setInitialGuestPrompt] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [toast, setToast] = useState("");
   const [peopleSuggestions, setPeopleSuggestions] = useState<
@@ -10551,8 +10690,15 @@ export default function HomePage() {
           });
         }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setSessionChecked(true));
   }, []);
+  useEffect(() => {
+    if (!sessionChecked || authenticated) return;
+    if (window.sessionStorage.getItem("n2-guest-peeked") === "true") return;
+    setInitialGuestPrompt(true);
+    setGuestAuthMode("signin");
+  }, [authenticated, sessionChecked]);
   useEffect(() => {
     if (!authenticated || deepLinkHandled.current) return;
     const params = new URLSearchParams(window.location.search), profileId = params.get("profile"), projectId = params.get("project"), roleId = params.get("role");
@@ -10715,7 +10861,13 @@ export default function HomePage() {
     return () => window.removeEventListener("keydown", key);
   }, []);
   function requireSignIn() {
-    setGuestAuthMode("register");
+    setInitialGuestPrompt(false);
+    setGuestAuthMode("signin");
+  }
+  function takeGuestPeek() {
+    window.sessionStorage.setItem("n2-guest-peeked", "true");
+    setInitialGuestPrompt(false);
+    setGuestAuthMode(null);
   }
   function go(next: View) {
     if (!authenticated && next !== "feed") {
@@ -11075,7 +11227,8 @@ export default function HomePage() {
       {!authenticated && guestAuthMode && (
         <GuestAuthPrompt
           initialMode={guestAuthMode}
-          onClose={() => setGuestAuthMode(null)}
+          onPeek={initialGuestPrompt ? takeGuestPeek : undefined}
+          onClose={initialGuestPrompt ? takeGuestPeek : () => setGuestAuthMode(null)}
         />
       )}
       {shareProject && (

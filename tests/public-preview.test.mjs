@@ -36,5 +36,14 @@ test("interactive feed controls use native semantics and controlled summaries", 
   assert.match(page, /<strong>\{meetTitle \|\| "Untitled meet"\}<\/strong>/);
   assert.doesNotMatch(page, /meetFormRef\.current\?\.elements\.namedItem\("title"\)/);
   assert.match(guestAuth, /aria-label="Close account dialog"/);
+  assert.match(guestAuth, /initialMode = "signin"/);
   assert.match(page, /authenticated \? "Filters" : "Join to filter"/);
+});
+
+test("signed-out branding and join actions retain dark-mode contrast", async () => {
+  const styles = await read("app/dark-theme.css");
+
+  assert.match(styles, /\.logo-mark,[\s\S]*?background:\s*var\(--solid\);[\s\S]*?color:\s*var\(--solid-ink\);/);
+  assert.match(styles, /\.public-mobile-signin,[\s\S]*?\.public-sidebar-auth a\.join,[\s\S]*?\.public-rail-auth a:last-child/);
+  assert.match(styles, /\.public-sidebar-auth a:not\(\.join\),[\s\S]*?background:\s*var\(--control\);[\s\S]*?color:\s*var\(--ink\);/);
 });

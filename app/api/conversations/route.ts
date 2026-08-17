@@ -8,12 +8,19 @@ import { trackProductEvent } from "@/lib/analytics";
 import { getMessageEligibility } from "@/lib/messaging-permissions";
 
 const createSchema = z.object({ recipientIds: z.array(z.uuid()).min(1).max(7), projectId: z.uuid().optional(), name: z.string().trim().max(100).optional() });
-const actionSchema = z.object({ conversationId: z.uuid(), action: z.enum(["archive","restore","snooze","delete"]), until: z.iso.datetime().optional() });
+const actionSchema = z.object({
+  conversationId: z.uuid(),
+  action: z.enum(["archive","restore","snooze","delete","rename","set_image","add_member"]),
+  until: z.iso.datetime().optional(),
+  name: z.string().trim().max(100).optional(),
+  image: z.string().max(2_900_000).refine(value => /^data:image\//.test(value)).nullable().optional(),
+  userId: z.uuid().optional(),
+});
 
 export async function GET() {
   try {
     const member=await requireMember(),db=getDb();
-    const rows=await db.select({id:conversations.id,name:conversations.name,projectId:conversations.projectId,status:conversations.status,updatedAt:conversations.updatedAt,archivedAt:conversationMembers.archivedAt,snoozedUntil:conversationMembers.snoozedUntil})
+    const rows=await db.select({id:conversations.id,name:conversations.name,image:conversations.image,projectId:conversations.projectId,status:conversations.status,updatedAt:conversations.updatedAt,archivedAt:conversationMembers.archivedAt,snoozedUntil:conversationMembers.snoozedUntil})
       .from(conversationMembers).innerJoin(conversations,eq(conversations.id,conversationMembers.conversationId)).where(and(eq(conversationMembers.userId,member.id),ne(conversations.status,"deleted"))).orderBy(desc(conversations.updatedAt));
     const ids=rows.map(row=>row.id);if(!ids.length)return NextResponse.json({conversations:[]});
     const [members,lastMessages]=await Promise.all([
@@ -37,4 +44,37 @@ export async function POST(request:Request){
   }catch(error){return apiError(error)}
 }
 
-export async function PATCH(request:Request){try{const member=await requireMember(),input=actionSchema.parse(await request.json()),db=getDb();const condition=and(eq(conversationMembers.conversationId,input.conversationId),eq(conversationMembers.userId,member.id));const [membership]=await db.select().from(conversationMembers).where(condition).limit(1);if(!membership)throw new ApiError(403,"Conversation access required");if(input.action==="delete"){await db.delete(conversationMembers).where(condition)}else await db.update(conversationMembers).set(input.action==="archive"?{archivedAt:new Date()}:input.action==="restore"?{archivedAt:null,snoozedUntil:null}:{snoozedUntil:input.until?new Date(input.until):new Date(Date.now()+86400000)}).where(condition);return NextResponse.json({success:true})}catch(error){return apiError(error)}}
+export async function PATCH(request:Request){try{
+  const member=await requireMember(),input=actionSchema.parse(await request.json()),db=getDb();
+  const condition=and(eq(conversationMembers.conversationId,input.conversationId),eq(conversationMembers.userId,member.id));
+  const [membership]=await db.select().from(conversationMembers).where(condition).limit(1);
+  if(!membership)throw new ApiError(403,"Conversation access required");
+  if(input.action==="delete")await db.delete(conversationMembers).where(condition);
+  else if(input.action==="archive")await db.update(conversationMembers).set({archivedAt:new Date()}).where(condition);
+  else if(input.action==="restore")await db.update(conversationMembers).set({archivedAt:null,snoozedUntil:null}).where(condition);
+  else if(input.action==="snooze")await db.update(conversationMembers).set({snoozedUntil:input.until?new Date(input.until):new Date(Date.now()+86400000)}).where(condition);
+  else if(input.action==="rename")await db.update(conversations).set({name:input.name||null,updatedAt:new Date()}).where(eq(conversations.id,input.conversationId));
+  else if(input.action==="set_image")await db.update(conversations).set({image:input.image??null,updatedAt:new Date()}).where(eq(conversations.id,input.conversationId));
+  else {
+    if(!input.userId)throw new ApiError(400,"Choose a member");
+    const existing=await db.select({userId:conversationMembers.userId}).from(conversationMembers).where(eq(conversationMembers.conversationId,input.conversationId));
+    if(existing.some(row=>row.userId===input.userId))return NextResponse.json({success:true});
+    if(existing.length>=8)throw new ApiError(400,"A chat can have up to 8 members");
+    const [[candidate],[sender],[chat],senderProjects,mutualRows]=await Promise.all([
+      db.select({id:users.id,ageBand:users.ageBand,messagePermission:privacySettings.messagePermission,isN2Admin:sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`}).from(users).leftJoin(privacySettings,eq(privacySettings.userId,users.id)).leftJoin(adminAssignments,eq(adminAssignments.userId,users.id)).where(and(eq(users.id,input.userId),eq(users.status,"active"))).limit(1),
+      db.select({ageBand:users.ageBand,isN2Admin:sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`}).from(users).leftJoin(adminAssignments,eq(adminAssignments.userId,users.id)).where(eq(users.id,member.id)).limit(1),
+      db.select({projectId:conversations.projectId}).from(conversations).where(eq(conversations.id,input.conversationId)).limit(1),
+      db.select({projectId:projectMembers.projectId}).from(projectMembers).where(eq(projectMembers.userId,member.id)),
+      db.select({followerId:follows.followerId,followingId:follows.followingId}).from(follows).where(or(and(eq(follows.followerId,member.id),eq(follows.followingId,input.userId)),and(eq(follows.followerId,input.userId),eq(follows.followingId,member.id)))),
+    ]);
+    if(!candidate)throw new ApiError(404,"Member unavailable");
+    const sharedProject=senderProjects.length?Boolean((await db.select({projectId:projectMembers.projectId}).from(projectMembers).where(and(eq(projectMembers.userId,input.userId),inArray(projectMembers.projectId,senderProjects.map(row=>row.projectId))))).length):false;
+    const mutual=mutualRows.some(row=>row.followerId===member.id&&row.followingId===input.userId)&&mutualRows.some(row=>row.followerId===input.userId&&row.followingId===member.id);
+    const eligibility=getMessageEligibility({permission:candidate.messagePermission,sharedProject,mutual,senderIsAdmin:Boolean(sender?.isN2Admin),recipientIsAdmin:Boolean(candidate.isN2Admin)});
+    if(!eligibility.canMessage)throw new ApiError(403,eligibility.reason);
+    const mixed=candidate.ageBand!==sender?.ageBand&&[candidate.ageBand,sender?.ageBand].includes("teen_16_17");
+    if(mixed){if(!chat?.projectId)throw new ApiError(403,"Adult and teen contact requires a shared project");const protectedProjectMember=await db.select({userId:projectMembers.userId}).from(projectMembers).where(and(eq(projectMembers.projectId,chat.projectId),eq(projectMembers.userId,input.userId))).limit(1);if(!protectedProjectMember.length)throw new ApiError(403,"All members need the shared project");}
+    await db.insert(conversationMembers).values({conversationId:input.conversationId,userId:input.userId});
+  }
+  return NextResponse.json({success:true});
+}catch(error){return apiError(error)}}

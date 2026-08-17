@@ -45,6 +45,13 @@ test("requires verified email before professional onboarding", async () => {
   assert.match(credentials, /member\.status !== "active"/);
 });
 
+test("onboarding bio communicates and enforces the server character limits", async () => {
+  const onboarding = await read("app/onboarding/page.tsx");
+  assert.match(onboarding, /minLength=\{10\}/);
+  assert.match(onboarding, /maxLength=\{600\}/);
+  assert.match(onboarding, /10–600 characters/);
+});
+
 test("supports authenticated password changes and private reset links", async () => {
   const [change, forgot, reset] = await Promise.all([
     read("app/api/auth/password/change/route.ts"),

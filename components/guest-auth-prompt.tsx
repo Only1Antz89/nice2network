@@ -9,9 +9,11 @@ import { Logo } from "@/components/network-brand";
 
 export default function GuestAuthPrompt({
   onClose,
-  initialMode = "register",
+  onPeek,
+  initialMode = "signin",
 }: {
   onClose: () => void;
+  onPeek?: () => void;
   initialMode?: "register" | "signin";
 }) {
   const [mode, setMode] = useState<"register" | "signin">(initialMode),
@@ -104,28 +106,6 @@ export default function GuestAuthPrompt({
               ? "Create an account to view projects, comment, share ideas, start projects and meet useful people."
               : "Sign in to interact with projects and your network."}
           </p>
-        </div>
-        <div className="guest-auth-tabs">
-          <button
-            type="button"
-            className={mode === "register" ? "active" : ""}
-            onClick={() => {
-              setMode("register");
-              setError("");
-            }}
-          >
-            Create account
-          </button>
-          <button
-            type="button"
-            className={mode === "signin" ? "active" : ""}
-            onClick={() => {
-              setMode("signin");
-              setError("");
-            }}
-          >
-            Sign in
-          </button>
         </div>
         <form onSubmit={submit}>
           {mode === "register" && (
@@ -225,9 +205,28 @@ export default function GuestAuthPrompt({
                 : "Sign in"}
           </button>
         </form>
+        <div className="guest-auth-alternatives">
+          <span>{mode === "signin" ? "New to n2?" : "Already have an account?"}</span>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setMode(mode === "signin" ? "register" : "signin");
+              setError("");
+            }}
+          >
+            {mode === "signin" ? "Create account" : "Sign in instead"}
+          </button>
+          {mode === "signin" && onPeek && (
+            <button type="button" className="guest-auth-peek" onClick={onPeek}>
+              Take a peek first
+            </button>
+          )}
+        </div>
         <small className="guest-auth-terms">
-          By joining, you agree to follow the n2 community standards and privacy
-          choices.
+          {mode === "register"
+            ? "By joining, you agree to follow the n2 community standards and privacy choices."
+            : "Your account keeps your projects, conversations and network together."}
         </small>
       </section>
     </div>

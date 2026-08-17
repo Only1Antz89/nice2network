@@ -5,11 +5,12 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { privacySettings, users, verificationTokens } from "@/db/schema";
 import { sendVerificationEmail } from "@/lib/email";
-import { eq } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { ageBand, ageFromDateOfBirth } from "@/lib/age";
 import { trackProductEvent } from "@/lib/analytics";
 import { isSecureRequest } from "@/lib/http";
 import { enforceRateLimit, RateLimitError, requestIp } from "@/lib/rate-limit";
+import { usernameBase } from "@/lib/usernames";
 
 const schema = z.object({
   title: z.enum(["Mr", "Ms", "Mrs", "Miss", "Mx", "Dr", "Prof"]),
@@ -34,7 +35,12 @@ export async function POST(request: Request) {
     const tokenHash = createHash("sha256").update(token).digest("hex");
     const db = getDb();
     const memberAgeBand = ageBand(input.dateOfBirth);
-    const [member] = await db.insert(users).values({ title: input.title, firstName: input.firstName, lastName: input.lastName, age, dateOfBirth: input.dateOfBirth, ageBand: memberAgeBand, name: `${input.firstName} ${input.lastName}`, image: input.image || null, email, passwordHash: await hash(input.password, 12), emailVerified: instantSignup ? new Date() : null, status: instantSignup ? "pending_onboarding" : "pending_verification" }).returning({ id: users.id });
+    const base = usernameBase(email.split("@")[0] || `${input.firstName}-${input.lastName}`);
+    const existingUsernames = await db.select({ username: users.username }).from(users).where(like(users.username, `${base}%`));
+    const unavailable = new Set(existingUsernames.map(({ username }) => username));
+    let username = base;
+    for (let suffix = 2; unavailable.has(username); suffix += 1) username = `${base.slice(0, 26)}${suffix}`;
+    const [member] = await db.insert(users).values({ title: input.title, firstName: input.firstName, lastName: input.lastName, age, dateOfBirth: input.dateOfBirth, ageBand: memberAgeBand, name: `${input.firstName} ${input.lastName}`, username, image: input.image || null, email, passwordHash: await hash(input.password, 12), emailVerified: instantSignup ? new Date() : null, status: instantSignup ? "pending_onboarding" : "pending_verification" }).returning({ id: users.id });
     createdEmail = email;
     await getDb().insert(privacySettings).values({ userId: member.id, ...(memberAgeBand === "teen_16_17" ? { profileVisibility: "connections", messagePermission: "connections", showLocation: false, useActivityForMatching: false } : {}) });
     await trackProductEvent({ actorId: member.id, ageBand: memberAgeBand, event: "registration_started", entityType: "user", entityId: member.id });
