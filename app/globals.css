@@ -361,10 +361,11 @@ body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-
 }
 
 /* Focused two-step meet editor: fixed shell, scrollable content, persistent actions. */
+.modal-backdrop:has(.meet-creation-flow){padding:10px}
 .meet-creation-flow{
-  width:min(940px,calc(100vw - 32px));
-  height:min(820px,calc(100dvh - 32px));
-  max-height:calc(100dvh - 32px);
+  width:min(1120px,calc(100vw - 20px));
+  height:min(940px,calc(100dvh - 20px));
+  max-height:calc(100dvh - 20px);
   display:grid;
   grid-template-rows:auto minmax(0,1fr) auto;
   padding:0;
@@ -390,21 +391,21 @@ body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-
 .meet-flow-progress span.active{color:var(--ink)}
 .meet-flow-progress i{width:28px;height:1px;background:var(--line)}
 .meet-flow-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;background:#f7f7f4}
-.meet-creation-flow .meet-editor-step{padding:18px 24px 28px;display:grid;gap:14px}
+.meet-creation-flow .meet-editor-step{padding:clamp(13px,1.7vh,18px) 20px clamp(18px,2.2vh,24px);display:grid;gap:clamp(10px,1.4vh,14px)}
 .meet-creation-flow .meet-editor-step[hidden]{display:none}
 .meet-editor-panel,.meet-creation-flow .meet-visibility-picker{min-width:0;margin:0;border:1px solid var(--line);border-radius:16px;background:#fff;padding:16px}
-.meet-editor-basics{display:grid;grid-template-columns:minmax(230px,300px) minmax(0,1fr);gap:18px}
-.meet-editor-basics .meet-editor-visual-row{display:grid;grid-template-columns:1fr;align-content:start;gap:11px;margin:0}
-.meet-editor-basics .meet-cover-preview,.meet-editor-basics .meet-cover-preview>img,.meet-editor-basics .meet-cover-preview>div{min-height:148px}
+.meet-editor-basics{display:grid;grid-template-columns:minmax(420px,.95fr) minmax(0,1.25fr);gap:18px}
+.meet-editor-basics .meet-editor-visual-row{display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;align-content:center;gap:13px;margin:0}
+.meet-editor-basics .meet-cover-preview,.meet-editor-basics .meet-cover-preview>img,.meet-editor-basics .meet-cover-preview>div{min-height:136px}
 .meet-editor-basics .meet-cover-copy{gap:5px}
 .meet-editor-basics .meet-cover-copy h3{font-size:16px}
 .meet-core-fields{display:grid;align-content:start;gap:13px;min-width:0}
 .meet-core-fields label,.meet-schedule-grid label,.meet-location-field,.meet-project-choice{display:grid;gap:6px;font-size:8px;font-weight:750}
 .meet-core-fields input,.meet-core-fields textarea,.meet-schedule-grid input,.meet-schedule-grid select,.meet-location-field input,.meet-project-choice select{width:100%;margin:0}
-.meet-core-fields textarea{min-height:116px;resize:vertical}
+.meet-core-fields textarea{min-height:104px;resize:vertical}
 .meet-visibility-picker>legend,.meet-mode-picker>legend{padding:0 7px;font-size:11px;font-weight:800}
 .meet-creation-flow .meet-visibility-options,.meet-creation-flow .meet-mode-picker>div{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
-.meet-creation-flow .meet-visibility-options button,.meet-creation-flow .meet-mode-picker button{min-height:76px;padding:12px 13px;border-radius:12px}
+.meet-creation-flow .meet-visibility-options button,.meet-creation-flow .meet-mode-picker button{min-height:68px;padding:10px 12px;border-radius:12px}
 .meet-creation-flow .meet-visibility-options button.active{background:#111;color:#fff;border-color:#111}
 .meet-panel-heading{display:grid;gap:3px;margin-bottom:12px}
 .meet-panel-heading strong{font-size:12px}
@@ -422,7 +423,14 @@ body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-
 .meet-creation-flow .meet-selected-person:not(:has(select)){grid-template-columns:1fr}
 .meet-creation-flow .meet-people-results{max-height:clamp(220px,35vh,350px)}
 
+@media(max-width:920px) and (min-width:701px){
+  .meet-editor-basics{grid-template-columns:minmax(285px,.9fr) minmax(0,1.1fr)}
+  .meet-editor-basics .meet-editor-visual-row{grid-template-columns:1fr;align-content:start}
+  .meet-editor-basics .meet-cover-preview,.meet-editor-basics .meet-cover-preview>img,.meet-editor-basics .meet-cover-preview>div{min-height:125px}
+}
+
 @media(max-width:700px){
+  .modal-backdrop:has(.meet-creation-flow){padding:0}
   .meet-creation-flow{width:100%;height:100dvh;max-height:100dvh;border-radius:0}
   .meet-creation-flow>.meet-flow-header{align-items:center;padding:15px 14px 13px;gap:12px}
   .meet-flow-header h2{font-size:19px}
@@ -433,6 +441,7 @@ body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-
   .meet-creation-flow .meet-editor-step{padding:12px 12px 20px;gap:11px}
   .meet-editor-panel,.meet-creation-flow .meet-visibility-picker{padding:13px;border-radius:14px}
   .meet-editor-basics{grid-template-columns:1fr;gap:15px}
+  .meet-editor-basics .meet-editor-visual-row{grid-template-columns:1fr;align-content:start}
   .meet-editor-basics .meet-cover-preview,.meet-editor-basics .meet-cover-preview>img,.meet-editor-basics .meet-cover-preview>div{min-height:132px}
   .meet-core-fields textarea{min-height:100px}
   .meet-creation-flow .meet-visibility-options,.meet-creation-flow .meet-mode-picker>div{grid-template-columns:1fr}

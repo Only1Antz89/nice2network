@@ -339,6 +339,11 @@ html[data-colour-theme="dark"] {
   color: var(--ink) !important;
 }
 
+.view-toggle button.active {
+  background: var(--solid) !important;
+  color: var(--solid-ink) !important;
+}
+
 input::placeholder,
 textarea::placeholder,
 .rich-text-editor:empty::before {
@@ -416,6 +421,14 @@ select:focus,
   color: var(--ink);
   border-color: var(--line);
 }
+.bubble.mine {
+  background: var(--inverse-surface);
+  color: var(--inverse-ink);
+  border: 1px solid #33332f;
+}
+.bubble.mine .message-meta {
+  color: #b9b9b2;
+}
 .bubble.mine .rich-link-preview {
   background: var(--surface);
   color: var(--ink);
@@ -457,10 +470,17 @@ select:focus,
   color: var(--ink);
   border-color: var(--line);
 }
-.ai-icon,
 .n2-ai-mark {
   background: var(--solid);
   color: var(--solid-ink);
+}
+.ai-icon {
+  background: var(--inverse-surface);
+  color: var(--inverse-ink);
+}
+.ai-icon .n2-ai-mark.inverse {
+  background: var(--inverse-ink);
+  color: var(--inverse-surface);
 }
 .funding-caveat,
 .blueprint-fallback,

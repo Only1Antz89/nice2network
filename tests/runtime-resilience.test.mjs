@@ -116,3 +116,20 @@ test("dark mode uses one semantic surface system across core product areas", () 
   assert.match(theme, /person-suggest > \.follow-person-button[\s\S]*background: #050505 !important/);
   assert.match(theme, /html\[data-colour-theme="system"\] \.person-suggest/);
 });
+
+test("dark conversations, contributor marks and calendar controls retain contrast", () => {
+  const theme = read("app/dark-theme.css");
+  assert.match(theme, /\.bubble\.mine\s*\{\s*background: var\(--inverse-surface\);\s*color: var\(--inverse-ink\)/);
+  assert.match(theme, /\.ai-icon \.n2-ai-mark\.inverse\s*\{\s*background: var\(--inverse-ink\);\s*color: var\(--inverse-surface\)/);
+  assert.match(theme, /\.view-toggle button\.active\s*\{\s*background: var\(--solid\) !important;\s*color: var\(--solid-ink\) !important/);
+});
+
+test("meet editor fills roomy viewports and only scrolls as a fallback", () => {
+  const styles = read("app/globals.css");
+  assert.match(styles, /\.modal-backdrop:has\(\.meet-creation-flow\)\{padding:10px\}/);
+  assert.match(styles, /width:min\(1120px,calc\(100vw - 20px\)\)/);
+  assert.match(styles, /height:min\(940px,calc\(100dvh - 20px\)\)/);
+  assert.match(styles, /\.meet-flow-body\{[^}]*overflow-y:auto/);
+  assert.match(styles, /grid-template-columns:140px minmax\(0,1fr\)/);
+  assert.match(styles, /@media\(max-width:700px\)\{\s*\.modal-backdrop:has\(\.meet-creation-flow\)\{padding:0\}/);
+});
