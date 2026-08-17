@@ -1851,7 +1851,7 @@ function CreateProject({
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                placeholder="Repair, remake, pass it on"
+                placeholder="What will your project be called?"
               />
             </label>
             <textarea
