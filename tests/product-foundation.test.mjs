@@ -355,6 +355,8 @@ test("bounds, explains and safely introduces through the scalable network map", 
   assert.match(hides, /networkMapHides/); assert.match(explain, /via_valid/); assert.match(migration, /introduction_pending_unique/);
   assert.match(page, /passive: false/); assert.match(page, /onMapPointerMove/); assert.match(page, /sheet-\$\{sheetLevel\}/); assert.match(page, /Default view/);
   assert.match(page, /network-display-menu/); assert.match(page, /Show following/); assert.match(page, /Show followers/);
+  assert.match(page, /search-closed/); assert.match(page, /aria-pressed/); assert.match(page, /network-node-orbits/);
+  assert.match(styles, /network-map-toolbar\.search-closed/); assert.match(styles, /network-menu-deploy/);
   assert.match(styles, /semantic-far/); assert.match(styles, /touch-action:none/); assert.match(styles, /safe-area-inset-bottom/);
   assert.match(onboarding, /NETWORK VISIBILITY/); assert.match(onboarding, /allowIntroductions:true/);
 });

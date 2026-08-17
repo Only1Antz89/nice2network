@@ -5875,13 +5875,17 @@ function NetworkView({
   if (focusNode) {
     const anchor = positions.get(focusNode.id) ?? { x: 50, y: 19 };
     releasedNodes.forEach((node, index) => {
-      const innerRingSize = Math.min(16, releasedNodes.length), outer = index >= innerRingSize,
+      const innerRingSize = Math.min(7, releasedNodes.length), outer = index >= innerRingSize,
         ringIndex = outer ? index - innerRingSize : index,
         ringSize = outer ? releasedNodes.length - innerRingSize : innerRingSize,
         fraction = ringSize === 1 ? .5 : ringIndex / Math.max(1, ringSize - 1),
-        angle = Math.PI * (.08 + fraction * .84),
-        xRadius = outer ? 41 : 31, yRadius = outer ? 34 : 25;
-      positions.set(node.id, { x: anchor.x + Math.cos(angle) * xRadius, y: anchor.y + Math.sin(angle) * yRadius });
+        inwardAngle = Math.atan2(50 - anchor.y, 50 - anchor.x),
+        span = outer ? Math.PI * 1.38 : Math.PI * 1.18,
+        angle = inwardAngle - span / 2 + fraction * span,
+        radius = outer ? 34 : 21,
+        x = anchor.x + Math.cos(angle) * radius,
+        y = anchor.y + Math.sin(angle) * radius * .82;
+      positions.set(node.id, { x: Math.min(92, Math.max(8, x)), y: Math.min(91, Math.max(9, y)) });
     });
   }
   const basePoint = (id: string) => id === currentMember.id
@@ -6019,6 +6023,15 @@ function NetworkView({
             preserveAspectRatio="none"
             aria-hidden="true"
           >
+            {focusNode && releasedNodes.length > 0 && (() => {
+              const centre = point(focusNode.id);
+              return (
+                <g className="network-node-orbits">
+                  <ellipse cx={centre.x} cy={centre.y} rx={21 * viewport.scale} ry={17.2 * viewport.scale} />
+                  {releasedNodes.length > 7 && <ellipse className="outer" cx={centre.x} cy={centre.y} rx={34 * viewport.scale} ry={27.9 * viewport.scale} />}
+                </g>
+              );
+            })()}
             {edges.map((edge, index) => {
               const a = point(edge.source),
                 b = point(edge.target),
@@ -6046,7 +6059,7 @@ function NetworkView({
                 "--node-colour": "#111",
               } as React.CSSProperties
             }
-            onClick={() => setMobileSearchOpen((open) => !open)}
+            onClick={() => setMobileSearchOpen((open) => { if (open) setDisplayMenuOpen(false); return !open; })}
             aria-expanded={mobileSearchOpen}
             aria-label="Search your network"
           >
@@ -6054,7 +6067,12 @@ function NetworkView({
             <span>{currentMember.name}</span>
             <small>{mobileSearchOpen ? "Close search" : "Search your network"}</small>
           </button>
-          <div className="network-floating-tools search-open network-map-toolbar">
+          {focusedId && !mobileSearchOpen && (
+            <button className="network-back-float" onClick={restoreDefaultView}>
+              <ArrowLeft size={14} /> Default view
+            </button>
+          )}
+          <div className={`network-floating-tools network-map-toolbar ${mobileSearchOpen ? "search-open" : "search-closed"}`} aria-hidden={!mobileSearchOpen}>
             <label className="network-search">
               <Search size={16} />
               <input
@@ -6102,10 +6120,10 @@ function NetworkView({
                 <button onClick={() => setDisplayMenuOpen((open) => !open)} aria-label="Network display options" aria-expanded={displayMenuOpen}><List size={15} /></button>
                 {displayMenuOpen && <div className="network-display-popover" role="menu" aria-label="Network display options">
                   <strong>Display</strong>
-                  <label><input type="checkbox" checked={showConnections} onChange={(event) => setShowConnections(event.target.checked)} /> <span>See connections</span></label>
-                  <label><input type="checkbox" checked={showKey} onChange={toggleNetworkKey} /> <span>Show key</span></label>
-                  <label><input type="checkbox" checked={showFollowing} onChange={(event) => setShowFollowing(event.target.checked)} /> <span>Show following</span></label>
-                  <label><input type="checkbox" checked={showFollowers} onChange={(event) => setShowFollowers(event.target.checked)} /> <span>Show followers<small>People you do not follow back</small></span></label>
+                  <button className={showConnections ? "active" : ""} aria-pressed={showConnections} onClick={() => setShowConnections((value) => !value)}><span>See connections</span><i>{showConnections ? "On" : "Off"}</i></button>
+                  <button className={showKey ? "active" : ""} aria-pressed={showKey} onClick={toggleNetworkKey}><span>Show key</span><i>{showKey ? "On" : "Off"}</i></button>
+                  <button className={showFollowing ? "active" : ""} aria-pressed={showFollowing} onClick={() => setShowFollowing((value) => !value)}><span>Show following</span><i>{showFollowing ? "On" : "Off"}</i></button>
+                  <button className={showFollowers ? "active" : ""} aria-pressed={showFollowers} onClick={() => setShowFollowers((value) => !value)}><span>Show followers<small>People you do not follow back</small></span><i>{showFollowers ? "On" : "Off"}</i></button>
                 </div>}
               </div>
             </div>
