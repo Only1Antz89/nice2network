@@ -50,6 +50,12 @@ test("onboarding bio communicates and enforces the server character limits", asy
   assert.match(onboarding, /minLength=\{10\}/);
   assert.match(onboarding, /maxLength=\{600\}/);
   assert.match(onboarding, /10–600 characters/);
+  assert.match(onboarding, /Short bio must be at least 10 characters/);
+  assert.match(onboarding, /Short bio must be 600 characters or fewer/);
+  assert.match(onboarding, /Enter your primary skill/);
+  assert.match(onboarding, /We could not reach n2/);
+  const route = await read("app/api/auth/onboarding/route.ts");
+  assert.match(route, /parsed\.error\.issues\[0\]/);
 });
 
 test("supports authenticated password changes and private reset links", async () => {

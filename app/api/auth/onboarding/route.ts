@@ -9,14 +9,14 @@ import { trackProductEvent } from "@/lib/analytics";
 import { recommendPeople } from "@/lib/people-recommendations";
 
 const schema = z.object({
-  profession: z.string().trim().min(2).max(100),
-  industry: z.string().trim().min(2).max(100),
-  bio: z.string().trim().min(10).max(600),
-  primarySkill: z.string().trim().min(1).max(80),
-  secondarySkill: z.string().trim().min(1).max(80),
-  tertiarySkill: z.string().trim().min(1).max(80),
-  interests: z.array(z.string().trim().min(1).max(50)).min(1).max(20),
-  location: z.string().trim().min(2).max(100),
+  profession: z.string().trim().min(2, "Profession must be at least 2 characters.").max(100, "Profession must be 100 characters or fewer."),
+  industry: z.string().trim().min(2, "Industry must be at least 2 characters.").max(100, "Industry must be 100 characters or fewer."),
+  bio: z.string().trim().min(10, "Short bio must be at least 10 characters.").max(600, "Short bio must be 600 characters or fewer."),
+  primarySkill: z.string().trim().min(1, "Enter your primary skill.").max(80, "Primary skill must be 80 characters or fewer."),
+  secondarySkill: z.string().trim().min(1, "Enter your secondary skill.").max(80, "Secondary skill must be 80 characters or fewer."),
+  tertiarySkill: z.string().trim().min(1, "Enter your tertiary skill.").max(80, "Tertiary skill must be 80 characters or fewer."),
+  interests: z.array(z.string().trim().min(1).max(50, "Each interest must be 50 characters or fewer.")).min(1, "Enter at least one interest.").max(20, "Add no more than 20 interests."),
+  location: z.string().trim().min(2, "Location must be at least 2 characters.").max(100, "Location must be 100 characters or fewer."),
   workMode: z.enum(["remote", "hybrid", "in_person"]),
   shareNetworkConnections: z.boolean().default(true),
   allowIntroductions: z.boolean().default(true),
@@ -24,7 +24,9 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const input = schema.parse(await request.json());
+    const parsed = schema.safeParse(await request.json());
+    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Check your profile details and try again." }, { status: 400 });
+    const input = parsed.data;
     const rawToken = (await cookies()).get("n2_onboarding")?.value;
     if (!rawToken) return NextResponse.json({ error: "Your onboarding link has expired." }, { status: 401 });
     const tokenHash = createHash("sha256").update(rawToken).digest("hex");
