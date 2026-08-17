@@ -5705,6 +5705,8 @@ function NetworkView({
     [showFollowers, setShowFollowers] = useState(false),
     [activeCluster, setActiveCluster] = useState(""),
     [viewport, setViewport] = useState({ scale: 0.9, panX: 0, panY: 0 }),
+    [canvasAspect, setCanvasAspect] = useState(1.6),
+    [mapInteracting, setMapInteracting] = useState(false),
     [sheetLevel, setSheetLevel] = useState<"collapsed" | "mid" | "full">("mid"),
     [detailTab, setDetailTab] = useState<"profile" | "connections">("profile"),
     [whyReasons, setWhyReasons] = useState<string[]>([]),
@@ -5719,7 +5721,10 @@ function NetworkView({
     canvasRef = useRef<HTMLDivElement | null>(null),
     gesture = useRef<{ distance: number; scale: number } | null>(null),
     sheetDrag = useRef<number | null>(null),
-    previousViewport = useRef<{ scale: number; panX: number; panY: number } | null>(null);
+    previousViewport = useRef<{ scale: number; panX: number; panY: number } | null>(null),
+    lastGraphQuery = useRef("overview|||All professions|"),
+    panFrame = useRef<number | null>(null),
+    pendingPan = useRef({ x: 0, y: 0 });
   const currentFocusId = data.focus?.id;
   useEffect(() => {
     const loadGraph = () => {
@@ -5757,6 +5762,21 @@ function NetworkView({
     return () => canvas.removeEventListener("wheel", handleWheel);
   }, [data.viewport?.maxScale, data.viewport?.minScale]);
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const measure = () => {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.height > 0) setCanvasAspect(Math.min(2.4, Math.max(.7, rect.width / rect.height)));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(canvas);
+    measure();
+    return () => {
+      observer.disconnect();
+      if (panFrame.current !== null) cancelAnimationFrame(panFrame.current);
+    };
+  }, []);
+  useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("introduction");
     if (!id) return;
     fetch(`/api/network/introductions/${encodeURIComponent(id)}`, { cache: "no-store" })
@@ -5765,6 +5785,9 @@ function NetworkView({
       .catch(() => undefined);
   }, []);
   useEffect(() => {
+    const queryKey = `${currentFocusId ? "focus" : "overview"}|${currentFocusId ?? ""}|${skill.trim()}|${profession}|${activeCluster}`;
+    if (lastGraphQuery.current === queryKey) return;
+    lastGraphQuery.current = queryKey;
     const controller = new AbortController(), timer = window.setTimeout(() => {
       const params = new URLSearchParams({ mode: currentFocusId ? "focus" : "overview" });
       if (currentFocusId) params.set("focus", currentFocusId);
@@ -5796,7 +5819,12 @@ function NetworkView({
       });
       if (!response.ok) return;
       const next = (await response.json()) as NetworkGraphRecord;
+      lastGraphQuery.current = skill.trim() || profession !== "All professions" || activeCluster
+        ? ""
+        : `focus|${node.id}||All professions|`;
       setData(next);
+      const focusSize = next.nodes.filter((item) => item.kind === "cluster" || item.degree === 2).length;
+      setViewport({ scale: focusSize > 42 ? .58 : focusSize > 28 ? .68 : focusSize > 16 ? .8 : focusSize > 8 ? .9 : 1, panX: 0, panY: 0 });
       setSelected((next.nodes.find((item) => item.kind === "person" && item.id === node.id) as NetworkNodeRecord | undefined) ?? node);
       setShowKey(next.preferences?.showNetworkKey ?? true);
       setActiveCluster("");
@@ -5815,6 +5843,9 @@ function NetworkView({
     setSelected(null);
     setDetailTab("profile");
     setDisplayMenuOpen(false);
+    setProfession("All professions");
+    setSkill("");
+    lastGraphQuery.current = "overview|||All professions|";
     if (overviewData) setData(overviewData);
     const response = await fetch("/api/network/graph", { cache: "no-store" });
     if (response.ok) {
@@ -5861,31 +5892,48 @@ function NetworkView({
   const overviewPeople = (overviewData?.nodes ?? allNodes).filter((node): node is NetworkNodeRecord => node.kind === "person"),
     defaultFrameIds = overviewPeople.filter((node) => node.is_following).map((node) => node.id),
     defaultFrameSet = new Set(defaultFrameIds),
-    focusNode = peopleNodes.find((node) => node.id === focusedId);
-  defaultFrameIds.forEach((id, index) => {
-    const angle = -Math.PI / 2 + (index / Math.max(1, defaultFrameIds.length)) * Math.PI * 2;
-    positions.set(id, { x: 50 + Math.cos(angle) * 34, y: 50 + Math.sin(angle) * 31 });
+    focusNode = peopleNodes.find((node) => node.id === focusedId),
+    aspectScale = Math.max(.7, canvasAspect),
+    overviewRings = [{ capacity: 8, radius: 21 }, { capacity: 14, radius: 32 }, { capacity: 20, radius: 42 }, { capacity: 28, radius: 49 }];
+  let overviewOffset = 0;
+  overviewRings.forEach((ring, ringIndex) => {
+    const ringIds = defaultFrameIds.slice(overviewOffset, overviewOffset + ring.capacity);
+    ringIds.forEach((id, index) => {
+      const angle = -Math.PI / 2 + (index / Math.max(1, ringIds.length)) * Math.PI * 2 + ringIndex * .13;
+      positions.set(id, { x: 50 + Math.cos(angle) * ring.radius / aspectScale, y: 50 + Math.sin(angle) * ring.radius });
+    });
+    overviewOffset += ringIds.length;
   });
   const followerOnlyNodes = peopleNodes.filter((node) => node.degree === 1 && !defaultFrameSet.has(node.id));
   followerOnlyNodes.forEach((node, index) => {
     const angle = -Math.PI / 2 + ((index + .5) / Math.max(1, followerOnlyNodes.length)) * Math.PI * 2;
-    positions.set(node.id, { x: 50 + Math.cos(angle) * 41, y: 50 + Math.sin(angle) * 38 });
+    positions.set(node.id, { x: 50 + Math.cos(angle) * 46 / aspectScale, y: 50 + Math.sin(angle) * 46 });
   });
   const releasedNodes = nodes.filter((node) => node.id !== focusedId && (node.kind === "cluster" || node.degree === 2));
+  const focusRings = [
+    { capacity: 6, radius: 17, span: Math.PI * 1.02 },
+    { capacity: 10, radius: 25, span: Math.PI * 1.2 },
+    { capacity: 14, radius: 33, span: Math.PI * 1.36 },
+    { capacity: 18, radius: 41, span: Math.PI * 1.5 },
+    { capacity: 24, radius: 49, span: Math.PI * 1.62 },
+  ];
+  const activeFocusRings: { radius: number; count: number }[] = [];
   if (focusNode) {
     const anchor = positions.get(focusNode.id) ?? { x: 50, y: 19 };
-    releasedNodes.forEach((node, index) => {
-      const innerRingSize = Math.min(7, releasedNodes.length), outer = index >= innerRingSize,
-        ringIndex = outer ? index - innerRingSize : index,
-        ringSize = outer ? releasedNodes.length - innerRingSize : innerRingSize,
-        fraction = ringSize === 1 ? .5 : ringIndex / Math.max(1, ringSize - 1),
+    let offset = 0;
+    focusRings.forEach((ring, ringIndex) => {
+      const ringNodes = releasedNodes.slice(offset, offset + ring.capacity);
+      if (!ringNodes.length) return;
+      activeFocusRings.push({ radius: ring.radius, count: ringNodes.length });
+      ringNodes.forEach((node, index) => {
+        const fraction = ringNodes.length === 1 ? .5 : index / Math.max(1, ringNodes.length - 1),
         inwardAngle = Math.atan2(50 - anchor.y, 50 - anchor.x),
-        span = outer ? Math.PI * 1.38 : Math.PI * 1.18,
-        angle = inwardAngle - span / 2 + fraction * span,
-        radius = outer ? 34 : 21,
-        x = anchor.x + Math.cos(angle) * radius,
-        y = anchor.y + Math.sin(angle) * radius * .82;
+        angle = inwardAngle - ring.span / 2 + fraction * ring.span + ringIndex * .025,
+        x = anchor.x + Math.cos(angle) * ring.radius / aspectScale,
+        y = anchor.y + Math.sin(angle) * ring.radius;
       positions.set(node.id, { x: Math.min(92, Math.max(8, x)), y: Math.min(91, Math.max(9, y)) });
+      });
+      offset += ringNodes.length;
     });
   }
   const basePoint = (id: string) => id === currentMember.id
@@ -5898,9 +5946,11 @@ function NetworkView({
   };
   const clampScale = (value: number) => Math.min(data.viewport?.maxScale ?? 2.2, Math.max(data.viewport?.minScale ?? 0.45, value));
   const zoomBy = (amount: number) => setViewport((current) => ({ ...current, scale: clampScale(current.scale + amount) }));
-  const fitView = () => setViewport({ scale: focusedId ? 1 : data.viewport?.suggestedScale ?? 0.9, panX: 0, panY: 0 });
+  const densityScale = releasedNodes.length > 42 ? .58 : releasedNodes.length > 28 ? .68 : releasedNodes.length > 16 ? .8 : releasedNodes.length > 8 ? .9 : 1;
+  const fitView = () => setViewport({ scale: focusedId ? densityScale : data.viewport?.suggestedScale ?? 0.9, panX: 0, panY: 0 });
   const onMapPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button,input,select,aside")) return;
+    setMapInteracting(true);
     event.currentTarget.setPointerCapture(event.pointerId);
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.current.size === 2) {
@@ -5919,12 +5969,20 @@ function NetworkView({
     }
     if (pointers.current.size === 1) {
       const rect = event.currentTarget.getBoundingClientRect();
-      setViewport((current) => ({ ...current, panX: current.panX + (event.clientX - previous.x) / rect.width * 100, panY: current.panY + (event.clientY - previous.y) / rect.height * 100 }));
+      pendingPan.current.x += (event.clientX - previous.x) / rect.width * 100;
+      pendingPan.current.y += (event.clientY - previous.y) / rect.height * 100;
+      if (panFrame.current === null) panFrame.current = requestAnimationFrame(() => {
+        const delta = pendingPan.current;
+        pendingPan.current = { x: 0, y: 0 };
+        panFrame.current = null;
+        setViewport((current) => ({ ...current, panX: current.panX + delta.x, panY: current.panY + delta.y }));
+      });
     }
   };
   const onMapPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
     pointers.current.delete(event.pointerId);
     if (pointers.current.size < 2) gesture.current = null;
+    if (pointers.current.size === 0) setMapInteracting(false);
   };
   async function explainConnection() {
     if (!selected) return;
@@ -5982,7 +6040,7 @@ function NetworkView({
       <div className="network-workspace">
         <div
           ref={canvasRef}
-          className={`network-canvas semantic-${viewport.scale < .7 ? "far" : viewport.scale < 1.2 ? "medium" : "near"}`}
+          className={`network-canvas${mapInteracting ? " is-interacting" : ""} density-${nodes.length > 42 ? "extreme" : nodes.length > 24 ? "dense" : nodes.length > 12 ? "busy" : "calm"} semantic-${viewport.scale < .7 ? "far" : viewport.scale < 1.2 ? "medium" : "near"}`}
           role="application"
           tabIndex={0}
           aria-label="Interactive network map. Use plus and minus to zoom, or drag to pan."
@@ -6027,8 +6085,9 @@ function NetworkView({
               const centre = point(focusNode.id);
               return (
                 <g className="network-node-orbits">
-                  <ellipse cx={centre.x} cy={centre.y} rx={21 * viewport.scale} ry={17.2 * viewport.scale} />
-                  {releasedNodes.length > 7 && <ellipse className="outer" cx={centre.x} cy={centre.y} rx={34 * viewport.scale} ry={27.9 * viewport.scale} />}
+                  {activeFocusRings.map((ring, index) => (
+                    <ellipse key={ring.radius} className={index ? "outer" : ""} cx={centre.x} cy={centre.y} rx={ring.radius * viewport.scale / aspectScale} ry={ring.radius * viewport.scale} />
+                  ))}
                 </g>
               );
             })()}
