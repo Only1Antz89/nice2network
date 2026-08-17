@@ -6145,9 +6145,15 @@ function NetworkView({
             aria-expanded={mobileSearchOpen}
             aria-label="Search your network"
           >
-            <i className="network-self-search-icon"><Search size={28} /></i>
-            <span>{currentMember.name}</span>
-            <small>{mobileSearchOpen ? "Close search" : "Search your network"}</small>
+            <Avatar
+              person={{
+                name: currentMember.name,
+                role: currentMember.role ?? "Member",
+                img: currentMember.img,
+              }}
+              size="lg"
+            />
+            <i className="network-self-search-icon" aria-hidden="true"><Search size={28} /></i>
           </button>
           {focusNode && (
             <div className="network-focus-label" style={{ left: `${point(focusNode.id).x}%`, top: `${Math.max(5, point(focusNode.id).y - 11)}%` }}>
