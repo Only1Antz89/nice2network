@@ -8,8 +8,10 @@ import { privacySettings, projectRoles, projects, users, verificationTokens } fr
 import { trackProductEvent } from "@/lib/analytics";
 import { ONBOARDING_BIO_MIN_LENGTH, hasUniqueValues, isMeaningfulOnboardingBio, isMeaningfulOnboardingValue } from "@/lib/onboarding-profile";
 import { recommendPeople } from "@/lib/people-recommendations";
+import { isAvailableUsernameFormat } from "@/lib/usernames";
 
 const schema = z.object({
+  username: z.string().trim().toLowerCase().refine(isAvailableUsernameFormat, "Use 3–30 lowercase letters, numbers, underscores or hyphens. The username cannot be a reserved n2 page."),
   profession: z.string().trim().min(2, "Choose a suggestion or enter a specific profession.").max(100, "Profession must be 100 characters or fewer.").refine(isMeaningfulOnboardingValue, "Choose a suggestion or enter a specific profession."),
   industry: z.string().trim().min(2, "Choose a suggestion or enter a specific industry.").max(100, "Industry must be 100 characters or fewer.").refine(isMeaningfulOnboardingValue, "Choose a suggestion or enter a specific industry."),
   bio: z.string().trim().min(ONBOARDING_BIO_MIN_LENGTH, `Short bio must be at least ${ONBOARDING_BIO_MIN_LENGTH} characters.`).max(600, "Short bio must be 600 characters or fewer.").refine(isMeaningfulOnboardingBio, "Write at least 6 words about your experience and what you want to contribute."),
@@ -25,6 +27,26 @@ const schema = z.object({
   if(!hasUniqueValues([input.primarySkill,input.secondarySkill,input.tertiarySkill]))context.addIssue({code:"custom",path:["secondarySkill"],message:"Choose three different skills so your profile has a clear range."});
 });
 
+export async function GET(request: Request) {
+  try {
+    const rawToken = (await cookies()).get("n2_onboarding")?.value;
+    if (!rawToken) return NextResponse.json({ error: "Your onboarding link has expired." }, { status: 401 });
+    const tokenHash = createHash("sha256").update(rawToken).digest("hex"), db = getDb();
+    const [record] = await db.select().from(verificationTokens).where(and(eq(verificationTokens.token, tokenHash), gt(verificationTokens.expires, new Date()))).limit(1);
+    if (!record?.identifier.startsWith("onboarding:")) return NextResponse.json({ error: "Your onboarding link has expired." }, { status: 401 });
+    const email = record.identifier.slice("onboarding:".length);
+    const [member] = await db.select({ id: users.id, username: users.username }).from(users).where(eq(users.email, email)).limit(1);
+    if (!member) return NextResponse.json({ error: "Member not found." }, { status: 404 });
+    const candidate = new URL(request.url).searchParams.get("username")?.trim().toLowerCase();
+    if (!candidate) return NextResponse.json({ username: member.username });
+    if (!isAvailableUsernameFormat(candidate)) return NextResponse.json({ username: member.username, available: false, reason: "format" });
+    const [owner] = await db.select({ id: users.id }).from(users).where(and(eq(users.username, candidate), ne(users.id, member.id))).limit(1);
+    return NextResponse.json({ username: member.username, available: !owner });
+  } catch {
+    return NextResponse.json({ error: "Could not check that username." }, { status: 400 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const parsed = schema.safeParse(await request.json());
@@ -37,10 +59,13 @@ export async function POST(request: Request) {
     const [record] = await db.select().from(verificationTokens).where(and(eq(verificationTokens.token, tokenHash), gt(verificationTokens.expires, new Date()))).limit(1);
     if (!record?.identifier.startsWith("onboarding:")) return NextResponse.json({ error: "Your onboarding link has expired." }, { status: 401 });
     const email = record.identifier.slice("onboarding:".length);
-    const [existing] = await db.select({ ageBand: users.ageBand }).from(users).where(eq(users.email, email)).limit(1);
+    const [existing] = await db.select({ id: users.id, ageBand: users.ageBand }).from(users).where(eq(users.email, email)).limit(1);
+    if (!existing) return NextResponse.json({ error: "Member not found." }, { status: 404 });
+    const [usernameOwner] = await db.select({ id: users.id }).from(users).where(and(eq(users.username, input.username), ne(users.id, existing.id))).limit(1);
+    if (usernameOwner) return NextResponse.json({ error: "That username is already taken. Choose another one." }, { status: 409 });
     const teen = existing?.ageBand === "teen_16_17";
     const rankedSkills = [input.primarySkill, input.secondarySkill, input.tertiarySkill];
-    const [member] = await db.update(users).set({ profession: input.profession, headline: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: rankedSkills, interests: input.interests, location: teen ? null : input.location, workMode: input.workMode, status: "active", onboardingCompletedAt: new Date(), updatedAt: new Date() }).where(eq(users.email, email)).returning({ id: users.id, ageBand: users.ageBand });
+    const [member] = await db.update(users).set({ username: input.username, profession: input.profession, headline: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: rankedSkills, interests: input.interests, location: teen ? null : input.location, workMode: input.workMode, status: "active", onboardingCompletedAt: new Date(), updatedAt: new Date() }).where(eq(users.email, email)).returning({ id: users.id, ageBand: users.ageBand });
     if (!member) return NextResponse.json({ error: "Member not found." }, { status: 404 });
 
     await db.insert(privacySettings).values({ userId: member.id, shareNetworkConnections: input.shareNetworkConnections, allowIntroductions: input.allowIntroductions }).onConflictDoUpdate({ target: privacySettings.userId, set: { shareNetworkConnections: input.shareNetworkConnections, allowIntroductions: input.allowIntroductions, updatedAt: new Date() } });

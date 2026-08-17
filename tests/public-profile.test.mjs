@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { usernameBase } from "../lib/usernames.ts";
+import { isAvailableUsernameFormat, usernameBase } from "../lib/usernames.ts";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -10,6 +10,25 @@ test("usernames are stable, URL-safe and avoid application routes", () => {
   assert.equal(usernameBase("Anthony.Osei"), "anthonyosei");
   assert.equal(usernameBase("signin"), "signin-n2");
   assert.match(usernameBase("É J"), /^member-/);
+  assert.equal(isAvailableUsernameFormat("anthony_osei"), true);
+  assert.equal(isAvailableUsernameFormat("signin"), false);
+  assert.equal(isAvailableUsernameFormat("Blue.Box"), false);
+});
+
+test("members can see and safely change their public-profile username", async () => {
+  const [settings, profileApi, styles] = await Promise.all([
+    read("app/page.tsx"),
+    read("app/api/profiles/[userId]/route.ts"),
+    read("app/globals.css"),
+  ]);
+  assert.match(profileApi, /username: users\.username/);
+  assert.match(profileApi, /That username is already taken/);
+  assert.match(profileApi, /publicProfilePath: `\/\$\{input\.username\}`/);
+  assert.match(settings, />\s*Username\s*</);
+  assert.match(settings, /Public address:/);
+  assert.match(settings, /Set profile visibility to Public before sharing/);
+  assert.match(settings, /className="profile-username"/);
+  assert.match(styles, /\.username-field/);
 });
 
 test("the guest entry journey is sign-in first with an explicit preview choice", async () => {

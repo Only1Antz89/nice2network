@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bell, CheckCheck, X } from "lucide-react";
 import { Avatar } from "@/components/network-brand";
+import { setBrowserNotificationPreference } from "@/lib/browser-notifications";
 
 export type NotificationRecord = {
   id: string;
@@ -39,7 +40,7 @@ export default function NotificationPanel({
     fetch("/api/notifications")
       .then((r) => (r.ok ? r.json() : { notifications: [], unread: 0 }))
       .then((data) => {
-        setItems(data.notifications ?? []);
+        setItems((data.notifications ?? []).filter((item: NotificationRecord) => item.type !== "message"));
         setUnread(data.unread ?? 0);
         onUnread(data.unread ?? 0);
       })
@@ -83,8 +84,7 @@ export default function NotificationPanel({
     if (typeof Notification === "undefined") return;
     const permission = await Notification.requestPermission();
     setSystemPermission(permission);
-    if (permission === "granted")
-      localStorage.setItem("n2-system-message-notifications", "enabled");
+    setBrowserNotificationPreference("popups", permission === "granted");
   }
   return (
     <div

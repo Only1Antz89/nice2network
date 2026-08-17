@@ -40,7 +40,7 @@ function NotificationRow({ item, onRead }: { item: NotificationRecord; onRead: (
   );
 }
 
-export default function NotificationsPage({ onUnread }: { onUnread: (count: number) => void }) {
+export default function NotificationsPage({ onUnreadCounts }: { onUnreadCounts: (unread: number, unreadMessages: number) => void }) {
   const [items, setItems] = useState<NotificationRecord[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -52,13 +52,13 @@ export default function NotificationsPage({ onUnread }: { onUnread: (count: numb
     fetch("/api/notifications", { cache: "no-store" })
       .then((response) => response.ok ? response.json() : { notifications: [], unread: 0 })
       .then((data) => {
-        setItems(data.notifications ?? []);
+        setItems((data.notifications ?? []).filter((item: NotificationRecord) => item.type !== "message"));
         setUnread(data.unread ?? 0);
-        onUnread(data.unread ?? 0);
+        onUnreadCounts(data.unread ?? 0, data.unreadMessages ?? 0);
         setPreferences({ ...defaultPreferences, ...(data.preferences ?? {}) });
       })
       .finally(() => setLoading(false));
-  }, [onUnread]);
+  }, [onUnreadCounts]);
 
   const read = useCallback(async (item?: NotificationRecord) => {
     const response = await fetch("/api/notifications", {
@@ -67,19 +67,19 @@ export default function NotificationsPage({ onUnread }: { onUnread: (count: numb
       body: JSON.stringify(item ? { action: "read", notificationId: item.id } : { action: "read_all" }),
     });
     if (!response.ok) return;
+    const result = await response.json();
+    onUnreadCounts(result.unread ?? 0, result.unreadMessages ?? 0);
     if (item) {
       setItems((current) => current.map((row) => row.id === item.id ? { ...row, readAt: new Date().toISOString() } : row));
       if (!item.readAt) {
         const next = Math.max(0, unread - 1);
         setUnread(next);
-        onUnread(next);
       }
       return;
     }
     setItems((current) => current.map((row) => ({ ...row, readAt: new Date().toISOString() })));
     setUnread(0);
-    onUnread(0);
-  }, [onUnread, unread]);
+  }, [onUnreadCounts, unread]);
 
   async function toggleFollowedUpdates() {
     const next = { ...preferences, followedUpdates: !preferences.followedUpdates };

@@ -99,6 +99,7 @@ test("mobile navigation omits the current page while full profiles retain banner
   assert.match(page, /const mobileNav = nav\.filter\(\(item\) => item\.id !== "profile" && item\.id !== "network"\)/);
   assert.match(page, /mobileNav\.filter\(\(item\) => item\.id !== view\)\.map/);
   assert.match(page, /item\.id === "notifications" && unreadNotifications > 0\s+\? <NotificationUnreadIndicator unread=\{unreadNotifications\}/);
+  assert.match(page, /item\.id === "messages" && unreadMessages > 0\s+\? <MessageUnreadIndicator unread=\{unreadMessages\}/);
   assert.match(styles, /grid-auto-columns:minmax\(0,1fr\)/);
   assert.match(styles, /\.mobile-topbar \.logo>span:last-child\{display:inline;white-space:nowrap\}/);
   assert.match(styles, /\.sidebar nav button>\.avatar\{width:24px;height:24px\}/);
@@ -139,7 +140,7 @@ test("notifications use a dedicated responsive page instead of a mobile floating
   assert.doesNotMatch(page, /className="mobile-page-notification/);
   assert.doesNotMatch(styles, /\.mobile-page-notification/);
   assert.match(page, /label: "Notifications", icon: Bell/);
-  assert.match(page, /<NotificationsPage onUnread=\{setUnreadNotifications\}/);
+  assert.match(page, /<NotificationsPage onUnreadCounts=\{updateUnreadCounts\}/);
   for (const section of ["LATEST NOTIFICATION", "Reactions to projects", "Reactions to posts", "New followers", "Updates from people you follow"]) assert.match(notificationsPage, new RegExp(section));
   assert.match(notificationsPage, /role="tablist" aria-label="Notification categories"/);
   assert.match(notificationsPage, /role="tabpanel"/);
@@ -154,6 +155,23 @@ test("notifications use a dedicated responsive page instead of a mobile floating
   assert.match(posts, /type: "following" as const/);
   assert.match(projectUpdates, /type:"following" as const/);
   assert.match(migration, /ADD COLUMN "followed_updates" boolean DEFAULT true NOT NULL/);
+});
+
+test("message alerts deep-link to their conversation and use message-specific unread counters", () => {
+  const page = read("app/page.tsx");
+  const styles = read("app/globals.css");
+  const notificationsApi = read("app/api/notifications/route.ts");
+  const conversationsApi = read("app/api/conversations/route.ts");
+  const messagesApi = read("app/api/conversations/[conversationId]/messages/route.ts");
+  assert.match(messagesApi, /view=messages&conversation=\$\{encodeURIComponent\(conversationId\)\}/);
+  assert.match(page, /requestedView === "messages"[\s\S]*setMessageConversationId\(conversationId\)[\s\S]*setView\("messages"\)/);
+  assert.match(notificationsApi, /action: z\.literal\("read_conversation"\)/);
+  assert.match(notificationsApi, /ne\(notifications\.type, "message"\)/);
+  assert.match(notificationsApi, /unreadMessages: unreadMessages\.value/);
+  assert.match(read("components/notifications-page.tsx"), /item\.type !== "message"/);
+  assert.match(conversationsApi, /unreadCount:/);
+  assert.match(page, /className="message-row-unread-count"/);
+  assert.match(styles, /\.message-row-unread-count/);
 });
 
 test("dark mode uses one semantic surface system across core product areas", () => {

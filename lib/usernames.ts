@@ -14,3 +14,7 @@ export function usernameBase(value: string) {
   const base = normalized.length >= 3 ? normalized : `member-${normalized || "n2"}`;
   return RESERVED_USERNAMES.has(base) ? `${base}-n2` : base;
 }
+
+export function isAvailableUsernameFormat(value: string) {
+  return /^[a-z0-9][a-z0-9_-]{2,29}$/.test(value) && !RESERVED_USERNAMES.has(value);
+}

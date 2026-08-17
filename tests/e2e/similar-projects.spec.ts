@@ -54,6 +54,9 @@ test("pre-publish similarity is default-on, owner-only, role-aware and immediate
     await page.route(`**/api/projects/${sourceProjectId}/blueprint/*/approve`, route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, projectId: sourceProjectId }) }));
     await page.getByRole("button", { name: "Start a project" }).click();
     await page.getByLabel("Project title").fill("Neighbourhood repair and reuse hub");
+    await page.getByLabel("Project summary").fill("x".repeat(500));
+    await expect(page.getByText("500/500")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Build my project plan" })).toBeEnabled();
     await page.getByPlaceholder("Describe the idea, why it matters, and where you'd like help…").fill("Repair household items locally and teach practical reuse skills.");
     await page.getByRole("button", { name: "Build my project plan" }).click();
     await expect(page.getByText("Guided roadmap", { exact: true })).toBeVisible();

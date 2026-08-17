@@ -8,9 +8,11 @@ import { audit } from "@/lib/audit";
 import { after } from "next/server";
 import { recomputeMemberRecommendations } from "@/lib/recommendations/service";
 import { sanitizeRichText } from "@/lib/rich-text";
+import { isAvailableUsernameFormat } from "@/lib/usernames";
 
 const profileSchema = z.object({
   name: z.string().trim().min(2).max(120),
+  username: z.string().trim().toLowerCase().refine(isAvailableUsernameFormat, "Use 3–30 lowercase letters, numbers, underscores or hyphens. The username cannot be a reserved n2 page."),
   image: z.string().max(900_000).refine(value => !value || /^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
   coverImage: z.string().max(1_500_000).refine(value => !value || /^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
   headline: z.string().trim().max(160).nullable().optional(),
@@ -30,7 +32,7 @@ const profileSchema = z.object({
 export async function GET(_: Request, { params }: { params: Promise<{ userId: string }> }) {
   try {
     const viewer = await requireMember(), { userId } = await params, db = getDb();
-    const [row] = await db.select({ id: users.id, name: users.name, image: users.image, coverImage: users.coverImage, profession: users.profession, headline: users.headline, bio: users.bio, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, location: users.location, city: users.city, country: users.country, timezone: users.timezone, workMode: users.workMode, ageBand: users.ageBand, visibility: privacySettings.profileVisibility, showLocation: privacySettings.showLocation, isN2Admin: adminAssignments.id, isFounder: sql<boolean>`${users.role} = 'founder'`, isDemo: sql<boolean>`${users.role} = 'demo_member'` })
+    const [row] = await db.select({ id: users.id, username: users.username, name: users.name, image: users.image, coverImage: users.coverImage, profession: users.profession, headline: users.headline, bio: users.bio, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, location: users.location, city: users.city, country: users.country, timezone: users.timezone, workMode: users.workMode, ageBand: users.ageBand, visibility: privacySettings.profileVisibility, showLocation: privacySettings.showLocation, isN2Admin: adminAssignments.id, isFounder: sql<boolean>`${users.role} = 'founder'`, isDemo: sql<boolean>`${users.role} = 'demo_member'` })
       .from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active"))).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     if (!row) throw new ApiError(404, "Profile not found");
     const isCurrent = viewer.id === userId;
@@ -66,8 +68,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ user
     const viewer = await requireMember(), { userId } = await params;
     if (viewer.id !== userId) throw new ApiError(403, "You can only edit your own profile");
     const input = profileSchema.parse(await request.json()), db = getDb();
+    const [usernameOwner] = await db.select({ id: users.id }).from(users).where(and(eq(users.username, input.username), ne(users.id, userId))).limit(1);
+    if (usernameOwner) throw new ApiError(409, "That username is already taken. Choose another one.");
     await db.transaction(async tx => {
-      await tx.update(users).set({ name: input.name, image: input.image, coverImage: input.coverImage, headline: input.headline, profession: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: [input.primarySkill, input.secondarySkill, input.tertiarySkill], interests: input.interests, city: input.city, country: input.country, timezone: input.timezone, workMode: input.workMode, location: [input.city, input.country].filter(Boolean).join(", ") || null, updatedAt: new Date() }).where(eq(users.id, userId));
+      await tx.update(users).set({ username: input.username, name: input.name, image: input.image, coverImage: input.coverImage, headline: input.headline, profession: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: [input.primarySkill, input.secondarySkill, input.tertiarySkill], interests: input.interests, city: input.city, country: input.country, timezone: input.timezone, workMode: input.workMode, location: [input.city, input.country].filter(Boolean).join(", ") || null, updatedAt: new Date() }).where(eq(users.id, userId));
       await tx.delete(careerHistory).where(eq(careerHistory.userId, userId));
       if (input.career.length) await tx.insert(careerHistory).values(input.career.map((item, sortOrder) => ({ ...item, description: sanitizeRichText(item.description) || null, id: undefined, userId, startDate: item.startDate ?? null, endDate: item.current ? null : item.endDate ?? null, sortOrder })));
       await tx.delete(educationHistory).where(eq(educationHistory.userId, userId));
@@ -75,6 +79,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ user
     });
     await audit(viewer.id, "profile.updated", "user", userId);
     after(() => recomputeMemberRecommendations(userId));
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, username: input.username, publicProfilePath: `/${input.username}` });
   } catch (error) { return apiError(error); }
 }

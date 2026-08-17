@@ -1,8 +1,8 @@
-import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { adminAssignments, conversationMembers, conversations, follows, privacySettings, projectMembers, safetyRisks, users } from "@/db/schema";
+import { adminAssignments, conversationMembers, conversations, follows, notifications, privacySettings, projectMembers, safetyRisks, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { trackProductEvent } from "@/lib/analytics";
 import { getMessageEligibility } from "@/lib/messaging-permissions";
@@ -23,11 +23,12 @@ export async function GET() {
     const rows=await db.select({id:conversations.id,name:conversations.name,image:conversations.image,projectId:conversations.projectId,status:conversations.status,updatedAt:conversations.updatedAt,archivedAt:conversationMembers.archivedAt,snoozedUntil:conversationMembers.snoozedUntil})
       .from(conversationMembers).innerJoin(conversations,eq(conversations.id,conversationMembers.conversationId)).where(and(eq(conversationMembers.userId,member.id),ne(conversations.status,"deleted"))).orderBy(desc(conversations.updatedAt));
     const ids=rows.map(row=>row.id);if(!ids.length)return NextResponse.json({conversations:[]});
-    const [members,lastMessages]=await Promise.all([
+    const [members,lastMessages,unreadMessages]=await Promise.all([
       db.select({conversationId:conversationMembers.conversationId,userId:users.id,name:users.name,image:users.image,profession:users.profession}).from(conversationMembers).innerJoin(users,eq(users.id,conversationMembers.userId)).where(inArray(conversationMembers.conversationId,ids)),
       db.execute(sql`select distinct on (conversation_id) conversation_id,id,body,created_at from messages where conversation_id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}) and status='visible' order by conversation_id,created_at desc`),
+      db.select({conversationId:notifications.entityId,value:count()}).from(notifications).where(and(eq(notifications.userId,member.id),eq(notifications.type,"message"),eq(notifications.entityType,"conversation"),isNull(notifications.readAt),inArray(notifications.entityId,ids))).groupBy(notifications.entityId),
     ]);
-    return NextResponse.json({conversations:rows.map(row=>({ ...row,members:members.filter(item=>item.conversationId===row.id),lastMessage:lastMessages.find(item=>item.conversation_id===row.id)??null }))});
+    return NextResponse.json({conversations:rows.map(row=>({ ...row,members:members.filter(item=>item.conversationId===row.id),lastMessage:lastMessages.find(item=>item.conversation_id===row.id)??null,unreadCount:unreadMessages.find(item=>item.conversationId===row.id)?.value??0 }))});
   } catch(error){return apiError(error)}
 }
 

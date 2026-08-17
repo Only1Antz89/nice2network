@@ -68,6 +68,11 @@ import N2OrbitMark from "@/components/n2-orbit-mark";
 import ActionDialog from "@/components/action-dialog";
 import PeopleDiscoveryPanel from "@/components/people-discovery-panel";
 import {
+  getBrowserNotificationPreferences,
+  playBrowserNotificationSound,
+  setBrowserNotificationPreference,
+} from "@/lib/browser-notifications";
+import {
   Avatar,
   DemoBadge,
   Logo,
@@ -233,6 +238,7 @@ type SimilarProjectSuggestion = {
 };
 type ProfileRecord = {
   id: string;
+  username: string;
   name: string | null;
   image: string | null;
   coverImage?: string | null;
@@ -243,6 +249,7 @@ type ProfileRecord = {
   rankedSkills: string[];
   interests: string[];
   location: string | null;
+  visibility?: string | null;
   isN2Admin: boolean;
   isFounder: boolean;
   isDemo?: boolean;
@@ -1759,6 +1766,20 @@ function CreateProject({
     [error, setError] = useState(""),
     [similarProjects, setSimilarProjects] = useState<SimilarProjectSuggestion[]>([]);
   async function mapTeam() {
+    const titleLength = form.title.trim().length;
+    const summaryLength = form.summary.trim().length;
+    if (titleLength < 4 || titleLength > 120) {
+      setError("Project title must be between 4 and 120 characters.");
+      return;
+    }
+    if (summaryLength < 20) {
+      setError(`Project summary must be at least 20 characters (${summaryLength}/20).`);
+      return;
+    }
+    if (summaryLength > 500) {
+      setError(`Project summary is ${summaryLength} characters. Shorten it to 500 characters or fewer.`);
+      return;
+    }
     if (!form.city || !form.country || !form.timezone) {
       setError("Choose a location from the suggestions so its country and timezone can be assigned.");
       return;
@@ -1986,13 +2007,33 @@ function CreateProject({
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 placeholder="What will your project be called?"
+                minLength={4}
+                maxLength={120}
               />
             </label>
-            <textarea
-              placeholder="Describe the idea, why it matters, and where you'd like help…"
-              value={form.summary}
-              onChange={(e) => setForm({ ...form, summary: e.target.value })}
-            />
+            <label className="project-summary-field">
+              <span>Project summary</span>
+              <div className="project-summary-input">
+                <textarea
+                  placeholder="Describe the idea, why it matters, and where you'd like help…"
+                  value={form.summary}
+                  onChange={(e) => setForm({ ...form, summary: e.target.value })}
+                  minLength={20}
+                  maxLength={500}
+                  aria-describedby="project-summary-hint"
+                />
+                <small id="project-summary-hint" className="field-limit" aria-live="polite">
+                  <i
+                    className="character-fill"
+                    aria-hidden="true"
+                    style={{ "--character-fill": `${Math.min(100, form.summary.length / 5)}%` } as React.CSSProperties}
+                  />
+                  <span aria-label={`${form.summary.length} of 500 characters`}>
+                    {form.summary.length}/500
+                  </span>
+                </small>
+              </div>
+            </label>
             <div className="field-row">
               <label>
                 Stage
@@ -2125,13 +2166,15 @@ function CreateProject({
                 </small>
               </label>
             </div>
-            {error && <p className="form-error">{error}</p>}
+            {error && <p className="form-error" role="alert" aria-live="polite">{error}</p>}
             <button
               className="primary-button wide project-plan-button"
               disabled={
                 busy ||
                 form.title.trim().length < 4 ||
+                form.title.trim().length > 120 ||
                 form.summary.trim().length < 20 ||
+                form.summary.trim().length > 500 ||
                 !form.city ||
                 !form.country ||
                 !form.timezone
@@ -3430,6 +3473,15 @@ function NotificationUnreadIndicator({ unread }: { unread: number }) {
     <span className="notification-unread-indicator" aria-hidden="true">
       <b className="notification-count">{unread > 9 ? "9+" : unread}</b>
       <Bell className="notification-count-bell" size={18} />
+    </span>
+  );
+}
+
+function MessageUnreadIndicator({ unread }: { unread: number }) {
+  return (
+    <span className="notification-unread-indicator message-unread-indicator" aria-hidden="true">
+      <b className="notification-count">{unread > 9 ? "9+" : unread}</b>
+      <MessageCircle className="notification-count-bell" size={18} />
     </span>
   );
 }
@@ -6515,6 +6567,7 @@ type ConversationRecord = {
   projectId?: string | null;
   archivedAt?: string | null;
   snoozedUntil?: string | null;
+  unreadCount?: number;
   members: Array<{
     userId: string;
     name: string | null;
@@ -6538,7 +6591,15 @@ type ChatMessage = {
 function NudgeMark() {
   return <span className="nudge-mark" aria-hidden="true"><b>(</b><i>(</i><span><em>⚡</em><em>⚡</em></span><i>)</i><b>)</b></span>;
 }
-function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
+function MessagesView({
+  currentMember,
+  initialConversationId,
+  onUnreadCounts,
+}: {
+  currentMember: MemberPerson;
+  initialConversationId?: string | null;
+  onUnreadCounts: (unread: number, unreadMessages: number) => void;
+}) {
   const [conversationsList, setConversationsList] = useState<
       ConversationRecord[]
     >([]),
@@ -6576,6 +6637,7 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingSecondsRef = useRef(0);
+  const initialConversationHandled = useRef(false);
   const selectedConversationId = selected?.id;
   const latestMessageId = messagesList.at(-1)?.id;
   const title = (row: ConversationRecord) =>
@@ -6603,6 +6665,28 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
   useEffect(() => {
     load();
   }, []);
+  useEffect(() => {
+    if (!initialConversationId || initialConversationHandled.current || !conversationsList.length) return;
+    initialConversationHandled.current = true;
+    const conversation = conversationsList.find((row) => row.id === initialConversationId);
+    if (conversation) setSelected(conversation);
+  }, [conversationsList, initialConversationId]);
+  useEffect(() => {
+    if (!selectedConversationId) return;
+    fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "read_conversation", conversationId: selectedConversationId }),
+    })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (data) {
+          onUnreadCounts(data.unread ?? 0, data.unreadMessages ?? 0);
+          setConversationsList((rows) => rows.map((row) => row.id === selectedConversationId ? { ...row, unreadCount: 0 } : row));
+        }
+      })
+      .catch(() => undefined);
+  }, [onUnreadCounts, selectedConversationId]);
   useEffect(() => {
     if (!selected) return;
     const run = () =>
@@ -7148,7 +7232,7 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
       </div>
       <div className="message-list">
         {filtered.map((row) => (
-          <article className="message-list-row" key={row.id}>
+          <article className={`message-list-row ${row.unreadCount ? "unread" : ""}`} key={row.id}>
           <button className="message-list-row-main" onClick={() => setSelected(row)}>
             <Avatar
               person={{
@@ -7169,6 +7253,7 @@ function MessagesView({ currentMember }: { currentMember: MemberPerson }) {
             </span>
           </button>
           <div className="message-list-row-end">
+            {!!row.unreadCount && <b className="message-row-unread-count" aria-label={`${row.unreadCount} unread ${row.unreadCount === 1 ? "message" : "messages"}`}>{row.unreadCount > 99 ? "99+" : row.unreadCount}</b>}
             <time>
               {row.lastMessage
                 ? new Date(row.lastMessage.created_at).toLocaleDateString(
@@ -8432,6 +8517,11 @@ function ProfileView({
         <h1>
           {person.name} {person.isN2Admin && <N2AdminBadge />}
         </h1>
+        {profile?.username && (
+          profile.visibility === "public"
+            ? <a className="profile-username" href={`/${profile.username}`}>@{profile.username} <ArrowUpRight size={12} /></a>
+            : <span className="profile-username">@{profile.username}</span>
+        )}
         <p className="profile-role">
           {profile?.isFounder ? (
             <N2FounderLabel />
@@ -9318,6 +9408,7 @@ function SettingsView({
   const [profileUserId, setProfileUserId] = useState("");
   const [profile, setProfile] = useState({
     name: "",
+    username: "",
     headline: "",
     profession: "",
     industry: "Technology",
@@ -9360,6 +9451,14 @@ function SettingsView({
     followedUpdates: true,
     digest: "weekly",
   });
+  const [browserDelivery, setBrowserDelivery] = useState(() => ({
+    ...getBrowserNotificationPreferences(),
+    permission:
+      typeof Notification === "undefined"
+        ? ("unsupported" as const)
+        : Notification.permission,
+  }));
+  const [browserNotificationStatus, setBrowserNotificationStatus] = useState("");
   const [calendarPrefs, setCalendarPrefs] = useState({
     defaultCalendar: "Google Calendar",
     autoLinks: true,
@@ -9426,6 +9525,13 @@ function SettingsView({
       } catch {
         setAccessibility(DEFAULT_ACCESSIBILITY_PREFERENCES);
       }
+      setBrowserDelivery({
+        ...getBrowserNotificationPreferences(),
+        permission:
+          typeof Notification === "undefined"
+            ? "unsupported"
+            : Notification.permission,
+      });
       fetch("/api/auth/session")
         .then((r) => r.json())
         .then(async (session) => {
@@ -9438,6 +9544,7 @@ function SettingsView({
           setCoverImage(record.coverImage ?? "");
           setProfile({
             name: record.name ?? "",
+            username: record.username ?? "",
             headline: record.headline ?? "",
             profession: record.profession ?? "",
             industry: record.industry ?? "Technology",
@@ -9572,6 +9679,10 @@ function SettingsView({
       }
       if (profile.name.trim().length < 2) {
         setSaveStatus({ busy: false, error: "Add at least two characters for your name before saving." });
+        return;
+      }
+      if (!/^[a-z0-9][a-z0-9_-]{2,29}$/.test(profile.username)) {
+        setSaveStatus({ busy: false, error: "Use 3–30 lowercase letters, numbers, underscores or hyphens for your username." });
         return;
       }
       if (![profile.primarySkill, profile.secondarySkill, profile.tertiarySkill].every((skill) => skill.trim())) {
@@ -9718,8 +9829,50 @@ function SettingsView({
     form.reset();
     setPasswordStatus({ busy: false, error: "", success: true });
   }
+  async function toggleBrowserPopups() {
+    setBrowserNotificationStatus("");
+    if (browserDelivery.popups) {
+      setBrowserNotificationPreference("popups", false);
+      setBrowserDelivery((current) => ({ ...current, popups: false }));
+      return;
+    }
+    if (typeof Notification === "undefined") {
+      setBrowserNotificationStatus("This browser does not support web notifications.");
+      return;
+    }
+    let permission = Notification.permission;
+    try {
+      if (permission === "default") permission = await Notification.requestPermission();
+    } catch {
+      setBrowserNotificationStatus("This browser could not open its notification permission prompt.");
+      return;
+    }
+    if (permission !== "granted") {
+      setBrowserNotificationPreference("popups", false);
+      setBrowserDelivery((current) => ({ ...current, popups: false, permission }));
+      setBrowserNotificationStatus(
+        "Browser popups are blocked. Allow notifications for n2 in your browser's site settings, then try again.",
+      );
+      return;
+    }
+    setBrowserNotificationPreference("popups", true);
+    setBrowserDelivery((current) => ({ ...current, popups: true, permission }));
+    setBrowserNotificationStatus("Browser popups are on for this browser.");
+  }
+  async function toggleBrowserSound() {
+    setBrowserNotificationStatus("");
+    const enabled = !browserDelivery.sound;
+    if (enabled && !(await playBrowserNotificationSound())) {
+      setBrowserNotificationStatus("Notification audio is unavailable in this browser.");
+      return;
+    }
+    setBrowserNotificationPreference("sound", enabled);
+    setBrowserDelivery((current) => ({ ...current, sound: enabled }));
+    if (enabled) setBrowserNotificationStatus("Notification sound is on. That tone was a preview.");
+  }
   const toggle = (on: boolean, action: () => void, label: string) => (
     <button
+      type="button"
       aria-label={label}
       aria-pressed={on}
       className={`toggle ${on ? "on" : ""}`}
@@ -9853,6 +10006,25 @@ function SettingsView({
                     setProfile({ ...profile, name: e.target.value })
                   }
                 />
+              </label>
+              <label>
+                Username
+                <div className="username-field">
+                  <span aria-hidden="true">@</span>
+                  <input
+                    value={profile.username}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    minLength={3}
+                    maxLength={30}
+                    aria-describedby="profile-username-help"
+                    onChange={(e) => setProfile({ ...profile, username: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })}
+                  />
+                </div>
+                <small id="profile-username-help" className="username-help">
+                  {profile.username ? <>Public address: <a href={`/${profile.username}`} target="_blank" rel="noreferrer">/{profile.username}</a>{privacy.visibility !== "Public" && " · Set profile visibility to Public before sharing."}</> : "Choose the address for your public profile."}
+                </small>
               </label>
               <label>
                 Profession
@@ -10234,6 +10406,43 @@ function SettingsView({
         )}
         {panel === "notifications" && (
           <div className="settings-form">
+            <div className="settings-section-title">
+              <strong>Browser delivery</strong>
+              <small>Control popups and audio on this browser.</small>
+            </div>
+            <div className="preference-row">
+              <span>
+                <strong>Browser notifications</strong>
+                <small>
+                  {browserDelivery.permission === "denied"
+                    ? "Blocked in this browser's site settings."
+                    : browserDelivery.permission === "unsupported"
+                      ? "Web notifications are unavailable in this browser."
+                      : "Show desktop popups while n2 is open, including in a background tab."}
+                </small>
+              </span>
+              {toggle(
+                browserDelivery.popups,
+                () => void toggleBrowserPopups(),
+                "Toggle browser notifications",
+              )}
+            </div>
+            <div className="preference-row">
+              <span>
+                <strong>Notification sound</strong>
+                <small>Play a short tone when a new browser notification arrives.</small>
+              </span>
+              {toggle(
+                browserDelivery.sound,
+                () => void toggleBrowserSound(),
+                "Toggle notification sound",
+              )}
+            </div>
+            {browserNotificationStatus && (
+              <p className="browser-notification-status" role="status" aria-live="polite">
+                {browserNotificationStatus}
+              </p>
+            )}
             <div className="settings-section-title">
               <strong>Direct activity</strong>
               <small>Immediate updates for things involving you.</small>
@@ -10809,6 +11018,8 @@ export default function HomePage() {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [initialGuestPrompt, setInitialGuestPrompt] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [messageConversationId, setMessageConversationId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   const [peopleSuggestions, setPeopleSuggestions] = useState<
       PeopleSuggestionRecord[]
@@ -10821,8 +11032,12 @@ export default function HomePage() {
     role: "Public network",
   });
   const [authenticated, setAuthenticated] = useState(false);
-  const latestSystemMessage = useRef<string | null | false>(false);
+  const latestBrowserNotification = useRef<string | null | false>(false);
   const deepLinkHandled = useRef(false);
+  const updateUnreadCounts = useCallback((unread: number, messages: number) => {
+    setUnreadNotifications(unread);
+    setUnreadMessages(messages);
+  }, []);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
@@ -10882,11 +11097,17 @@ export default function HomePage() {
   }, [authenticated, sessionChecked]);
   useEffect(() => {
     if (!authenticated || deepLinkHandled.current) return;
-    const params = new URLSearchParams(window.location.search), profileId = params.get("profile"), projectId = params.get("project"), roleId = params.get("role");
+    const params = new URLSearchParams(window.location.search), profileId = params.get("profile"), projectId = params.get("project"), roleId = params.get("role"), requestedView = params.get("view"), conversationId = params.get("conversation");
     if (profileId) {
       deepLinkHandled.current = true;
       setSelectedProfileId(profileId);
       setView("profile");
+      return;
+    }
+    if (requestedView === "messages") {
+      deepLinkHandled.current = true;
+      setMessageConversationId(conversationId);
+      setView("messages");
       return;
     }
     if (!projectId) return;
@@ -10914,7 +11135,12 @@ export default function HomePage() {
 
     function schedule(delay = retryDelay) {
       window.clearTimeout(timer);
-      if (mounted && navigator.onLine && document.visibilityState === "visible") {
+      const delivery = getBrowserNotificationPreferences();
+      if (
+        mounted &&
+        navigator.onLine &&
+        (document.visibilityState === "visible" || delivery.popups || delivery.sound)
+      ) {
         timer = window.setTimeout(poll, delay);
       }
     }
@@ -10924,7 +11150,9 @@ export default function HomePage() {
         !mounted ||
         inFlight ||
         !navigator.onLine ||
-        document.visibilityState === "hidden"
+        (document.visibilityState === "hidden" &&
+          !getBrowserNotificationPreferences().popups &&
+          !getBrowserNotificationPreferences().sound)
       )
         return;
       inFlight = true;
@@ -10939,28 +11167,28 @@ export default function HomePage() {
         if (!mounted) return;
         retryDelay = 15_000;
         setUnreadNotifications(data.unread ?? 0);
-        const message = (data.notifications ?? []).find(
-          (item: NotificationRecord) => item.type === "message" && !item.readAt,
+        setUnreadMessages(data.unreadMessages ?? 0);
+        const notification = (data.notifications ?? []).find(
+          (item: NotificationRecord) => !item.readAt,
         ) as NotificationRecord | undefined;
-        if (latestSystemMessage.current === false) {
-          latestSystemMessage.current = message?.id ?? null;
+        if (latestBrowserNotification.current === false) {
+          latestBrowserNotification.current = notification?.id ?? null;
           return;
         }
-        if (!message || latestSystemMessage.current === message.id) return;
-        latestSystemMessage.current = message.id;
-        if (
-          typeof Notification !== "undefined" &&
-          Notification.permission === "granted" &&
-          localStorage.getItem("n2-system-message-notifications") === "enabled"
-        ) {
-          const notice = new Notification(message.title, {
-            body: message.body,
+        if (!notification || latestBrowserNotification.current === notification.id) return;
+        latestBrowserNotification.current = notification.id;
+        const delivery = getBrowserNotificationPreferences();
+        if (delivery.sound) await playBrowserNotificationSound();
+        if (delivery.popups && typeof Notification !== "undefined") {
+          const notice = new Notification(notification.title, {
+            body: notification.body,
             icon: "/brand/nice-2-network-mark.svg",
-            tag: `n2-message-${message.id}`,
+            tag: `n2-notification-${notification.id}`,
           });
           notice.onclick = () => {
             window.focus();
-            setView("messages");
+            if (notification.href) window.location.assign(notification.href);
+            else setView("notifications");
             notice.close();
           };
         }
@@ -10983,12 +11211,16 @@ export default function HomePage() {
 
     void poll();
     window.addEventListener("online", resume);
+    window.addEventListener("storage", resume);
+    window.addEventListener("n2:browser-notifications-changed", resume);
     document.addEventListener("visibilitychange", resume);
     return () => {
       mounted = false;
       controller?.abort();
       window.clearTimeout(timer);
       window.removeEventListener("online", resume);
+      window.removeEventListener("storage", resume);
+      window.removeEventListener("n2:browser-notifications-changed", resume);
       document.removeEventListener("visibilitychange", resume);
     };
   }, [authenticated]);
@@ -11057,6 +11289,7 @@ export default function HomePage() {
       return;
     }
     setSelectedProjectId(null);
+    if (next === "messages") setMessageConversationId(null);
     setView(next);
     setMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -11110,6 +11343,7 @@ export default function HomePage() {
                     ? <Avatar person={currentMember} size="sm" />
                     : <Icon size={20} />}
                   <span>{item.label}</span>
+                  {authenticated && item.id === "messages" && unreadMessages > 0 && <b className="nav-unread-count">{unreadMessages > 9 ? "9+" : unreadMessages}</b>}
                   {authenticated && item.id === "notifications" && unreadNotifications > 0 && <b className="nav-unread-count">{unreadNotifications > 9 ? "9+" : unreadNotifications}</b>}
                   {!authenticated && item.id !== "feed" && (
                     <i className="preview-lock" aria-label="Sign in required" />
@@ -11216,10 +11450,10 @@ export default function HomePage() {
                 />
               )}
               {authenticated && view === "messages" && (
-                <MessagesView currentMember={currentMember} />
+                <MessagesView currentMember={currentMember} initialConversationId={messageConversationId} onUnreadCounts={updateUnreadCounts} />
               )}
               {authenticated && view === "notifications" && (
-                <NotificationsPage onUnread={setUnreadNotifications} />
+                <NotificationsPage onUnreadCounts={updateUnreadCounts} />
               )}
               {authenticated && view === "meet" && <MeetView />}
               {authenticated && view === "profile" && (
@@ -11364,6 +11598,8 @@ export default function HomePage() {
               >
                 {authenticated && item.id === "notifications" && unreadNotifications > 0
                   ? <NotificationUnreadIndicator unread={unreadNotifications} />
+                  : authenticated && item.id === "messages" && unreadMessages > 0
+                    ? <MessageUnreadIndicator unread={unreadMessages} />
                   : <Icon size={21} />}
                 <span>{item.label}</span>
               </button>

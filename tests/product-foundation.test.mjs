@@ -56,10 +56,36 @@ test("onboarding bio communicates and enforces the server character limits", asy
   assert.match(onboarding, /Suggested industries/);
   assert.match(onboarding, /Suggestions for/);
   assert.match(onboarding, /Suggested interests/);
+  assert.match(onboarding, />Username</);
+  assert.match(onboarding, /Checking username…/);
+  assert.match(onboarding, /profile address will be/);
   assert.match(onboarding, /We could not reach n2/);
   const route = await read("app/api/auth/onboarding/route.ts");
   assert.match(route, /parsed\.error\.issues\[0\]/);
   assert.match(route, /superRefine/);
+  assert.match(route, /export async function GET/);
+  assert.match(route, /isAvailableUsernameFormat/);
+  assert.match(route, /That username is already taken/);
+  assert.match(route, /set\(\{ username: input\.username/);
+});
+
+test("project creation explains its summary limit and returns field-specific validation", async () => {
+  const [page, drafts, projects, projectEdit] = await Promise.all([
+    read("app/page.tsx"),
+    read("app/api/projects/drafts/route.ts"),
+    read("app/api/projects/route.ts"),
+    read("app/api/projects/[projectId]/route.ts"),
+  ]);
+  assert.match(page, /Project summary/);
+  assert.match(page, /maxLength=\{500\}/);
+  assert.match(page, /summaryLength > 500/);
+  assert.match(page, /character-fill/);
+  assert.match(page, /\/500/);
+  assert.match(page, /role="alert" aria-live="polite"/);
+  assert.match(drafts, /Project summary must be 500 characters or fewer/);
+  assert.match(drafts, /field: String\(issue\.path\[0\]/);
+  assert.match(projects, /summary: z\.string\(\)\.trim\(\)\.min\(20\)\.max\(500\)/);
+  assert.match(projectEdit, /summary: z\.string\(\)\.trim\(\)\.min\(20\)\.max\(500\)/);
 });
 
 test("supports authenticated password changes and private reset links", async () => {
@@ -160,10 +186,10 @@ test("limits raw analytics retention and excludes direct identifiers", async () 
 });
 
 test("ships durable notifications, search, projects and sharing", async () => {
-  const [schema, notifications, search, projects, eyes, page, shareSheet] = await Promise.all([
+  const [schema, notifications, search, projects, eyes, page, shareSheet, browserNotifications] = await Promise.all([
     read("db/schema.ts"), read("app/api/notifications/route.ts"), read("app/api/search/route.ts"),
     read("app/api/projects/route.ts"), read("app/api/projects/[projectId]/eyes/route.ts"), read("app/page.tsx"),
-    read("components/share-sheet.tsx"),
+    read("components/share-sheet.tsx"), read("lib/browser-notifications.ts"),
   ]);
   for (const table of ["notifications", "notificationPreferences", "projectEyes"]) assert.match(schema, new RegExp(`export const ${table} = pgTable`));
   assert.match(notifications, /read_all/);
@@ -176,6 +202,13 @@ test("ships durable notifications, search, projects and sharing", async () => {
   assert.match(page, /function NotificationUnreadIndicator/);
   assert.match(page, /unreadNotifications > 0\s*\? <NotificationUnreadIndicator/);
   assert.match(page, /className="notification-count-bell"/);
+  assert.match(page, /Browser notifications/);
+  assert.match(page, /Notification sound/);
+  assert.match(page, /Notification\.requestPermission\(\)/);
+  assert.match(page, /getBrowserNotificationPreferences\(\)/);
+  assert.match(page, /playBrowserNotificationSound\(\)/);
+  assert.match(browserNotifications, /new AudioContext\(\)/);
+  assert.match(browserNotifications, /n2:browser-notifications-changed/);
   assert.match(shareSheet, /WhatsApp/);
   assert.match(shareSheet, /LinkedIn/);
 });
