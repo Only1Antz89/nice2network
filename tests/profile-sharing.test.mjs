@@ -50,3 +50,23 @@ test("share actions are compact and external apps use local brand marks", async 
   }
   assert.doesNotMatch(brandStyles, /cdn\.simpleicons\.org/);
 });
+
+test("profile shares use a branded large social preview with identity fallbacks", async () => {
+  const [page, image, profile] = await Promise.all([
+    read("app/[username]/page.tsx"),
+    read("app/[username]/opengraph-image.tsx"),
+    read("lib/public-profile.ts"),
+  ]);
+
+  assert.match(page, /const image = `\$\{canonical\}\/opengraph-image`/);
+  assert.match(page, /card: "summary_large_image"/);
+  assert.match(page, /type: "profile"/);
+  assert.match(image, /size = \{ width: 1200, height: 630 \}/);
+  assert.match(image, /profile\.image \|\| `\$\{origin\}\/brand\/nice-2-network-mark\.svg`/);
+  assert.match(image, /const displayName = \(profile\.name \|\| profile\.username\)/);
+  assert.match(image, /profile\.headline \|\| profile\.profession \|\| "n2 member"/);
+  assert.match(image, />@\{profile\.username\}</);
+  assert.match(image, /On nice 2 network/);
+  assert.match(profile, /eq\(users\.status, "active"\)/);
+  assert.match(profile, /isNotNull\(users\.emailVerified\)/);
+});

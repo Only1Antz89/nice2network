@@ -3,32 +3,23 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { LockKeyhole } from "lucide-react";
-import { getDb, isDatabaseConfigured } from "@/db";
-import { postReplies, privacySettings, projectComments, projects, timelinePosts, users } from "@/db/schema";
+import { getDb } from "@/db";
+import { postReplies, projectComments, projects, timelinePosts, users } from "@/db/schema";
 import PublicProfileAction from "@/components/public-profile-actions";
+import { getSharedProfileIdentity } from "@/lib/public-profile";
 import styles from "./public-profile.module.css";
 
 const publicOrigin = process.env.NEXT_PUBLIC_APP_URL ?? "https://nice2network.vercel.app";
 
 async function getSharedProfile(username: string) {
-  if (!isDatabaseConfigured()) return null;
-  const db = getDb();
-  const [profile] = await db.select({
-    id: users.id, username: users.username, name: users.name, image: users.image,
-    profession: users.profession, headline: users.headline, bio: users.bio,
-    location: users.location, showLocation: privacySettings.showLocation,
-    visibility: privacySettings.profileVisibility,
-  }).from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).where(and(
-    eq(users.username, username.toLowerCase()),
-    eq(users.status, "active"),
-    isNotNull(users.emailVerified),
-  )).limit(1);
+  const profile = await getSharedProfileIdentity(username);
   if (!profile) return null;
 
   if (profile.visibility !== "public") return { profile, posts: [], projects: [], replies: [], comments: [], restricted: true as const };
 
+  const db = getDb();
   const [posts, ownedProjects] = await Promise.all([
     db.select().from(timelinePosts).where(and(
       eq(timelinePosts.authorId, profile.id), eq(timelinePosts.status, "visible"), eq(timelinePosts.visibility, "network"),
@@ -52,7 +43,16 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   if (!result) return { title: "Profile unavailable — nice 2 network", robots: { index: false, follow: false } };
   const title = `${result.profile.name ?? `@${result.profile.username}`} (@${result.profile.username}) — nice 2 network`;
   const description = result.restricted ? `Request to follow @${result.profile.username} on nice 2 network.` : result.profile.headline ?? result.profile.profession ?? `See @${result.profile.username}'s public posts and projects on nice 2 network.`;
-  return { title, description, robots: result.restricted ? { index: false, follow: false } : undefined, alternates: { canonical: `${publicOrigin}/${result.profile.username}` }, openGraph: { title, description, url: `${publicOrigin}/${result.profile.username}`, images: result.profile.image ? [{ url: result.profile.image }] : undefined } };
+  const canonical = `${publicOrigin}/${result.profile.username}`;
+  const image = `${canonical}/opengraph-image`;
+  return {
+    title, description,
+    robots: result.restricted ? { index: false, follow: false } : undefined,
+    alternates: { canonical },
+    openGraph: { type: "profile", siteName: "nice 2 network", title, description, url: canonical, images: [{ url: image, width: 1200, height: 630, alt: `${result.profile.name ?? `@${result.profile.username}`} on nice 2 network` }] },
+    twitter: { card: "summary_large_image", title, description, images: [image] },
+    other: { "og:image:secure_url": image, "og:image:type": "image/png", "twitter:label1": "Profile", "twitter:data1": `@${result.profile.username}` },
+  };
 }
 
 function date(value: Date) {
