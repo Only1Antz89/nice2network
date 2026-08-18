@@ -41,11 +41,12 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
       .from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active"))).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     if (!row) throw new ApiError(404, "Profile not found");
     const isCurrent = viewer.id === userId;
-    if (!isCurrent && row.visibility === "private") throw new ApiError(403, "This profile is private");
-    if (!isCurrent && row.visibility === "connections") {
+    if (!isCurrent && (row.visibility === "private" || row.visibility === "connections")) {
       const directions=await db.select({followerId:follows.followerId,followingId:follows.followingId}).from(follows).where(or(and(eq(follows.followerId,viewer.id),eq(follows.followingId,userId)),and(eq(follows.followerId,userId),eq(follows.followingId,viewer.id))));
-      const mutual=directions.some(item=>item.followerId===viewer.id)&&directions.some(item=>item.followerId===userId);
-      if(!mutual)throw new ApiError(403,"This profile is visible to mutual connections");
+      const viewerFollows=directions.some(item=>item.followerId===viewer.id);
+      const mutual=viewerFollows&&directions.some(item=>item.followerId===userId);
+      if(row.visibility === "private"&&!viewerFollows)throw new ApiError(403,"This profile is private. Request to follow this member first.");
+      if(row.visibility === "connections"&&!mutual)throw new ApiError(403,"This profile is visible to mutual connections");
     }
     const projectVisibility = isCurrent ? undefined : and(eq(projects.visibility, "network"), eq(projects.status, "active"));
     const [career, education, ownedProjects, joinedProjects, followerCount, followingCount, viewerFollow, targetFollow] = await Promise.all([

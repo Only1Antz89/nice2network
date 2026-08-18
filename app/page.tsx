@@ -9238,6 +9238,7 @@ function ProfileView({
   onProject,
   onPost,
   onMeet,
+  onShare,
 }: {
   member: MemberPerson;
   userId?: string | null;
@@ -9245,6 +9246,7 @@ function ProfileView({
   onProject: (projectId: string) => void;
   onPost: (postId: string) => void;
   onMeet: (meetingId: string) => void;
+  onShare: (item: { id: string; title: string; summary: string; kind: "profile"; sharePath: string }) => void;
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
@@ -9441,6 +9443,22 @@ function ProfileView({
               <Bookmark size={14} /> Bookmarks
             </button>
           )}
+          <button
+            type="button"
+            className="profile-share-button"
+            disabled={!profile?.username}
+            aria-label={`Share ${person.name}'s profile`}
+            title="Share profile"
+            onClick={() => profile?.username && onShare({
+              id: profile.id,
+              title: `${person.name}'s profile`,
+              summary: profile.headline ?? profile.profession ?? `Connect with @${profile.username} on nice 2 network.`,
+              kind: "profile",
+              sharePath: `/${profile.username}`,
+            })}
+          >
+            <Share2 size={17} />
+          </button>
         </nav>
         {section === "followers" || section === "following" ? (
           <section className="profile-library">
@@ -12015,7 +12033,8 @@ export default function HomePage() {
     id: string;
     title: string;
     summary: string;
-    kind?: "project" | "post";
+    kind?: "project" | "post" | "profile";
+    sharePath?: string;
   } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [guestAuthMode, setGuestAuthMode] = useState<
@@ -12558,6 +12577,7 @@ export default function HomePage() {
                   onProject={openProject}
                   onPost={openSavedPost}
                   onMeet={openSavedMeet}
+                  onShare={setShareProject}
                 />
               )}
               {authenticated && view === "settings" && (

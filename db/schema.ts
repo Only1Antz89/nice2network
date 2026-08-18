@@ -298,6 +298,19 @@ export const follows = pgTable("follows", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.followerId, table.followingId] }), index("follows_following_idx").on(table.followingId, table.createdAt)]);
 
+export const followRequests = pgTable("follow_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requesterId: uuid("requester_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  targetId: uuid("target_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("follow_requests_pair_unique").on(table.requesterId, table.targetId),
+  index("follow_requests_target_status_idx").on(table.targetId, table.status, table.createdAt),
+]);
+
 export const networkMapHides = pgTable("network_map_hides", {
   viewerId: uuid("viewer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   hiddenUserId: uuid("hidden_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

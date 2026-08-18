@@ -41,14 +41,15 @@ test("the guest entry journey is sign-in first with an explicit preview choice",
   assert.match(prompt, /Create account/);
 });
 
-test("public username pages expose only public posts, projects and their replies", async () => {
+test("username pages expose content only for public profiles", async () => {
   const [page, schema, migration] = await Promise.all([
     read("app/[username]/page.tsx"),
     read("db/schema.ts"),
     read("drizzle/0026_clammy_warpath.sql"),
   ]);
   assert.match(schema, /username:\s*text\("username"\)\.notNull\(\)/);
-  assert.match(page, /eq\(privacySettings\.profileVisibility, "public"\)/);
+  assert.match(page, /profile\.visibility !== "public"/);
+  assert.match(page, /restricted: true as const/);
   assert.match(page, /eq\(timelinePosts\.visibility, "network"\)/);
   assert.match(page, /eq\(projects\.visibility, "network"\)/);
   assert.match(page, /postReplies/);

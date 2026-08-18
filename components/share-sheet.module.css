@@ -1,24 +1,41 @@
-/* Use inline app icons so the social row never requests CSP-blocked images. */
+/* Local brand marks keep the share row reliable under the production CSP. */
 .socialShare a::before {
   display: none !important;
   background-image: none !important;
 }
 
-.socialShare a svg {
-  display: block;
+.socialShare a::after { display: none !important; }
+.socialShare a { font-size: 7px !important; }
+
+.brandIcon {
+  display: grid;
+  place-items: center;
   box-sizing: border-box;
-  width: 34px;
-  height: 34px;
-  padding: 7px;
-  border-radius: 8px;
-  background: var(--ink);
-  color: var(--paper);
-  stroke: currentColor;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  overflow: hidden;
 }
 
-.socialShare a:nth-of-type(1) svg { background: #25d366; color: #fff; }
-.socialShare a:nth-of-type(2) svg { background: #0a66c2; color: #fff; }
-.socialShare a:nth-of-type(3) svg { background: #0866ff; color: #fff; }
-.socialShare a:nth-of-type(4) svg { background: #111; color: #fff; }
-.socialShare a:nth-of-type(5) svg { background: #26a5e4; color: #fff; }
-.socialShare a:nth-of-type(6) svg { background: #ea4335; color: #fff; }
+.brandIcon svg {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 7px;
+  fill: currentColor;
+}
+.socialShare a .brandIcon svg { display: block !important; }
+
+.whatsapp { background: #25d366; color: #fff; }
+.whatsapp svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.linkedin { background: #0a66c2; color: #fff; }
+.facebook { background: #0866ff; color: #fff; }
+.x { background: #050505; color: #fff; }
+.telegram { background: #26a5e4; color: #fff; }
+.email { background: #fff; border: 1px solid #deded8; }
+.email svg { padding: 5px; }
+.gmailBlue { fill: #4285f4; }
+.gmailRed { fill: #ea4335; }
+.gmailYellow { fill: #fbbc04; }
+.gmailGreen { fill: #34a853; }

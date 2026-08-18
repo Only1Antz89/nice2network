@@ -7,11 +7,8 @@ import {
   BriefcaseBusiness,
   Ellipsis,
   Link2,
-  Mail,
   MessageCircle,
-  Send,
   Share2,
-  UsersRound,
   X,
 } from "lucide-react";
 import { N2Mark } from "@/components/network-brand";
@@ -32,6 +29,19 @@ type ShareProject = {
   status?: string;
 };
 
+type SocialBrand = "whatsapp" | "linkedin" | "facebook" | "x" | "telegram" | "email";
+
+function SocialBrandIcon({ brand }: { brand: SocialBrand }) {
+  return <span className={`${shareStyles.brandIcon} ${shareStyles[brand]}`} aria-hidden="true">
+    {brand === "whatsapp" && <svg viewBox="0 0 24 24"><path d="M20 11.7a8 8 0 0 1-11.8 7L4 20l1.3-4A8 8 0 1 1 20 11.7Z"/><path d="M9 8.2c.2-.4.5-.4.8-.4l.6 1.7c.1.3 0 .5-.2.7l-.5.5c.7 1.4 1.7 2.4 3.2 3.1l.5-.7c.2-.2.4-.3.7-.2l1.7.8c.2.1.3.3.3.6 0 1.1-.9 2-2.1 2-3.5-.2-6.3-3-6.5-6.5 0-.6.4-1.2 1.5-1.6Z"/></svg>}
+    {brand === "linkedin" && <svg viewBox="0 0 24 24"><path d="M6.2 8.2H3.4V21h2.8V8.2ZM4.8 3A1.8 1.8 0 1 0 4.8 6.6 1.8 1.8 0 0 0 4.8 3ZM20.6 13.7c0-3.9-4.5-4.2-6.1-2.1V8.2h-2.8V21h2.8v-6.5c0-2.3 3.3-2.5 3.3 0V21h2.8v-7.3Z"/></svg>}
+    {brand === "facebook" && <svg viewBox="0 0 24 24"><path d="M14.1 21v-8h2.7l.4-3.1h-3.1v-2c0-.9.3-1.5 1.6-1.5h1.7V3.6c-.8-.1-1.7-.2-2.5-.2-2.5 0-4.2 1.5-4.2 4.3v2.2H8V13h2.7v8h3.4Z"/></svg>}
+    {brand === "x" && <svg viewBox="0 0 24 24"><path d="M4 4h4.7l3.9 5.2L17.2 4H20l-6.1 7.1L20.5 20h-4.7l-4.2-5.6L6.8 20H4l6.3-7.5L4 4Zm3.6 2 9.2 12h1.6L9.2 6H7.6Z"/></svg>}
+    {brand === "telegram" && <svg viewBox="0 0 24 24"><path d="m20.7 4.2-3 15c-.2 1-1 1.2-1.8.7l-4.6-3.4-2.2 2.1c-.2.3-.5.5-.9.5l.3-4.7 8.6-7.8c.4-.3-.1-.5-.6-.2L5.9 13.1l-4.6-1.4c-1-.3-1-1 .2-1.5l17.9-6.9c.8-.3 1.6.2 1.3.9Z"/></svg>}
+    {brand === "email" && <svg viewBox="0 0 24 24"><path className={shareStyles.gmailBlue} d="M3 6.3 6 8.6V19H3V6.3Z"/><path className={shareStyles.gmailRed} d="M21 6.3 18 8.6V19h3V6.3Z"/><path className={shareStyles.gmailYellow} d="M3.8 5.2c.6-.5 1.5-.5 2.2 0l6 4.5 6-4.5c.7-.5 1.6-.5 2.2 0L18 8.6l-6 4.5-6-4.5-2.2-3.4Z"/><path className={shareStyles.gmailGreen} d="M6 8.6 12 13v3.5L6 12V8.6Z"/><path className={shareStyles.gmailRed} d="m18 8.6-6 4.5v3.5l6-4.6V8.6Z"/></svg>}
+  </span>;
+}
+
 export default function ShareSheet({
   item,
   authenticated,
@@ -43,7 +53,8 @@ export default function ShareSheet({
     id: string;
     title: string;
     summary: string;
-    kind?: "project" | "post";
+    kind?: "project" | "post" | "profile";
+    sharePath?: string;
   };
   authenticated: boolean;
   onRequireAuth: () => void;
@@ -53,7 +64,7 @@ export default function ShareSheet({
   const kind = item.kind ?? "project",
     url =
       typeof window !== "undefined"
-        ? `${window.location.origin}/share/${kind}/${item.id}`
+        ? `${window.location.origin}${item.sharePath ?? `/share/${kind}/${item.id}`}`
         : "";
   const encoded = encodeURIComponent(url);
   const [panel, setPanel] = useState<"main" | "messages" | "projects">("main"),
@@ -137,7 +148,7 @@ export default function ShareSheet({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         type: "update",
-        body: `Shared from the n2 timeline: ${item.title}\n${item.summary}\n${url}`,
+        body: `Shared from n2: ${item.title}\n${item.summary}\n${url}`,
       }),
     });
     setBusy("");
@@ -241,7 +252,7 @@ export default function ShareSheet({
                       rel="noreferrer"
                       onClick={() => track("whatsapp")}
                     >
-                      <MessageCircle size={16} />
+                      <SocialBrandIcon brand="whatsapp" />
                       WhatsApp
                     </a>
                     <a
@@ -250,7 +261,7 @@ export default function ShareSheet({
                       rel="noreferrer"
                       onClick={() => track("linkedin")}
                     >
-                      <UsersRound size={16} />
+                      <SocialBrandIcon brand="linkedin" />
                       LinkedIn
                     </a>
                     <a
@@ -259,7 +270,7 @@ export default function ShareSheet({
                       rel="noreferrer"
                       onClick={() => track("facebook")}
                     >
-                      <UsersRound size={16} />
+                      <SocialBrandIcon brand="facebook" />
                       Facebook
                     </a>
                     <a
@@ -268,7 +279,7 @@ export default function ShareSheet({
                       rel="noreferrer"
                       onClick={() => track("x")}
                     >
-                      <Share2 size={16} />X
+                      <SocialBrandIcon brand="x" />X
                     </a>
                     <a
                       href={`https://t.me/share/url?url=${encoded}`}
@@ -276,14 +287,14 @@ export default function ShareSheet({
                       rel="noreferrer"
                       onClick={() => track("telegram")}
                     >
-                      <Send size={16} />
+                      <SocialBrandIcon brand="telegram" />
                       Telegram
                     </a>
                     <a
                       href={`mailto:?subject=${encodeURIComponent(item.title)}&body=${encoded}`}
                       onClick={() => track("email")}
                     >
-                      <Mail size={16} />
+                      <SocialBrandIcon brand="email" />
                       Email
                     </a>
                   </div>
