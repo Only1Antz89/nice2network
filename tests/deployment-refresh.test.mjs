@@ -19,3 +19,12 @@ test("open sessions automatically load a newly deployed platform version", async
   assert.match(route, /dynamic = "force-dynamic"/);
   assert.match(route, /"Cache-Control": "no-store, max-age=0"/);
 });
+
+test("Vercel keeps using the Next build while Sites uses Vinext", async () => {
+  const [vercel, pkg] = await Promise.all([
+    read("vercel.json"),
+    read("package.json"),
+  ]);
+  assert.equal(JSON.parse(vercel).buildCommand, "npm run build:next");
+  assert.match(JSON.parse(pkg).scripts.build, /vinext build/);
+});
