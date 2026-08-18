@@ -10,7 +10,7 @@ test("mobile feed uses member discovery instead of project creation", () => {
   assert.match(page, /className="primary-button feed-create-project"/);
   assert.match(page, /className="primary-button feed-mobile-discovery"[\s\S]*?onDiscover/);
   assert.match(page, /onDiscover=\{\(\) => setSearchOpen\(true\)\}/);
-  assert.match(css, /@media\(max-width:700px\)[\s\S]*?\.feed-create-project\{display:none\}/);
+  assert.match(css, /@media\(max-width:700px\)[\s\S]*?\.feed-intro \.feed-create-project\{display:none\}/);
 });
 
 test("mobile search includes people to know and member actions", () => {

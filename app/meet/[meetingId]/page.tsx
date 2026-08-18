@@ -752,6 +752,7 @@ function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, can
   const cohosts = people.filter(person => person.role === "cohost");
   const guests = people.filter(person => person.role === "speaker");
   const audienceSpeakers = people.filter(person => person.role === "audience_speaker");
+  const listeners = people.filter(person => person.role === "listener");
   const stage = [...hosts, ...cohosts, ...guests, ...audienceSpeakers];
   const requests = people.filter(person => person.speakerStatus === "requested");
   const self = people.find(person => person.id === me?.id) ?? (me ? { ...me, role: currentRole } : null);
@@ -783,6 +784,16 @@ function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, can
           <div className="podcast-table-middle"><div className="podcast-cohost-side left">{cohosts.filter((_, index) => index % 2 === 0).map(card)}</div><div className="podcast-table-surface"><span className="n2-table-mark">n2</span><small>{isListener ? "Listening" : currentRole === "host" ? "Hosting" : "On stage"}</small></div><div className="podcast-cohost-side right">{cohosts.filter((_, index) => index % 2 === 1).map(card)}</div></div>
           <div className="podcast-guest-row">{guests.map(card)}</div>
         </section>
+        {listeners.length > 0 && <section className="podcast-audience" aria-label={`${listeners.length} listeners`}>
+          <header><span>AUDIENCE</span><strong>{listeners.length}</strong></header>
+          <div>{listeners.map(person => {
+            const status = connectionStatus(person);
+            return <button key={person.id} className={`status-${status}`} onClick={() => onProfile(person)} aria-label={`View ${person.name ?? "listener"} profile`}>
+              <span>{status === "connected" ? <PersonImage src={person.image}/> : <small>{status === "awaiting" ? "Waiting" : status}</small>}</span>
+              <b>{person.id === me?.id ? "You" : person.name ?? "n2 member"}</b>
+            </button>;
+          })}</div>
+        </section>}
         {audienceSpeakers.length > 0 && <section className="audience-speakers"><header><span>AUDIENCE CONTRIBUTORS</span><small>Temporarily on stage</small></header><div>{audienceSpeakers.map(card)}</div></section>}
         {canModerate && requests.length > 0 && <section className="speaker-requests"><header><span>QUESTIONS & REQUESTS TO SPEAK</span><strong>{requests.length}</strong></header>{requests.map(person => <div key={person.id}><PersonImage src={person.image}/><span><b>{person.name}</b><small>{person.profession || "n2 member"}</small></span><button onClick={() => stageAction("dismiss", person.id)}><X size={15}/></button><button className="approve" onClick={() => stageAction("approve", person.id)}><UserRoundCheck size={15}/>Bring up</button></div>)}</section>}
       </section>
