@@ -463,12 +463,14 @@ test("meet visibility is selected in the form without browser prompts", async ()
     read("app/globals.css"),
   ]);
   assert.match(page, /className="meet-visibility-picker"/);
-  assert.match(page, /\["public", "Public", "Visible to everyone on n2"\]/);
-  assert.match(page, /\["project", "Project", "Only the selected project"\]/);
-  assert.match(page, /\["private", "Private", "Invited people only"\]/);
+  assert.match(page, /\["public", "Public", "Visible to everyone on n2", Globe2\]/);
+  assert.match(page, /\["project", "Project", "Only the selected project", BriefcaseBusiness\]/);
+  assert.match(page, /\["private", "Private", "Invited people only", ShieldCheck\]/);
   assert.doesNotMatch(page, /Meet visibility: public, project or private/);
   assert.doesNotMatch(page, /Paste the project ID for this meet/);
   assert.match(styles, /\.meet-visibility-options/);
+  assert.match(styles, /meet-visibility-options>button\.active\{[^}]*box-shadow:inset 0 3px #ff6b35/);
+  assert.match(styles, /meet-visibility-options>button\.active svg\{color:#ff6b35\}/);
 });
 
 test("meet editing keeps the invite step and reloads existing invitees", async () => {

@@ -8960,11 +8960,11 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
                   <div className="meet-visibility-options" role="group" aria-label="Meet visibility">
                 {(
                   [
-                    ["public", "Public", "Visible to everyone on n2"],
-                    ["project", "Project", "Only the selected project"],
-                    ["private", "Private", "Invited people only"],
+                    ["public", "Public", "Visible to everyone on n2", Globe2],
+                    ["project", "Project", "Only the selected project", BriefcaseBusiness],
+                    ["private", "Private", "Invited people only", ShieldCheck],
                   ] as const
-                ).map(([value, label, description]) => (
+                ).map(([value, label, description, Icon]) => (
                   <button
                     type="button"
                     key={value}
@@ -8976,6 +8976,7 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
                       if (value !== "project") setMeetProjectId("");
                     }}
                   >
+                    <Icon size={18} />
                     <span>{label}</span>
                     <small>{description}</small>
                   </button>
