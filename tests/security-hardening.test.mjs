@@ -79,6 +79,7 @@ test("credential rate limits return a safe auth response instead of an HTML 500"
   assert.match(route, /response\.cookies\.set\(cookie\.name, cookie\.value, cookie\.options\)/);
   assert.doesNotMatch(route, /await signIn\("credentials"/);
   assert.match(route, /code === "rate_limit"/);
+  assert.match(route, /error instanceof CredentialsSignin/);
   assert.match(route, /status: 401/);
   assert.match(route, /status: 429/);
   assert.match(route, /status: 503/);

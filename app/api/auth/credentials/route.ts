@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Auth, raw, skipCSRFCheck } from "@auth/core";
+import { CredentialsSignin } from "next-auth";
 import { z } from "zod";
 import { authConfig } from "@/auth";
 
@@ -33,6 +34,10 @@ export async function POST(request: Request) {
     for (const cookie of authResult.cookies ?? []) response.cookies.set(cookie.name, cookie.value, cookie.options);
     return response;
   } catch (error) {
+    if (error instanceof CredentialsSignin) {
+      if (error.code === "rate_limit") return NextResponse.json({ error: "Too many sign-in attempts. Please wait 15 minutes and try again." }, { status: 429 });
+      return NextResponse.json({ error: "Check your email and password. If registration is unfinished, use the password you created to resume your profile setup." }, { status: 401 });
+    }
     console.error("Credential sign-in failed after validation", error);
     return NextResponse.json({ error: "Sign in is temporarily unavailable. Please refresh the page and try again." }, { status: 503 });
   }
