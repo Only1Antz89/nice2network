@@ -146,6 +146,10 @@ test("notifications use a dedicated responsive page instead of a mobile floating
   assert.match(notificationsPage, /role="tabpanel"/);
   assert.match(notificationsPage, /<b>\{group\.items\.length\}<\/b>/);
   assert.match(notificationsPage, /\{item\.actorName \?\? "nice 2 network"\}/);
+  assert.match(notificationsPage, /Clear all/);
+  assert.match(notificationsPage, /method: "DELETE"/);
+  assert.match(api, /export async function DELETE\(\)/);
+  assert.match(api, /db\.delete\(notifications\)\.where\(eq\(notifications\.userId, member\.id\)\)/);
   assert.doesNotMatch(notificationsPage, /group\.items\.slice\(0, 8\)/);
   assert.match(styles, /\.notification-tabs\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
   assert.match(notificationsPage, /followedUpdates/);

@@ -32,6 +32,14 @@ export async function GET() {
   } catch (error) { return apiError(error); }
 }
 
+export async function DELETE() {
+  try {
+    const member = await requireMember(), db = getDb();
+    await db.delete(notifications).where(eq(notifications.userId, member.id));
+    return NextResponse.json({ success: true, unread: 0, unreadMessages: 0 });
+  } catch (error) { return apiError(error); }
+}
+
 const patchSchema = z.union([
   z.object({ action: z.literal("read"), notificationId: z.uuid() }),
   z.object({ action: z.literal("read_all") }),

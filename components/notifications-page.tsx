@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bell, CheckCheck, FolderKanban, Heart, UserPlus, UsersRound } from "lucide-react";
+import { Bell, CheckCheck, FolderKanban, Heart, Trash2, UserPlus, UsersRound } from "lucide-react";
 import { Avatar } from "@/components/network-brand";
 import type { NotificationRecord } from "@/components/notification-panel";
 
@@ -46,6 +46,8 @@ export default function NotificationsPage({ onUnreadCounts }: { onUnreadCounts: 
   const [loading, setLoading] = useState(true);
   const [preferences, setPreferences] = useState(defaultPreferences);
   const [savingPreference, setSavingPreference] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState("");
   const [activeGroupId, setActiveGroupId] = useState("projects");
 
   useEffect(() => {
@@ -80,6 +82,27 @@ export default function NotificationsPage({ onUnreadCounts }: { onUnreadCounts: 
     setItems((current) => current.map((row) => ({ ...row, readAt: new Date().toISOString() })));
     setUnread(0);
   }, [onUnreadCounts, unread]);
+
+  async function clearAll() {
+    if (!items.length || !window.confirm("Clear all notifications? This cannot be undone.")) return;
+    setClearing(true);
+    setClearError("");
+    try {
+      const response = await fetch("/api/notifications", { method: "DELETE" });
+      if (!response.ok) {
+        setClearError("Could not clear notifications. Please try again.");
+        return;
+      }
+      const result = await response.json();
+      setItems([]);
+      setUnread(0);
+      onUnreadCounts(result.unread ?? 0, result.unreadMessages ?? 0);
+    } catch {
+      setClearError("Could not clear notifications. Please try again.");
+    } finally {
+      setClearing(false);
+    }
+  }
 
   async function toggleFollowedUpdates() {
     const next = { ...preferences, followedUpdates: !preferences.followedUpdates };
@@ -137,8 +160,13 @@ export default function NotificationsPage({ onUnreadCounts }: { onUnreadCounts: 
           <h1>Notifications</h1>
           <p>See what changed across your work and the people you follow.</p>
         </div>
-        {unread > 0 && <button className="secondary-button" onClick={() => read()}><CheckCheck size={16} /> Mark all read</button>}
+        <div className="notifications-page-actions">
+          {unread > 0 && <button className="secondary-button" disabled={clearing} onClick={() => read()}><CheckCheck size={16} /> Mark all read</button>}
+          {!loading && items.length > 0 && <button className="secondary-button notifications-clear-button" disabled={clearing} onClick={clearAll}><Trash2 size={16} /> {clearing ? "Clearing…" : "Clear all"}</button>}
+        </div>
       </header>
+
+      {clearError && <p className="notifications-action-error" role="alert">{clearError}</p>}
 
       <section className="notifications-latest">
         <div className="notifications-section-title"><span>LATEST NOTIFICATION</span>{unread > 0 && <b>{unread} unread</b>}</div>
