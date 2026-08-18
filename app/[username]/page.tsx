@@ -120,7 +120,7 @@ export default async function PublicProfilePage({ params, searchParams }: { para
           <Replies items={replyMap.get(post.id) ?? []}/><footer className={styles.cardFooter}><span>{(replyMap.get(post.id) ?? []).length} replies</span><PublicProfileAction authenticatedHref={`/?profile=${profile.id}`} /></footer>
         </article>)}
         {activeTab === "projects" && publicProjects.map(project => <article className={styles.card} key={project.id}>
-          <div className={styles.projectVisual} style={{background:project.accent}}/>
+          <div className={styles.projectVisual}/>
           {project.imageUrl&&<Image className={styles.media} src={project.imageUrl} alt="" width={1200} height={700} unoptimized/>}
           <div className={styles.projectBody}><small>{project.industry} · {project.stage}</small><h2><Link href={`/?view=projects&project=${project.id}`}>{project.title}</Link></h2><p>{project.summary}</p></div>
           <Replies items={commentMap.get(project.id) ?? []}/><footer className={styles.cardFooter}><span>{(commentMap.get(project.id) ?? []).length} replies</span><PublicProfileAction label="Reply or join project" authenticatedHref={`/?project=${project.id}`} /></footer>
@@ -129,7 +129,7 @@ export default async function PublicProfilePage({ params, searchParams }: { para
         {activeTab === "reposts" && activity.reposts.map(post => <ActivityPostCard key={post.id} post={post} action="Reposted" profileId={profile.id}/>)}
         {activeTab === "watching" && activity.watching.map(project => <article className={styles.card} key={project.id}>
           <div className={styles.activityLabel}>Watching since {date(project.actedAt)}</div>
-          <div className={styles.projectVisual} style={{background:project.accent}}/>
+          <div className={styles.projectVisual}/>
           {project.imageUrl&&<Image className={styles.media} src={project.imageUrl} alt="" width={1200} height={700} unoptimized/>}
           <div className={styles.projectBody}><small>{project.industry} · {project.stage}</small><h2><Link href={`/?view=projects&project=${project.id}`}>{project.title}</Link></h2><p>{project.summary}</p></div>
           <footer className={styles.cardFooter}><span>Project by {project.ownerName ?? "an n2 member"}</span><PublicProfileAction label="View project" authenticatedHref={`/?view=projects&project=${project.id}`} /></footer>

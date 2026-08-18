@@ -16,6 +16,25 @@ test("signed-in profiles expose likes, watching and repost tabs", async () => {
   assert.match(route, /getProfileActivity\(userId\)/);
 });
 
+test("profile navigation omits the redundant following tab while keeping the count link", async () => {
+  const page = await read("app/page.tsx");
+  assert.match(page, /\["profile", "posts", "projects", "media", "likes", "watching", "reposts"\]/);
+  assert.doesNotMatch(page, /\["profile", "projects", "following",/);
+  assert.match(page, /onClick=\{\(\) => setSection\("following"\)\}/);
+});
+
+test("signed-in profiles show the member's chronological posts", async () => {
+  const [page, route] = await Promise.all([
+    read("app/page.tsx"),
+    read("app/api/profiles/[userId]/route.ts"),
+  ]);
+  assert.match(page, /section === "posts"/);
+  assert.match(page, /profile\?\.posts\?\.map/);
+  assert.match(route, /eq\(timelinePosts\.authorId, userId\)/);
+  assert.match(route, /orderBy\(desc\(timelinePosts\.createdAt\)\)/);
+  assert.match(route, /posts:profilePosts/);
+});
+
 test("public profiles expose the same activity tabs and only visible network content", async () => {
   const [page, activity] = await Promise.all([
     read("app/[username]/page.tsx"),

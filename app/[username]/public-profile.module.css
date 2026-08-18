@@ -11,3 +11,6 @@
 .empty{border:1px dashed var(--line);border-radius:15px;padding:46px 22px;text-align:center;color:var(--muted);font-size:11px}.footer{text-align:center;margin-top:54px;color:var(--muted);font-size:8px}.footer a{color:inherit}
 .restrictedProfile{border:1px solid var(--line);border-radius:20px;padding:28px;background:var(--surface)}.privateCopy{display:flex;align-items:center;gap:7px;margin-top:10px!important;color:var(--body-muted)!important}.privatePanel{margin-top:18px;border:1px dashed var(--line);border-radius:16px;background:var(--surface-subtle);padding:38px 24px;display:grid;justify-items:center;gap:8px;text-align:center}.privatePanel strong{font-size:13px}.privatePanel p{max-width:390px;margin:0;color:var(--muted);font-size:10px;line-height:1.55}
 @media(max-width:620px){.header{height:66px;padding-inline:16px}.brand strong{display:none}.main{padding-top:28px}.profile{grid-template-columns:72px minmax(0,1fr);gap:15px}.avatar{width:72px;height:72px}.profile>:last-child{grid-column:1/-1;width:100%}.identity h1{font-size:31px}.card{border-radius:13px}.projectBody{padding:18px}}
+
+/* Public profile projects use the canonical brand accent. */
+.projectVisual{background:var(--orange)}

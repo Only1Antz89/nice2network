@@ -21,7 +21,15 @@ export function PublicSiteShell({ children, tone = "light" }: { children: ReactN
       <footer className="public-footer">
         <div><Link className="public-brand" href="/"><span>n2</span><strong>nice 2 network</strong></Link><p>Useful people, brought together.</p></div>
         <nav aria-label="Footer links">{navigation.map(([href, label]) => <Link href={href} key={href}>{label}</Link>)}</nav>
-        <div className="public-credit"><small>© 2026 nice 2 network</small><small>Built in partnership with <strong>IntAillium</strong></small></div>
+        <div className="public-credit">
+          <small>© 2026 nice 2 network</small>
+          <small>
+            built by{" "}
+            <a className="intaillium-credit" href="https://intaillium.com" target="_blank" rel="noreferrer">
+              IntAillium
+            </a>
+          </small>
+        </div>
       </footer>
     </div>
   );

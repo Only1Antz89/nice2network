@@ -71,6 +71,7 @@ import ShareSheet from "@/components/share-sheet";
 import N2OrbitMark from "@/components/n2-orbit-mark";
 import ActionDialog from "@/components/action-dialog";
 import PeopleDiscoveryPanel from "@/components/people-discovery-panel";
+import { PROJECT_ACCENT } from "@/lib/content-accents";
 import {
   getBrowserNotificationPreferences,
   playBrowserNotificationSound,
@@ -88,6 +89,7 @@ import {
 } from "@/components/network-brand";
 import { sanitizeRichText } from "@/lib/rich-text";
 import { layoutFocusedNetwork } from "@/lib/network-focus-layout";
+import { mergeNewestTimeline } from "@/lib/newest-timeline";
 import { signalDeploymentNavigation } from "@/lib/deployment-navigation";
 import {
   ACCESSIBILITY_STORAGE_KEY,
@@ -289,6 +291,15 @@ type ProfileRecord = {
   following: number;
   isFollowing: boolean;
   isMutual: boolean;
+  posts: Array<{
+    id: string;
+    body: string;
+    attachmentType: string | null;
+    attachmentUrl: string | null;
+    videoUrl: string | null;
+    visibility: "network" | "connections";
+    createdAt: string;
+  }>;
   projects: Array<{
     id: string;
     title: string;
@@ -1811,18 +1822,8 @@ function ProjectCard({
     }
   }
   return (
-    <article
-      className={`project-card ${second ? "project-blue" : "project-orange"}`}
-      style={
-        project
-          ? ({ "--project-accent": project.accent } as React.CSSProperties)
-          : undefined
-      }
-    >
-      <div
-        className="project-accent"
-        style={project ? { background: project.accent } : undefined}
-      />
+    <article className={`project-card ${second ? "project-blue" : "project-orange"}`}>
+      <div className="project-accent" />
       <div className="project-body">
         <div className="project-card-title">
           <div className="project-kicker">
@@ -2010,7 +2011,6 @@ function CreateProject({
     summary: "",
     description: "",
     imageUrl: null as string | null,
-    accent: "#ff6b35",
     industry: "",
     stage: "idea",
     workMode: "remote",
@@ -2156,7 +2156,7 @@ function CreateProject({
       stage: form.stage,
       status: "active",
       visibility: "network",
-      accent: form.accent,
+      accent: PROJECT_ACCENT,
       workMode: form.workMode,
       city: form.city,
       country: form.country,
@@ -2405,29 +2405,6 @@ function CreateProject({
               }}
             />
             <section className="project-visual-fields">
-              <div>
-                <span>Timeline accent</span>
-                <div className="project-colour-options">
-                  {[
-                    "#ff6b35",
-                    "#4169e1",
-                    "#7c3aed",
-                    "#0f9d72",
-                    "#e54885",
-                    "#111111",
-                  ].map((colour) => (
-                    <button
-                      type="button"
-                      key={colour}
-                      className={form.accent === colour ? "active" : ""}
-                      style={{ background: colour }}
-                      aria-label={`Use ${colour} accent`}
-                      aria-pressed={form.accent === colour}
-                      onClick={() => setForm({ ...form, accent: colour })}
-                    />
-                  ))}
-                </div>
-              </div>
               <label className="project-image-input">
                 <ImageIcon size={16} />
                 <span>
@@ -3850,6 +3827,7 @@ function MessageUnreadIndicator({ unread }: { unread: number }) {
 
 function Feed({
   onCreate,
+  onDiscover,
   onShareIdea,
   onMatch,
   onComments,
@@ -3864,6 +3842,7 @@ function Feed({
   onRequireAuth,
 }: {
   onCreate: () => void;
+  onDiscover: () => void;
   onShareIdea: () => void;
   onMatch: () => void;
   onComments: (project: ProjectRecord) => void;
@@ -4032,6 +4011,14 @@ function Feed({
     if (liveProjects[index])
       mixedFeed.push({ kind: "project", item: liveProjects[index] });
   }
+  const timelineFeed =
+    filter === "Newest"
+      ? mergeNewestTimeline({
+          members: newJoiners,
+          posts,
+          projects: liveProjects,
+        })
+      : mixedFeed;
   return (
     <>
       <div className="mobile-topbar">
@@ -4069,10 +4056,17 @@ function Feed({
           </p>
         </div>
         <button
-          className="primary-button"
+          className="primary-button feed-create-project"
           onClick={authenticated ? onCreate : onRequireAuth}
         >
           <Plus size={18} /> Start a project
+        </button>
+        <button
+          className="primary-button feed-mobile-discovery"
+          onClick={authenticated ? onDiscover : onRequireAuth}
+          aria-label="Search n2 members and see people to know"
+        >
+          <Search size={20} />
         </button>
       </header>
       <section className="composer">
@@ -4144,37 +4138,11 @@ function Feed({
         <div className="feed-context">
           <Clock3 size={16} />
           <span>
-            New projects, posts and members—ordered by when they joined the
-            network.
+            New projects, posts and members—mixed together and ordered newest
+            first.
           </span>
         </div>
       )}
-      {authenticated &&
-        filter === "Newest" &&
-        newJoiners.map((person) => (
-          <button
-            className="new-joiner-card"
-            key={person.id}
-            onClick={() => onProfile(person.id)}
-          >
-            <Avatar
-              person={{
-                name: person.name ?? "n2 member",
-                role: person.profession ?? "New member",
-                img: person.image,
-              }}
-              size="md"
-            />
-            <span>
-              <strong>{person.name ?? "New n2 member"}</strong>
-              <small>
-                {person.profession ?? "Completing their profile"} · joined{" "}
-                {new Date(person.createdAt).toLocaleDateString()}
-              </small>
-            </span>
-            <ArrowUpRight size={16} />
-          </button>
-        ))}
       {authenticated && filter === "For you" && algorithmMode === "shadow" && (
         <div className="feed-context">
           <N2Mark />
@@ -4184,7 +4152,34 @@ function Feed({
           </span>
         </div>
       )}
-      {mixedFeed.map((entry) => {
+      {timelineFeed.map((entry) => {
+        if (entry.kind === "member") {
+          const person = entry.item;
+          return (
+            <button
+              className="new-joiner-card"
+              key={`member-${person.id}`}
+              onClick={() => onProfile(person.id)}
+            >
+              <Avatar
+                person={{
+                  name: person.name ?? "n2 member",
+                  role: person.profession ?? "New member",
+                  img: person.image,
+                }}
+                size="md"
+              />
+              <span>
+                <strong>{person.name ?? "New n2 member"}</strong>
+                <small>
+                  {person.profession ?? "Completing their profile"} · joined{" "}
+                  {new Date(person.createdAt).toLocaleDateString()}
+                </small>
+              </span>
+              <ArrowUpRight size={16} />
+            </button>
+          );
+        }
         if (entry.kind === "post") {
           const post = entry.item;
           return (
@@ -5766,9 +5761,7 @@ function ProjectDetailView({
       <button className="project-detail-back" onClick={onBack}>
         <ArrowLeft size={16} /> Projects
       </button>
-      <header
-        style={{ "--detail-accent": project.accent } as React.CSSProperties}
-      >
+      <header>
         <div>
           <span className="eyebrow">
             {project.industry.toUpperCase()} · {project.stage.toUpperCase()}
@@ -7035,6 +7028,7 @@ function NetworkView({
                 img: currentMember.img,
               }}
               size="lg"
+              expandable={false}
             />
             <i className="network-self-search-icon" aria-hidden="true"><Search size={28} /></i>
           </button>
@@ -7145,6 +7139,7 @@ function NetworkView({
                     img: node.image,
                   }}
                   size="lg"
+                  expandable={false}
                 />
                 <span>{node.name}</span>
                 <small>{category}</small>
@@ -7190,7 +7185,7 @@ function NetworkView({
                 <X size={15} />
               </button>
               <div className="network-sheet-summary">
-                <Avatar person={{ name: selected.name ?? "n2 member", role: selected.profession ?? "Member", img: selected.image }} size="lg" ring />
+                <Avatar person={{ name: selected.name ?? "n2 member", role: selected.profession ?? "Member", img: selected.image }} size="lg" ring expandable />
                 <span><b className="network-connection-state">{selected.mutual ? "Mutual connection" : selected.is_following ? "You follow this member" : selected.degree === 2 ? "Member of member" : "Follows you"}</b><h2>{selected.name}</h2><small>{selected.profession ?? "n2 member"}{selected.location ? ` · ${selected.location}` : ""}</small></span>
               </div>
               <div className="network-sheet-tabs" role="tablist">
@@ -9259,7 +9254,7 @@ function SavedContentCard({ item, onOpen, compact = false }: { item: SavedConten
     image = String(details.attachmentType === "image" ? details.attachmentUrl ?? "" : details.thumbnailUrl ?? ""),
     Icon = item.entityType === "project" ? BriefcaseBusiness : item.entityType === "meeting" ? CalendarDays : MessageCircle;
   return (
-    <article className={`saved-content-card saved-${item.entityType} ${compact ? "compact" : ""}`} style={item.entityType === "project" ? { "--saved-accent": String(details.accent ?? "var(--orange)") } as React.CSSProperties : undefined}>
+    <article className={`saved-content-card saved-${item.entityType} ${compact ? "compact" : ""}`}>
       {image && <img src={image} alt="" />}
       <button type="button" onClick={() => onOpen(item)} aria-label={`Open ${kindLabel.toLowerCase()} ${title}`}>
         <span className="saved-content-kind"><Icon size={14} /> {kindLabel}</span>
@@ -9292,7 +9287,7 @@ function ProfileView({
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
-      "profile" | "projects" | "followers" | "following" | "media" | "likes" | "watching" | "reposts" | "bookmarks"
+      "profile" | "posts" | "projects" | "followers" | "following" | "media" | "likes" | "watching" | "reposts" | "bookmarks"
     >("profile"),
     [networkPeople, setNetworkPeople] = useState<
       Array<{
@@ -9475,7 +9470,7 @@ function ProfileView({
           {profile?.isMutual && <b>Connected</b>}
         </div>
         <nav className="profile-tabs">
-          {(["profile", "projects", "following", "media", "likes", "watching", "reposts"] as const).map(
+          {(["profile", "posts", "projects", "media", "likes", "watching", "reposts"] as const).map(
             (item) => (
               <button
                 key={item}
@@ -9553,6 +9548,34 @@ function ProfileView({
               )}
             </div>
           </section>
+        ) : section === "posts" ? (
+          <section className="profile-library">
+            <div className="profile-section-head">
+              <span className="eyebrow">POSTS</span>
+              <small>{profile?.posts?.length ?? 0} posts</small>
+            </div>
+            <div className="profile-post-list">
+              {profile?.posts?.map((post) => (
+                <article className="profile-post-card" key={post.id}>
+                  <button type="button" onClick={() => onPost(post.id)} aria-label={`Open post by ${person.name}`}>
+                    <header>
+                      <Avatar person={person} size="md" />
+                      <span>
+                        <strong>{person.name}</strong>
+                        <small>{formatNetworkDate(post.createdAt, { day: "numeric", month: "short", year: "numeric" })}</small>
+                      </span>
+                      {profile?.isCurrent && post.visibility === "connections" && <i>CONNECTIONS</i>}
+                    </header>
+                    <p>{post.body}</p>
+                    {post.attachmentType === "image" && post.attachmentUrl && <img src={post.attachmentUrl} alt="" />}
+                    {post.attachmentType === "video" && post.attachmentUrl && <video src={post.attachmentUrl} preload="metadata" muted />}
+                    {post.videoUrl && <span className="profile-post-video-link">Watch linked video <ArrowUpRight size={13} /></span>}
+                  </button>
+                </article>
+              ))}
+              {!profile?.posts?.length && <p className="profile-empty">No posts shared yet.</p>}
+            </div>
+          </section>
         ) : section === "projects" ? (
           <section className="profile-library">
             <div className="profile-section-head">
@@ -9561,14 +9584,7 @@ function ProfileView({
             </div>
             <div className="profile-project-grid">
               {profile?.projects?.map((project) => (
-                <article
-                  key={project.id}
-                  style={
-                    {
-                      "--profile-project-accent": project.accent,
-                    } as React.CSSProperties
-                  }
-                >
+                <article key={project.id}>
                   <header>
                     <span>
                       {project.isOwner
@@ -9642,7 +9658,7 @@ function ProfileView({
           <section className="profile-library profile-activity-library">
             <div className="profile-section-head"><div><span className="eyebrow">WATCHING</span><h2>Projects this member is keeping an eye on</h2></div><small>{activity.watching.length} public projects</small></div>
             {activityLoading ? <div className="profile-activity-loading"><span/>Loading watched projects…</div> : <div className="profile-project-grid profile-watching-grid">
-              {activity.watching.map(project => <article key={project.id} style={{ "--profile-project-accent": project.accent } as React.CSSProperties}>
+              {activity.watching.map(project => <article key={project.id}>
                 <header><span>WATCHING</span><Eye size={15}/></header>
                 <h3><button type="button" onClick={() => onProject(project.id)} aria-label={`Open project ${project.title}`}>{project.title}</button></h3>
                 <p>{project.summary}</p>
@@ -12507,6 +12523,19 @@ export default function HomePage() {
     setView("meet");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+  async function followSuggestedPerson(item: Pick<PeopleSuggestionRecord, "id" | "name">) {
+    const response = await fetch(`/api/users/${item.id}/follow`, { method: "POST" });
+    const result = await response.json();
+    if (!response.ok) {
+      setToast(result.error ?? "Could not follow this member.");
+      return;
+    }
+    signalNetworkChanged();
+    setPeopleSuggestions((rows) => rows.filter((row) => row.id !== item.id));
+    setToast(result.mutual
+      ? `You and ${item.name} are now mutually connected.`
+      : `You’re now following ${item.name}.`);
+  }
   return (
     <div
       className={`app-shell ${view === "network" && !selectedProjectId ? "network-shell" : ""}`}
@@ -12615,6 +12644,7 @@ export default function HomePage() {
                   authenticated={authenticated}
                   onRequireAuth={requireSignIn}
                   onCreate={() => setCreateOpen(true)}
+                  onDiscover={() => setSearchOpen(true)}
                   onShareIdea={() => setPostComposerOpen(true)}
                   onMatch={() => setMatchOpen(true)}
                   onComments={(project) =>
@@ -12736,27 +12766,7 @@ export default function HomePage() {
                   <button
                     className="follow-person-button"
                     aria-label={`Follow ${item.name}`}
-                    onClick={async () => {
-                      const response = await fetch(
-                          `/api/users/${item.id}/follow`,
-                          { method: "POST" },
-                        ),
-                        result = await response.json();
-                      if (response.ok) {
-                        signalNetworkChanged();
-                        setPeopleSuggestions((rows) =>
-                          rows.filter((row) => row.id !== item.id),
-                        );
-                        setToast(
-                          result.mutual
-                            ? `You and ${item.name} are now mutually connected.`
-                            : `You’re now following ${item.name}.`,
-                        );
-                      } else
-                        setToast(
-                          result.error ?? "Could not follow this member.",
-                        );
-                    }}
+                    onClick={() => followSuggestedPerson(item)}
                   >
                     <Plus size={17} />
                   </button>
@@ -12783,7 +12793,12 @@ export default function HomePage() {
                 <span>Help</span>
               </button>
             </div>
-            <small>© 2026 nice 2 network · Built in partnership with IntAillium</small>
+            <small>
+              © 2026 nice 2 network · built by{" "}
+              <a className="intaillium-credit" href="https://intaillium.com" target="_blank" rel="noreferrer">
+                IntAillium
+              </a>
+            </small>
           </footer>
         </aside>
       )}
@@ -12838,6 +12853,9 @@ export default function HomePage() {
           onClose={() => setSearchOpen(false)}
           onNavigate={go}
           onProfile={openProfile}
+          suggestions={peopleSuggestions}
+          onSeeAllPeople={() => setPeopleOpen(true)}
+          onFollowSuggestion={followSuggestedPerson}
         />
       )}
       {authenticated && peopleOpen && (

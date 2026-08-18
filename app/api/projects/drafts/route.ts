@@ -6,12 +6,13 @@ import { apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
 import { workModeSchema } from "@/lib/recommendations/blueprint-schema";
+import { PROJECT_ACCENT } from "@/lib/content-accents";
 
 const schema = z.object({
   title: z.string().trim().min(4, "Project title must be at least 4 characters.").max(120, "Project title must be 120 characters or fewer."), summary: z.string().trim().min(10, "Project summary must be at least 10 characters.").max(500, "Project summary must be 500 characters or fewer."), description: z.string().trim().max(5000).nullable().optional(),
   industry: z.string().trim().min(2).max(80), stage: z.enum(["idea", "planning", "building", "launching"]).default("idea"),
   workMode: workModeSchema.default("remote"), city: z.string().trim().max(100).nullable().optional(), country: z.string().trim().max(100).nullable().optional(),
-  timezone: z.string().trim().min(3).max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true), accent: z.string().regex(/^#[0-9a-f]{6}$/i).default("#ff6b35"),
+  timezone: z.string().trim().min(3).max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true),
   imageUrl: z.string().max(1_500_000).refine(value=>!value||/^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
 });
 
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
     }
     const input = parsed.data, db = getDb();
     const project = await db.transaction(async tx => {
-      const [created] = await tx.insert(projects).values({ ...input, ownerId: member.id, status: "draft", visibility: "private", location: [input.city, input.country].filter(Boolean).join(", ") || null }).returning();
+      const [created] = await tx.insert(projects).values({ ...input, accent: PROJECT_ACCENT, ownerId: member.id, status: "draft", visibility: "private", location: [input.city, input.country].filter(Boolean).join(", ") || null }).returning();
       await tx.insert(projectMembers).values({ projectId: created.id, userId: member.id, membershipRole: "owner", department: "Leadership" });
       return created;
     });

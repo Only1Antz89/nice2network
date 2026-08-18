@@ -1,17 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowUpRight, BriefcaseBusiness, Search, UserPlus } from "lucide-react";
+import { ArrowUpRight, BriefcaseBusiness, Plus, Search, UserPlus, X } from "lucide-react";
 import { Avatar, N2AdminBadge } from "@/components/network-brand";
+
+type SuggestedPerson = {
+  id: string;
+  name: string | null;
+  image: string | null;
+  profession: string | null;
+  reasons: string[];
+};
 
 export default function SearchOverlay({
   onClose,
   onNavigate,
   onProfile,
+  suggestions = [],
+  onSeeAllPeople,
+  onFollowSuggestion,
 }: {
   onClose: () => void;
   onNavigate: (view: "projects") => void;
   onProfile: (userId: string) => void;
+  suggestions?: SuggestedPerson[];
+  onSeeAllPeople?: () => void;
+  onFollowSuggestion?: (person: SuggestedPerson) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{
@@ -19,7 +33,8 @@ export default function SearchOverlay({
       projects: Array<Record<string, unknown>>;
       roles: Array<Record<string, unknown>>;
     }>({ people: [], projects: [], roles: [] }),
-    [loading, setLoading] = useState(false);
+    [loading, setLoading] = useState(false),
+    [followingId, setFollowingId] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController(),
       timer = setTimeout(() => {
@@ -61,7 +76,8 @@ export default function SearchOverlay({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search people, skills, industries or projects"
           />
-          <button onClick={onClose}>ESC</button>
+          <button className="search-close-text" onClick={onClose}>ESC</button>
+          <button className="search-close-icon" aria-label="Close search" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="search-results">
           <span className="eyebrow">
@@ -173,17 +189,54 @@ export default function SearchOverlay({
               )}
             </>
           ) : (
-            <div className="search-prompts">
-              <button onClick={() => setQuery("Climate")}>
-                Climate projects
-              </button>
-              <button onClick={() => setQuery("Product designer")}>
-                Product designers
-              </button>
-              <button onClick={() => setQuery("Community")}>
-                Community roles
-              </button>
-            </div>
+            <>
+              <section className="mobile-search-people" aria-labelledby="mobile-people-to-know">
+                <header>
+                  <span id="mobile-people-to-know" className="eyebrow">PEOPLE TO KNOW</span>
+                  {onSeeAllPeople && <button onClick={() => { onClose(); onSeeAllPeople(); }}>See all</button>}
+                </header>
+                <div>
+                  {suggestions.slice(0, 3).map((person) => (
+                    <article key={person.id}>
+                      <button className="mobile-suggested-profile" onClick={() => { onProfile(person.id); onClose(); }}>
+                        <Avatar person={{ name: person.name ?? "n2 member", role: person.profession ?? "Member", img: person.image }} size="md" expandable={false} />
+                        <span>
+                          <strong>{person.name ?? "n2 member"}</strong>
+                          <small>{person.profession ?? "Member"}</small>
+                          <i>{person.reasons[0] ?? "Useful network connection"}</i>
+                        </span>
+                      </button>
+                      {onFollowSuggestion && (
+                        <button
+                          className="mobile-suggestion-follow"
+                          aria-label={`Follow ${person.name ?? "this member"}`}
+                          disabled={followingId === person.id}
+                          onClick={async () => {
+                            setFollowingId(person.id);
+                            try { await onFollowSuggestion(person); }
+                            finally { setFollowingId(null); }
+                          }}
+                        >
+                          <Plus size={20} />
+                        </button>
+                      )}
+                    </article>
+                  ))}
+                  {!suggestions.length && <p className="people-cold-start">Useful live members will appear as the network grows.</p>}
+                </div>
+              </section>
+              <div className="search-prompts">
+                <button onClick={() => setQuery("Climate")}>
+                  Climate projects
+                </button>
+                <button onClick={() => setQuery("Product designer")}>
+                  Product designers
+                </button>
+                <button onClick={() => setQuery("Community")}>
+                  Community roles
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>

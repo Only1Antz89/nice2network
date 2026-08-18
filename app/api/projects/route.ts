@@ -12,6 +12,7 @@ import { getActiveAlgorithmSettings, recomputeProjectRecommendations } from "@/l
 import { ensureProjectEmbedding } from "@/lib/recommendations/project-similarity";
 import { coOwnerIdsSchema, createCoOwnerInvitations, type CoOwnerInvitationDelivery } from "@/lib/project-co-owners";
 import { createNotifications } from "@/lib/notifications";
+import { PROJECT_ACCENT } from "@/lib/content-accents";
 
 const roleSchema = z.object({
   title: z.string().min(2).max(80), department: z.string().min(2).max(80), description: z.string().max(500).optional(),
@@ -23,7 +24,7 @@ const roleSchema = z.object({
 const inputSchema = z.object({
   title: z.string().trim().min(4).max(120), summary: z.string().trim().min(10).max(500), description: z.string().max(5000).optional(), industry: z.string().min(2).max(80),
   stage: z.enum(["idea", "planning", "building", "launching"]).default("idea"), visibility: z.enum(["network", "connections", "private"]).default("network"),
-  workMode: z.enum(["remote", "hybrid", "in_person"]).default("remote"), city: z.string().max(100).nullable().optional(), country: z.string().max(100).nullable().optional(), timezone: z.string().max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true), accent: z.string().regex(/^#[0-9a-f]{6}$/i).default("#ff6b35"),
+  workMode: z.enum(["remote", "hybrid", "in_person"]).default("remote"), city: z.string().max(100).nullable().optional(), country: z.string().max(100).nullable().optional(), timezone: z.string().max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true),
   imageUrl: z.string().max(1_500_000).refine(value=>!value||/^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
   roles: z.array(roleSchema).max(18).default([]),
   coOwnerIds: coOwnerIdsSchema,
@@ -137,7 +138,7 @@ export async function POST(request: Request) {
     let coOwnerInvitations: CoOwnerInvitationDelivery[] = [];
     const project = await db.transaction(async tx => {
       const { roles, coOwnerIds, ...projectInput } = input;
-      const [created] = await tx.insert(projects).values({ ...projectInput, ownerId: member.id, location: [input.city, input.country].filter(Boolean).join(", ") || null }).returning();
+      const [created] = await tx.insert(projects).values({ ...projectInput, accent: PROJECT_ACCENT, ownerId: member.id, location: [input.city, input.country].filter(Boolean).join(", ") || null }).returning();
       await tx.insert(projectMembers).values({ projectId: created.id, userId: member.id, membershipRole: "owner", department: "Leadership" });
       if (roles.length) await tx.insert(projectRoles).values(roles.map(role => ({ ...role, projectId: created.id, requiredSkills: role.requiredSkills.length ? role.requiredSkills : role.skills, reason: role.reason ?? role.description })));
       coOwnerInvitations = await createCoOwnerInvitations(tx, { projectId: created.id, ownerId: member.id, coOwnerIds });

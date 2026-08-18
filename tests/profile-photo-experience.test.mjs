@@ -9,7 +9,15 @@ const mediaRoute = readFileSync(new URL("../app/api/profiles/[userId]/media/rout
 
 test("real profile photos open in an accessible lightbox", () => {
   assert.match(brand, /n2:expand-profile-photo/);
+  assert.match(brand, /expandable\?: boolean/);
+  assert.match(brand, /const canExpand = expandable && Boolean\(person\.img\)/);
   assert.match(page, /className="profile-photo-lightbox"/);
+});
+
+test("network node photos select members while the detail photo remains expandable", () => {
+  assert.match(page, /name: currentMember\.name,[\s\S]*?size="lg"[\s\S]*?expandable=\{false\}/);
+  assert.match(page, /name: node\.name \?\? "n2 member",[\s\S]*?size="lg"[\s\S]*?expandable=\{false\}/);
+  assert.match(page, /className="network-sheet-summary"[\s\S]*?<Avatar[^>]*ring expandable/);
 });
 
 test("profile media can be removed independently", () => {
