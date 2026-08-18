@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bell, CheckCheck, FolderKanban, Heart, Trash2, UserPlus, UsersRound } from "lucide-react";
+import { AtSign, Bell, CheckCheck, FolderKanban, UserPlus } from "lucide-react";
 import { Avatar } from "@/components/network-brand";
 import type { NotificationRecord } from "@/components/notification-panel";
 
@@ -25,9 +25,24 @@ const defaultPreferences: NotificationPreferences = {
   emailDigest: "weekly",
 };
 
+function isMentionNotification(item: NotificationRecord) {
+  return /(?:tagged|mentioned) you/i.test(`${item.title} ${item.body}`);
+}
+
+function isFollowerNotification(item: NotificationRecord) {
+  return item.type === "match" && item.entityType === "user";
+}
+
+function isProjectNotification(item: NotificationRecord) {
+  if (isMentionNotification(item) || isFollowerNotification(item) || item.type === "following" || item.entityType === "post") return false;
+  return ["project", "project_update", "application", "invitation", "recommendation"].includes(item.entityType ?? "")
+    || ["project", "application", "invitation"].includes(item.type);
+}
+
 function NotificationRow({ item, onRead }: { item: NotificationRecord; onRead: (item: NotificationRecord) => void }) {
+  const connection = isFollowerNotification(item);
   return (
-    <a className={`notifications-page-row ${item.readAt ? "" : "unread"}`} href={item.href ?? "#"} onClick={() => onRead(item)}>
+    <a className={`notifications-page-row ${item.readAt ? "" : "unread"} ${connection ? "connection" : ""}`} href={item.href ?? "#"} onClick={() => onRead(item)}>
       <Avatar person={{ name: item.actorName ?? "nice 2 network", role: "", img: item.actorImage }} size="sm" />
       <span>
         <em className="notification-actor">{item.actorName ?? "nice 2 network"}</em>
@@ -46,15 +61,13 @@ export default function NotificationsPage({ onUnreadCounts }: { onUnreadCounts: 
   const [loading, setLoading] = useState(true);
   const [preferences, setPreferences] = useState(defaultPreferences);
   const [savingPreference, setSavingPreference] = useState(false);
-  const [clearing, setClearing] = useState(false);
-  const [clearError, setClearError] = useState("");
-  const [activeGroupId, setActiveGroupId] = useState("projects");
+  const [activeGroupId, setActiveGroupId] = useState("all");
 
   useEffect(() => {
     fetch("/api/notifications", { cache: "no-store" })
       .then((response) => response.ok ? response.json() : { notifications: [], unread: 0 })
       .then((data) => {
-        setItems((data.notifications ?? []).filter((item: NotificationRecord) => item.type !== "message"));
+        setItems((data.notifications ?? []).filter((item: NotificationRecord) => item.type !== "message" || isMentionNotification(item)));
         setUnread(data.unread ?? 0);
         onUnreadCounts(data.unread ?? 0, data.unreadMessages ?? 0);
         setPreferences({ ...defaultPreferences, ...(data.preferences ?? {}) });
@@ -83,27 +96,6 @@ export default function NotificationsPage({ onUnreadCounts }: { onUnreadCounts: 
     setUnread(0);
   }, [onUnreadCounts, unread]);
 
-  async function clearAll() {
-    if (!items.length || !window.confirm("Clear all notifications? This cannot be undone.")) return;
-    setClearing(true);
-    setClearError("");
-    try {
-      const response = await fetch("/api/notifications", { method: "DELETE" });
-      if (!response.ok) {
-        setClearError("Could not clear notifications. Please try again.");
-        return;
-      }
-      const result = await response.json();
-      setItems([]);
-      setUnread(0);
-      onUnreadCounts(result.unread ?? 0, result.unreadMessages ?? 0);
-    } catch {
-      setClearError("Could not clear notifications. Please try again.");
-    } finally {
-      setClearing(false);
-    }
-  }
-
   async function toggleFollowedUpdates() {
     const next = { ...preferences, followedUpdates: !preferences.followedUpdates };
     setPreferences(next);
@@ -119,33 +111,33 @@ export default function NotificationsPage({ onUnreadCounts }: { onUnreadCounts: 
 
   const groups = useMemo(() => [
     {
-      id: "projects",
-      title: "Reactions to projects",
-      description: "Views, follows, comments, applications and other activity around your projects.",
-      icon: FolderKanban,
-      items: items.filter((item) => item.type !== "following" && item.entityType !== "post" && (item.entityType === "project" || ["project", "application", "invitation"].includes(item.type))),
+      id: "all",
+      title: "All",
+      description: preferences.followedUpdates ? "Updates from people you follow, post replies, likes, reposts and other activity." : "Post replies, reactions and other activity. Followed-member updates are paused.",
+      icon: Bell,
+      items: items.filter((item) => !isMentionNotification(item) && !isFollowerNotification(item) && !isProjectNotification(item)),
+      preference: true,
     },
     {
-      id: "posts",
-      title: "Reactions to posts",
-      description: "Likes, reposts and replies to what you share.",
-      icon: Heart,
-      items: items.filter((item) => item.type !== "following" && item.entityType === "post"),
+      id: "projects",
+      title: "Projects",
+      description: "Views, follows, comments, applications and other activity around your projects.",
+      icon: FolderKanban,
+      items: items.filter(isProjectNotification),
     },
     {
       id: "followers",
-      title: "New followers",
+      title: "Followers",
       description: "People who followed you and new mutual connections.",
       icon: UserPlus,
-      items: items.filter((item) => item.entityType === "user" && item.type === "match"),
+      items: items.filter(isFollowerNotification),
     },
     {
-      id: "following",
-      title: "Updates from people you follow",
-      description: preferences.followedUpdates ? "New posts and public project updates from members you follow." : "Turn this on when you want updates from members you follow.",
-      icon: UsersRound,
-      items: items.filter((item) => item.type === "following"),
-      preference: true,
+      id: "mentions",
+      title: "Mentions",
+      description: "Posts, replies and group messages where someone tagged you.",
+      icon: AtSign,
+      items: items.filter(isMentionNotification),
     },
   ], [items, preferences.followedUpdates]);
 
@@ -160,13 +152,8 @@ export default function NotificationsPage({ onUnreadCounts }: { onUnreadCounts: 
           <h1>Notifications</h1>
           <p>See what changed across your work and the people you follow.</p>
         </div>
-        <div className="notifications-page-actions">
-          {unread > 0 && <button className="secondary-button" disabled={clearing} onClick={() => read()}><CheckCheck size={16} /> Mark all read</button>}
-          {!loading && items.length > 0 && <button className="secondary-button notifications-clear-button" disabled={clearing} onClick={clearAll}><Trash2 size={16} /> {clearing ? "Clearing…" : "Clear all"}</button>}
-        </div>
+        {unread > 0 && <div className="notifications-page-actions"><button className="secondary-button" onClick={() => read()}><CheckCheck size={16} /> Mark all read</button></div>}
       </header>
-
-      {clearError && <p className="notifications-action-error" role="alert">{clearError}</p>}
 
       <section className="notifications-latest">
         <div className="notifications-section-title"><span>LATEST NOTIFICATION</span>{unread > 0 && <b>{unread} unread</b>}</div>
@@ -188,14 +175,14 @@ export default function NotificationsPage({ onUnreadCounts }: { onUnreadCounts: 
               onClick={() => setActiveGroupId(group.id)}
             >
               <span>{group.title}</span>
-              <b>{group.items.length}</b>
+              {group.items.length > 0 && <b>{group.items.length}</b>}
             </button>
           );
         })}
       </div>
 
       <section
-        className="notification-group notification-tab-panel"
+        className={`notification-group notification-tab-panel notification-group-${activeGroup.id}`}
         role="tabpanel"
         id={`notification-panel-${activeGroup.id}`}
         aria-labelledby={`notification-tab-${activeGroup.id}`}

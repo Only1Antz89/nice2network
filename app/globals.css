@@ -1027,17 +1027,15 @@ html[data-colour-theme="dark"] .form-error{color:#ff9b86!important}
 .notifications-page-head p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}
 .notifications-page-actions{display:flex;align-items:center;gap:8px}
 .notifications-page-actions>.secondary-button{display:flex;align-items:center;gap:6px;white-space:nowrap}
-.notifications-clear-button:hover:not(:disabled){border-color:var(--orange);color:var(--orange)}
-.notifications-action-error{margin:-8px 0 0;color:#c4472d;font-size:8px}
 .notifications-latest,.notification-group{overflow:hidden;border:1px solid var(--line);border-radius:15px;background:var(--surface)}
 .notifications-section-title{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--line);font:700 8px var(--font-geist-mono);letter-spacing:.12em;color:var(--muted)}
 .notifications-section-title b{border-radius:999px;background:var(--orange);color:#111;padding:5px 8px;font-size:7px;letter-spacing:0}
-.notification-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;overflow-x:auto;scrollbar-width:none}
+.notification-tabs{display:flex;align-items:flex-end;gap:24px;overflow-x:auto;border-bottom:1px solid var(--line);scrollbar-width:none}
 .notification-tabs::-webkit-scrollbar{display:none}
-.notification-tabs>button{min-width:0;min-height:54px;border:1px solid var(--line);border-radius:11px;background:var(--surface);padding:9px 10px;display:flex;align-items:center;justify-content:space-between;gap:7px;color:var(--muted);text-align:left}
-.notification-tabs>button:hover,.notification-tabs>button[aria-selected="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
-.notification-tabs>button>span{font-size:8px;line-height:1.3;font-weight:650}
-.notification-tabs>button>b{min-width:22px;height:22px;border-radius:999px;background:var(--surface-subtle);color:var(--ink);display:grid;place-items:center;font:8px var(--font-geist-mono)}
+.notification-tabs>button{flex:0 0 auto;min-height:40px;border:0;border-bottom:2px solid transparent;background:transparent;padding:0 0 11px;display:flex;align-items:center;gap:7px;color:var(--muted);text-align:left}
+.notification-tabs>button:hover,.notification-tabs>button[aria-selected="true"]{border-bottom-color:var(--ink);color:var(--ink)}
+.notification-tabs>button>span{font-size:9px;line-height:1.3;font-weight:650}
+.notification-tabs>button>b{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--surface-subtle);color:var(--muted);display:grid;place-items:center;font:7px var(--font-geist-mono)}
 .notification-tabs>button[aria-selected="true"]>b{background:var(--orange);color:#111}
 .notification-tab-panel{min-height:185px}
 .notification-group>header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px}
@@ -1052,6 +1050,8 @@ html[data-colour-theme="dark"] .form-error{color:#ff9b86!important}
 .notifications-page-row{display:grid;grid-template-columns:32px minmax(0,1fr) 6px;align-items:center;gap:11px;padding:14px 16px;border-top:1px solid var(--line);color:var(--ink);text-decoration:none}
 .notifications-latest>.notifications-page-row{border-top:0}
 .notifications-page-row.unread{background:var(--surface-subtle)}
+.notifications-page-row.connection.unread{box-shadow:inset 3px 0 var(--green)}
+.notifications-page-row.connection>i{background:var(--green)}
 .notifications-page-row>span{min-width:0;display:grid;gap:4px}
 .notification-actor{color:var(--green);font:800 9px var(--font-geist-mono);font-style:normal;letter-spacing:.04em;text-transform:uppercase}
 .notifications-page-row strong{font-size:10px}
@@ -1069,7 +1069,7 @@ html[data-colour-theme="dark"] .form-error{color:#ff9b86!important}
   .notifications-page-head h1{font-size:28px}
   .notifications-page-actions{width:100%}
   .notifications-page-actions>.secondary-button{flex:1;justify-content:center}
-  .notification-tabs{grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible}
+  .notification-tabs{gap:18px;overflow-x:auto}
   .notification-group>header{align-items:flex-start;padding:14px}
   .notification-group>header small{font-size:7px}
   .notifications-page-row{padding:13px 14px}

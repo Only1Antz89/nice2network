@@ -1,10 +1,16 @@
-import { and, count, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { applications, notificationPreferences, notifications, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
 import { sendDueMeetingReminders } from "@/lib/meet-reminders";
+
+const visibleNotification = or(
+  ne(notifications.type, "message"),
+  ilike(notifications.title, "%tagged you%"),
+  ilike(notifications.title, "%mentioned you%"),
+);
 
 export async function GET() {
   try {
@@ -18,7 +24,7 @@ export async function GET() {
         .leftJoin(users, eq(users.id, notifications.actorId))
         .leftJoin(applications, and(eq(notifications.entityType, "application"), sql`${applications.id}::text = ${notifications.entityId}`))
         .where(eq(notifications.userId, member.id)).orderBy(desc(notifications.createdAt)).limit(40),
-      db.select({ value: count() }).from(notifications).where(and(eq(notifications.userId, member.id), ne(notifications.type, "message"), isNull(notifications.readAt))),
+      db.select({ value: count() }).from(notifications).where(and(eq(notifications.userId, member.id), visibleNotification, isNull(notifications.readAt))),
       db.select({ value: count() }).from(notifications).where(and(eq(notifications.userId, member.id), eq(notifications.type, "message"), isNull(notifications.readAt))),
       db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, member.id)).limit(1),
     ]);
@@ -54,7 +60,7 @@ export async function PATCH(request: Request) {
     if (input.action === "read_conversation") await db.update(notifications).set({ readAt: new Date() }).where(and(eq(notifications.userId, member.id), eq(notifications.type, "message"), eq(notifications.entityType, "conversation"), eq(notifications.entityId, input.conversationId), isNull(notifications.readAt)));
     if (input.action === "preferences") await db.insert(notificationPreferences).values({ userId: member.id, messages: input.messages, projects: input.projects, matches: input.matches, meets: input.meets, officialNotices: input.officialNotices, followedUpdates: input.followedUpdates, emailDigest: input.emailDigest }).onConflictDoUpdate({ target: notificationPreferences.userId, set: { messages: input.messages, projects: input.projects, matches: input.matches, meets: input.meets, officialNotices: input.officialNotices, followedUpdates: input.followedUpdates, emailDigest: input.emailDigest, updatedAt: new Date() } });
     const [[unread], [unreadMessages]] = await Promise.all([
-      db.select({ value: count() }).from(notifications).where(and(eq(notifications.userId, member.id), ne(notifications.type, "message"), isNull(notifications.readAt))),
+      db.select({ value: count() }).from(notifications).where(and(eq(notifications.userId, member.id), visibleNotification, isNull(notifications.readAt))),
       db.select({ value: count() }).from(notifications).where(and(eq(notifications.userId, member.id), eq(notifications.type, "message"), isNull(notifications.readAt))),
     ]);
     return NextResponse.json({ success: true, unread: unread.value, unreadMessages: unreadMessages.value });
