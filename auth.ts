@@ -36,7 +36,9 @@ providers.push(Credentials({
     }
     const [member] = await getDb().select().from(users).where(eq(users.email, email)).limit(1);
     if (!member?.passwordHash || member.status !== "active" || !(await compare(credentials.password, member.passwordHash))) return null;
-    return { id: member.id, email: member.email, name: member.name, image: member.image };
+    // Profile images can be embedded data URLs and are far too large for a JWT
+    // session cookie. Profile APIs remain the source of truth for member media.
+    return { id: member.id, email: member.email, name: member.name };
   },
 }));
 
@@ -52,6 +54,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   pages: { signIn: "/signin" },
   callbacks: {
     async jwt({ token, user }) {
+      // Never serialize profile media into auth cookies. This also protects OAuth
+      // users who replace a provider URL with an embedded profile image later.
+      token.picture = undefined;
       if (user?.id) token.userId = user.id;
       const userId = String(token.userId ?? token.sub ?? "");
       if (userId && isDatabaseConfigured()) {

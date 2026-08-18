@@ -49,6 +49,8 @@ test("rich link previews proxy and progressively render social images", async ()
 test("revokes JWT access after password or account status changes", async () => {
   const [auth, reset] = await Promise.all([read("auth.ts"), read("app/api/auth/password/reset/route.ts")]);
   assert.match(auth, /authVersion/);
+  assert.doesNotMatch(auth, /return \{ id: member\.id, email: member\.email, name: member\.name, image: member\.image \}/);
+  assert.match(auth, /token\.picture = undefined/);
   assert.match(auth, /member\?\.status === "active"/);
   assert.match(auth, /if \(!token\.authValid\) token\.userId = undefined/);
   assert.match(reset, /delete\(verificationTokens\).*returning/);
