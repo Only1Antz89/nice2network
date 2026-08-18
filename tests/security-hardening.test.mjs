@@ -63,6 +63,18 @@ test("distributed sign-in rate limiting keeps Date objects out of raw SQL", asyn
   assert.doesNotMatch(source, /sql`[^`]*\$\{resetAt\}/);
 });
 
+test("credential rate limits return a safe auth response instead of an HTML 500", async () => {
+  const [auth, signin] = await Promise.all([
+    read("auth.ts"),
+    read("app/signin/page.tsx"),
+  ]);
+  assert.match(auth, /class SignInRateLimited extends CredentialsSignin/);
+  assert.match(auth, /error instanceof RateLimitError/);
+  assert.match(signin, /result\.code==="rate_limit"/);
+  assert.match(signin, /catch \{/);
+  assert.match(signin, /finally \{\s*setBusy\(false\)/);
+});
+
 test("enforces connection-scoped direct content access and safe attachment schemes", async () => {
   const [access, thread, updates] = await Promise.all([
     read("lib/content-access.ts"),

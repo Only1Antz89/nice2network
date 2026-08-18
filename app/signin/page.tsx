@@ -19,16 +19,23 @@ function SignInContent() {
   async function choosePhoto(file?:File){if(!file)return;if(file.size>500_000){setError("Choose a photo smaller than 500 KB.");return}const reader=new FileReader();reader.onload=()=>setPhoto(String(reader.result));reader.readAsDataURL(file)}
   async function submit(event:FormEvent<HTMLFormElement>){
     event.preventDefault();setBusy(true);setError("");const data=new FormData(event.currentTarget);const email=String(data.get("email"));const password=String(data.get("password"));
-    if(mode==="register"){
-      const response=await fetch("/api/auth/register",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({title:data.get("title"),firstName:data.get("firstName"),lastName:data.get("lastName"),dateOfBirth:data.get("dateOfBirth"),image:photo,email,password})});
-      const result=await response.json();
-      if(!response.ok){setError(result.error);setBusy(false);return}
-      if(result.onboarding){window.location.href="/onboarding";return}
-      setPendingEmail(email);setMode("check-email");setBusy(false);return;
+    try {
+      if(mode==="register"){
+        const response=await fetch("/api/auth/register",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({title:data.get("title"),firstName:data.get("firstName"),lastName:data.get("lastName"),dateOfBirth:data.get("dateOfBirth"),image:photo,email,password})});
+        const result=await response.json();
+        if(!response.ok){setError(result.error);return}
+        if(result.onboarding){window.location.href="/onboarding";return}
+        setPendingEmail(email);setMode("check-email");return;
+      }
+      const resumeResponse=await fetch("/api/auth/onboarding/resume",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})}),resume=await resumeResponse.json().catch(()=>({resume:false}));if(resume.resume){window.location.href="/onboarding?resume=1";return}
+      const result=await signIn("credentials",{email,password,redirect:false});
+      if(result?.error){setError(result.code==="rate_limit"?"Too many sign-in attempts. Please wait 15 minutes and try again.":"Check your email and password. If registration is unfinished, use the password you created to resume your profile setup.");return}
+      const session=await fetch("/api/auth/session").then(response=>response.json()).catch(()=>null);if(session?.user?.forcePasswordChange){window.location.href="/change-password";return}const next=new URLSearchParams(window.location.search).get("next");window.location.href=next?.startsWith("/")?next:"/";
+    } catch {
+      setError("Sign in is temporarily unavailable. Please refresh the page and try again.");
+    } finally {
+      setBusy(false);
     }
-    const resumeResponse=await fetch("/api/auth/onboarding/resume",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})}),resume=await resumeResponse.json().catch(()=>({resume:false}));if(resume.resume){window.location.href="/onboarding?resume=1";return}
-    const result=await signIn("credentials",{email,password,redirect:false});
-    if(result?.error){setError("Check your email and password. If registration is unfinished, use the password you created to resume your profile setup.");setBusy(false)}else{const session=await fetch("/api/auth/session").then(response=>response.json()).catch(()=>null);if(session?.user?.forcePasswordChange){window.location.href="/change-password";return}const next=new URLSearchParams(window.location.search).get("next");window.location.href=next?.startsWith("/")?next:"/"}
   }
 
   return <main className="auth-page auth-shell">

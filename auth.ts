@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
@@ -8,8 +8,12 @@ import { createHmac } from "node:crypto";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb, isDatabaseConfigured } from "@/db";
 import { accounts, adminAssignments, authenticators, sessions, users, verificationTokens } from "@/db/schema";
-import { enforceRateLimit, requestIp } from "@/lib/rate-limit";
+import { enforceRateLimit, RateLimitError, requestIp } from "@/lib/rate-limit";
 import { enforceDistributedRateLimit } from "@/lib/distributed-rate-limit";
+
+class SignInRateLimited extends CredentialsSignin {
+  code = "rate_limit";
+}
 
 function authVersion(passwordHash: string | null, sessionVersion: number) {
   return createHmac("sha256", process.env.AUTH_SECRET!).update(`${passwordHash ?? "oauth-only"}:${sessionVersion}`).digest("base64url");
@@ -23,8 +27,13 @@ providers.push(Credentials({
   async authorize(credentials, request) {
     if (!isDatabaseConfigured() || typeof credentials.email !== "string" || typeof credentials.password !== "string") return null;
     const email = credentials.email.trim().toLowerCase();
-    enforceRateLimit(`signin:${requestIp(request)}:${email}`, 8, 15 * 60_000);
-    await enforceDistributedRateLimit(`signin:${requestIp(request)}:${email}`, 8, 15 * 60_000);
+    try {
+      enforceRateLimit(`signin:${requestIp(request)}:${email}`, 8, 15 * 60_000);
+      await enforceDistributedRateLimit(`signin:${requestIp(request)}:${email}`, 8, 15 * 60_000);
+    } catch (error) {
+      if (error instanceof RateLimitError) throw new SignInRateLimited();
+      throw error;
+    }
     const [member] = await getDb().select().from(users).where(eq(users.email, email)).limit(1);
     if (!member?.passwordHash || member.status !== "active" || !(await compare(credentials.password, member.passwordHash))) return null;
     return { id: member.id, email: member.email, name: member.name, image: member.image };
