@@ -9595,7 +9595,7 @@ function ProfileView({
             {profilePins.length > 0 && (
               <section className="profile-pins">
                 <div className="profile-section-head"><div><span className="eyebrow">PINNED</span><h2>{profile?.isCurrent ? "Your profile highlights" : `${person.name}'s profile highlights`}</h2></div><small>Up to three pins</small></div>
-                <div className="profile-pin-grid">{profilePins.map(item => <SavedContentCard key={item.id} item={item} onOpen={openSaved} compact />)}</div>
+                <div className={`profile-pin-grid pin-count-${profilePins.length}`}>{profilePins.map(item => <SavedContentCard key={item.id} item={item} onOpen={openSaved} compact />)}</div>
               </section>
             )}
             <section className="profile-section bio-section">

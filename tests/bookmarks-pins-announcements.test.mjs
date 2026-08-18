@@ -22,10 +22,11 @@ test("saved library preserves subject context and separates content categories",
   assert.match(styles, /\.saved-category-tabs/);
 });
 
-test("only visible pins lead the profile content", async () => {
-  const [page, route] = await Promise.all([
+test("only visible pins lead the profile content with a count-aware layout", async () => {
+  const [page, route, styles] = await Promise.all([
     read("app/page.tsx"),
     read("app/api/saved-items/route.ts"),
+    read("app/globals.css"),
   ]);
 
   assert.match(route, /searchParams\.get\("profile"\)/);
@@ -33,6 +34,10 @@ test("only visible pins lead the profile content", async () => {
   assert.match(route, /await assertVisible\(member\.id,item\.entityType/);
   assert.ok(page.indexOf('className="profile-pins"') < page.indexOf('className="profile-section bio-section"'));
   assert.match(page, /profilePins\.map\(item => <SavedContentCard/);
+  assert.match(page, /profile-pin-grid pin-count-\$\{profilePins\.length\}/);
+  assert.match(styles, /profile-pin-grid\.pin-count-1\{grid-template-columns:minmax\(0,1fr\)\}/);
+  assert.match(styles, /profile-pin-grid\.pin-count-2\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/);
+  assert.match(styles, /profile-pin-grid\.pin-count-3\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)\}/);
 });
 
 test("admin announcements only lead the feed for their first 24 hours", async () => {
