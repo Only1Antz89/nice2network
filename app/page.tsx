@@ -26,6 +26,8 @@ import {
   Lightbulb,
   List,
   Paperclip,
+  Pause,
+  Play,
   LogOut,
   MapPin,
   Minus,
@@ -6591,6 +6593,100 @@ type ChatMessage = {
 function NudgeMark() {
   return <span className="nudge-mark" aria-hidden="true"><b>(</b><i>(</i><span><em>⚡</em></span><i>)</i><b>)</b></span>;
 }
+function formatVoiceTime(seconds: number) {
+  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+  return `${Math.floor(safeSeconds / 60)}:${String(safeSeconds % 60).padStart(2, "0")}`;
+}
+function VoiceNotePlayer({
+  src,
+  active,
+  onPlaybackChange,
+}: {
+  src: string;
+  active: boolean;
+  onPlaybackChange: (playing: boolean) => void;
+}) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const scrubbingRef = useRef(false);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const barCount = 24;
+  const progress = duration > 0 ? currentTime / duration : 0;
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = 1;
+    if (!active && !audio.paused) audio.pause();
+  }, [active]);
+
+  async function togglePlayback() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = 1;
+    if (audio.paused) await audio.play();
+    else audio.pause();
+  }
+  function seekTo(nextTime: number) {
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
+    const boundedTime = Math.min(duration, Math.max(0, nextTime));
+    audio.currentTime = boundedTime;
+    setCurrentTime(boundedTime);
+  }
+  function seekFromPointer(event: React.PointerEvent<HTMLDivElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    seekTo(((event.clientX - bounds.left) / bounds.width) * duration);
+  }
+  return (
+    <div className={`voice-message ${playing ? "speaking" : ""}`}>
+      <button type="button" className="voice-play-button" onClick={togglePlayback} aria-label={playing ? "Pause voice note" : "Play voice note"}>
+        {playing ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+      </button>
+      <div
+        className="voice-wave voice-scrubber"
+        role="slider"
+        tabIndex={0}
+        aria-label="Scrub voice note"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(duration)}
+        aria-valuenow={Math.round(currentTime)}
+        aria-valuetext={`${formatVoiceTime(currentTime)} of ${formatVoiceTime(duration)}`}
+        onPointerDown={(event) => {
+          scrubbingRef.current = true;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          seekFromPointer(event);
+        }}
+        onPointerMove={(event) => scrubbingRef.current && seekFromPointer(event)}
+        onPointerUp={(event) => {
+          scrubbingRef.current = false;
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onPointerCancel={() => { scrubbingRef.current = false; }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") { event.preventDefault(); seekTo(currentTime - 5); }
+          if (event.key === "ArrowRight") { event.preventDefault(); seekTo(currentTime + 5); }
+          if (event.key === "Home") { event.preventDefault(); seekTo(0); }
+          if (event.key === "End") { event.preventDefault(); seekTo(duration); }
+        }}
+      >
+        {Array.from({ length: barCount }, (_, index) => <i className={(index + 1) / barCount <= progress ? "played" : ""} key={index} />)}
+      </div>
+      <time>{formatVoiceTime(currentTime)} / {formatVoiceTime(duration)}</time>
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        onLoadedMetadata={(event) => { event.currentTarget.volume = 1; setDuration(event.currentTarget.duration); }}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onPlay={() => { setPlaying(true); onPlaybackChange(true); }}
+        onPause={() => { setPlaying(false); onPlaybackChange(false); }}
+        onEnded={() => { setPlaying(false); setCurrentTime(0); onPlaybackChange(false); }}
+      />
+    </div>
+  );
+}
 function MessagesView({
   currentMember,
   initialConversationId,
@@ -7070,7 +7166,7 @@ function MessagesView({
                 </a>
               )}
               {message.attachmentType === "audio" && message.attachmentUrl && (
-                <div className={`voice-message ${speakingMessageId === message.id ? "speaking" : ""}`}><AudioLines size={20}/><span className="voice-wave" aria-hidden="true">{Array.from({length: 12},(_, index)=><i key={index}/>)}</span><audio src={message.attachmentUrl} controls preload="metadata" onPlay={() => setSpeakingMessageId(message.id)} onPause={() => setSpeakingMessageId((id) => id === message.id ? null : id)} onEnded={() => setSpeakingMessageId((id) => id === message.id ? null : id)}/></div>
+                <VoiceNotePlayer src={message.attachmentUrl} active={speakingMessageId === message.id} onPlaybackChange={(playing) => setSpeakingMessageId((id) => playing ? message.id : id === message.id ? null : id)} />
               )}
               <span><LinkifiedText text={message.body} /></span>
               {message.status !== "deleted" && <RichLinkPreview text={message.body} />}

@@ -28,6 +28,10 @@ test("direct messages expose empty, sending, attachment, and error states", () =
   assert.match(page, /className="chat-send-error"/);
   assert.match(page, /startVoiceRecording/);
   assert.match(page, /className="voice-recording"/);
+  assert.match(page, /function VoiceNotePlayer/);
+  assert.match(page, /aria-label="Scrub voice note"/);
+  assert.match(page, /audio\.volume = 1/);
+  assert.doesNotMatch(page, /<audio src=\{message\.attachmentUrl\} controls/);
 });
 
 test("message hover controls and participant activity stay attached to chat messages", () => {
@@ -40,7 +44,7 @@ test("message hover controls and participant activity stay attached to chat mess
   assert.match(page, /aria-label="Edit message"/);
   assert.match(page, /aria-label="Delete message"/);
   assert.match(page, /className="chat-participant-activity"/);
-  assert.match(page, /onPlay=\{\(\) => setSpeakingMessageId\(message\.id\)\}/);
+  assert.match(page, /onPlaybackChange=\{\(playing\) => setSpeakingMessageId/);
   assert.match(styles, /\.chat-message-row:hover \.message-actions/);
   assert.match(styles, /Message actions stay contextual[\s\S]*?\.message-footer \.message-actions\{opacity:0;visibility:hidden/);
   assert.match(page, /<span><em>⚡<\/em><\/span>/);
