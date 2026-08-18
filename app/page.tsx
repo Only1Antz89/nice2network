@@ -401,6 +401,25 @@ type ProjectDetailRecord = ProjectRecord & {
     authorName: string | null;
     authorImage: string | null;
   }>;
+  applications: Array<{
+    id: string;
+    status: string;
+    message: string | null;
+    createdAt: string;
+    applicantId: string;
+    applicantName: string | null;
+    applicantImage: string | null;
+    applicantProfession: string | null;
+    profileBrief: string;
+    applicantLocation: string | null;
+    applicantSkills: string[];
+    applicantInterests: string[];
+    fit: { score: number; professionMatch: boolean; requiredMatches: string[]; usefulMatches: string[] };
+    roleId: string;
+    roleTitle: string;
+    roleDepartment: string;
+  }>;
+  pendingApplicationCount: number;
 };
 
 function formatNetworkDate(
@@ -439,22 +458,23 @@ function firstUrl(value?: string | null) {
 }
 
 function LinkifiedText({ text }: { text: string }) {
-  const matches = [...text.matchAll(/https?:\/\/[^\s<>]+/gi)];
+  const matches = [...text.matchAll(/https?:\/\/[^\s<>]+|@[a-z0-9_-]{2,30}/gi)];
   if (!matches.length) return <>{text}</>;
   const content: ReactNode[] = [];
   let cursor = 0;
   matches.forEach((match, index) => {
     const start = match.index ?? 0;
     const raw = match[0];
-    const href = raw.replace(/[),.!?;:]+$/, "");
+    const mention = raw.startsWith("@");
+    const href = mention ? `/${raw.slice(1)}` : raw.replace(/[),.!?;:]+$/, "");
     const trailing = raw.slice(href.length);
     if (start > cursor) content.push(text.slice(cursor, start));
     content.push(
       <a
         className="n2-hyperlink"
         href={href}
-        target="_blank"
-        rel="noopener noreferrer"
+        target={mention ? undefined : "_blank"}
+        rel={mention ? undefined : "noopener noreferrer"}
         key={`${href}-${start}-${index}`}
         onClick={(event) => event.stopPropagation()}
       >
@@ -466,6 +486,91 @@ function LinkifiedText({ text }: { text: string }) {
   });
   if (cursor < text.length) content.push(text.slice(cursor));
   return <>{content}</>;
+}
+
+type MentionPerson = {
+  id: string;
+  username: string;
+  name: string | null;
+  image: string | null;
+  profession?: string | null;
+};
+
+function MentionPicker({
+  onSelect,
+  people,
+  onOpenChange,
+}: {
+  onSelect: (person: MentionPerson) => void;
+  people?: MentionPerson[];
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false),
+    [query, setQuery] = useState(""),
+    [results, setResults] = useState<MentionPerson[]>([]),
+    [loading, setLoading] = useState(false);
+  const available = people
+    ? people.filter((person) =>
+        `${person.name ?? ""} ${person.username}`.toLowerCase().includes(query.trim().toLowerCase()),
+      )
+    : results;
+  useEffect(() => {
+    if (people || !open || query.trim().length < 2) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController(), timer = setTimeout(() => {
+      setLoading(true);
+      fetch(`/api/search?q=${encodeURIComponent(query.trim())}`, { signal: controller.signal })
+        .then((response) => response.ok ? response.json() : { people: [] })
+        .then((data) => setResults((data.people ?? []).filter((person: MentionPerson) => person.username)))
+        .catch(() => undefined)
+        .finally(() => setLoading(false));
+    }, 180);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [open, people, query]);
+  function toggle(next: boolean) {
+    setOpen(next);
+    onOpenChange?.(next);
+    if (!next) setQuery("");
+  }
+  return (
+    <div className="mention-picker">
+      <button type="button" className="mention-trigger" onClick={() => toggle(!open)} aria-label="Tag a member" aria-expanded={open}>
+        <span aria-hidden="true">@</span><small>Tag</small>
+      </button>
+      {open && <div className="mention-popover">
+        <label><Search size={14}/><input autoFocus value={query} onChange={(event) => setQuery(event.target.value.replace(/^@/, ""))} placeholder={people ? "Find a group member" : "Search name or username"}/></label>
+        <div className="mention-results">
+          {available.slice(0, 8).map((person) => <button type="button" key={person.id} onClick={() => { onSelect(person); toggle(false); }}>
+            <Avatar person={{ name: person.name ?? person.username, role: person.profession ?? `@${person.username}`, img: person.image }} size="sm"/>
+            <span><strong>{person.name ?? person.username}</strong><small>@{person.username}</small></span>
+          </button>)}
+          {loading && <p>Searching…</p>}
+          {!loading && query.trim().length < 2 && !people && <p>Type at least 2 characters.</p>}
+          {!loading && (people || query.trim().length >= 2) && !available.length && <p>No members found.</p>}
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+function insertMentionAtCursor(
+  value: string,
+  username: string,
+  input: HTMLInputElement | HTMLTextAreaElement | null,
+  setValue: (value: string) => void,
+) {
+  const start = input?.selectionStart ?? value.length, end = input?.selectionEnd ?? start;
+  const leadingSpace = start > 0 && !/\s/.test(value[start - 1]) ? " " : "";
+  const insertion = `${leadingSpace}@${username} `;
+  setValue(`${value.slice(0, start)}${insertion}${value.slice(end)}`);
+  requestAnimationFrame(() => {
+    const cursor = start + insertion.length;
+    input?.focus();
+    input?.setSelectionRange(cursor, cursor);
+  });
 }
 
 function RichLinkPreview({ text, url }: { text?: string | null; url?: string | null }) {
@@ -582,12 +687,16 @@ function FreeChoiceInput({
   options,
   placeholder,
   id,
+  required = false,
+  ariaDescribedBy,
 }: {
   value: string;
   onChange: (value: string) => void;
   options: readonly string[];
   placeholder?: string;
   id: string;
+  required?: boolean;
+  ariaDescribedBy?: string;
 }) {
   const [open, setOpen] = useState(false);
   const matches = options
@@ -601,6 +710,8 @@ function FreeChoiceInput({
       <input
         id={id}
         role="combobox"
+        required={required}
+        aria-describedby={ariaDescribedBy}
         value={value}
         onFocus={() => setOpen(true)}
         onChange={(event) => {
@@ -952,10 +1063,11 @@ function TeamTrail({
               type="button"
               className="open-person"
               key={`${role.id}-${slot}`}
-              title={`Apply for ${role.title}`}
-              aria-label={`Apply for ${role.title}`}
+              disabled={Boolean(project.isOwner || project.isMember)}
+              title={project.isOwner || project.isMember ? `Open role: ${role.title}` : `Apply for ${role.title}`}
+              aria-label={project.isOwner || project.isMember ? `Open role: ${role.title}` : `Apply for ${role.title}`}
               onClick={() =>
-                window.dispatchEvent(
+                !project.isOwner && !project.isMember && window.dispatchEvent(
                   new CustomEvent("n2:apply-role", {
                     detail: {
                       projectId: project.id,
@@ -1745,7 +1857,7 @@ function CreateProject({
     description: "",
     imageUrl: null as string | null,
     accent: "#ff6b35",
-    industry: "Community & local services",
+    industry: "",
     stage: "idea",
     workMode: "remote",
     city: "",
@@ -1781,6 +1893,10 @@ function CreateProject({
     }
     if (summaryLength > 500) {
       setError(`Project summary is ${summaryLength} characters. Shorten it to 500 characters or fewer.`);
+      return;
+    }
+    if (form.industry.trim().length < 2) {
+      setError("Type or choose an industry before building your project plan.");
       return;
     }
     if (!form.city || !form.country || !form.timezone) {
@@ -2064,7 +2180,12 @@ function CreateProject({
                   onChange={(industry) => setForm({ ...form, industry })}
                   options={PROJECT_INDUSTRIES}
                   placeholder="Type or choose an industry"
+                  required
+                  ariaDescribedBy="project-industry-hint"
                 />
+                <small id="project-industry-hint" className="field-requirement">
+                  Required · Start typing or choose a suggestion.
+                </small>
               </label>
             </div>
             <div className="field-row single-field">
@@ -2995,6 +3116,7 @@ function PostComposer({
     ),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     Promise.all([
       fetch("/api/projects?scope=mine&limit=40"),
@@ -3137,6 +3259,7 @@ function PostComposer({
           </span>
         </div>
         <textarea
+          ref={bodyRef}
           autoFocus
           value={body}
           onChange={(event) => setBody(event.target.value)}
@@ -3157,6 +3280,7 @@ function PostComposer({
           </div>
         )}
         <div className="post-tools">
+          <MentionPicker onSelect={(person) => insertMentionAtCursor(body, person.username, bodyRef.current, setBody)}/>
           <EmojiPicker
             onSelect={(emoji) => setBody((value) => `${value}${emoji}`)}
             align="right"
@@ -4743,7 +4867,7 @@ function ContributionDialog({
                 </span>
               </div>
             )}
-            {fit && (
+            {fit && !blocked && (
               <div className={`role-fit ${mismatch ? "warning" : "match"}`}>
                 {mismatch ? <CircleAlert size={19} /> : <Check size={19} />}
                 <span>
@@ -4768,12 +4892,14 @@ function ContributionDialog({
               </div>
             )}
             {fit?.existingStatus && (
-              <div className="role-fit warning">
-                <CircleAlert size={19} />
+              <div className={`role-fit ${fit.existingStatus === "pending" ? "application-pending" : "warning"}`} role="status">
+                {fit.existingStatus === "pending" ? <Check size={19} /> : <CircleAlert size={19} />}
                 <span>
-                  <strong>Application already submitted</strong>
+                  <strong>{fit.existingStatus === "pending" ? "You’ve already applied" : "Application already submitted"}</strong>
                   <small>
-                    Your application is currently {fit.existingStatus}.
+                    {fit.existingStatus === "pending"
+                      ? "Your application is pending. The project lead will review it and let you know their decision."
+                      : `Your application is currently ${fit.existingStatus}.`}
                   </small>
                 </span>
               </div>
@@ -4787,17 +4913,17 @@ function ContributionDialog({
                 </span>
               </div>
             )}
-            <label>
-              Why are you a useful fit?
-              <textarea
-                name="message"
-                minLength={20}
-                maxLength={1200}
-                placeholder="Describe relevant skills, experience and what you would contribute."
-                required
-              />
-            </label>
-            {mismatch && (
+            {!blocked && <label>
+                Why are you a useful fit?
+                <textarea
+                  name="message"
+                  minLength={20}
+                  maxLength={1200}
+                  placeholder="Describe relevant skills, experience and what you would contribute."
+                  required
+                />
+              </label>}
+            {mismatch && !blocked && (
               <label className="role-acknowledgement">
                 <input
                   type="checkbox"
@@ -4859,9 +4985,9 @@ function ContributionDialog({
         )}
         <footer>
           <button type="button" className="secondary-button" onClick={onClose}>
-            Cancel
+            {blocked ? "Close" : "Cancel"}
           </button>
-          {(role || generic) && (
+          {(role || generic) && !blocked && (
             <button
               className="primary-button"
               disabled={
@@ -5225,7 +5351,7 @@ function ProjectDetailView({
   const [project, setProject] = useState<ProjectDetailRecord | null>(null),
     [loading, setLoading] = useState(true),
     [tab, setTab] = useState<
-      "overview" | "team" | "ai_assist" | "roadmap" | "updates" | "funding"
+      "overview" | "team" | "notifications" | "ai_assist" | "roadmap" | "updates" | "funding"
     >("overview"),
     [fundingOpen, setFundingOpen] = useState(false),
     [fundingType, setFundingType] = useState<
@@ -5233,8 +5359,27 @@ function ProjectDetailView({
     >("contribute"),
     [professionRequestOpen, setProfessionRequestOpen] = useState(false),
     [aiAssistOpen, setAiAssistOpen] = useState(false),
+    [selectedApplicationRoleId, setSelectedApplicationRoleId] = useState<string | null>(null),
     [professionDraft, setProfessionDraft] = useState<RecruitmentDraft>(emptyRecruitmentDraft),
     [busy, setBusy] = useState(false);
+  async function decideApplication(applicationId: string, decision: "accepted" | "declined") {
+    const response = await fetch(`/api/applications/${applicationId}/decision`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      onToast(result.error ?? "Could not update this application.");
+      return;
+    }
+    setProject(current => current ? {
+      ...current,
+      applications: current.applications.map(item => item.id === applicationId ? { ...item, status: decision } : item),
+      pendingApplicationCount: Math.max(0, current.pendingApplicationCount - 1),
+    } : current);
+    onToast(`Application ${decision}.`);
+  }
   useEffect(() => {
     fetch(`/api/projects/${projectId}`)
       .then(async (response) => {
@@ -5290,7 +5435,8 @@ function ProjectDetailView({
     progress = project.milestones.length
       ? Math.round((completed / project.milestones.length) * 100)
       : 0,
-    canRecruit = project.ownerId === project.currentUserId;
+    canRecruit = project.ownerId === project.currentUserId,
+    canApplyToProject = !project.isOwner && !project.isMember;
   return (
     <div className="project-detail">
       <button className="project-detail-back" onClick={onBack}>
@@ -5331,8 +5477,8 @@ function ProjectDetailView({
         </div>
       </header>
       <nav className="project-detail-tabs">
-        {(["overview", "team", "ai_assist", "roadmap", "updates", "funding"] as const)
-          .filter((item) => item !== "ai_assist" || canRecruit)
+        {(["overview", "team", "notifications", "ai_assist", "roadmap", "updates", "funding"] as const)
+          .filter((item) => (item !== "ai_assist" && item !== "notifications") || canRecruit)
           .map(
           (item) => (
             <button
@@ -5341,6 +5487,9 @@ function ProjectDetailView({
               onClick={() => setTab(item)}
             >
               {item === "ai_assist" ? "Ai Assist" : item}
+              {item === "notifications" && project.pendingApplicationCount > 0 && (
+                <span className="project-application-count">{project.pendingApplicationCount}</span>
+              )}
             </button>
           ),
         )}
@@ -5378,10 +5527,14 @@ function ProjectDetailView({
               <div>
                 <span className="eyebrow">OPEN CONTRIBUTIONS</span>
                 <p>
-                  Apply for a listed role or offer another useful contribution.
+                  {project.isOwner
+                    ? "These are the open roles you’re recruiting for."
+                    : project.isMember
+                      ? "These roles are open to new contributors."
+                      : "Apply for a listed role or offer another useful contribution."}
                 </p>
               </div>
-              {!project.isOwner && !project.isMember && (
+              {canApplyToProject && (
                 <button
                   className="primary-button"
                   onClick={() =>
@@ -5410,8 +5563,14 @@ function ProjectDetailView({
                   <button
                     type="button"
                     key={role.id}
-                    onClick={() =>
-                      window.dispatchEvent(
+                    disabled={!canApplyToProject && !project.isOwner}
+                    onClick={() => {
+                      if (project.isOwner) {
+                        setSelectedApplicationRoleId(role.id);
+                        setTab("notifications");
+                        return;
+                      }
+                      canApplyToProject && window.dispatchEvent(
                         new CustomEvent("n2:apply-role", {
                           detail: {
                             projectId: project.id,
@@ -5420,8 +5579,8 @@ function ProjectDetailView({
                             initialRoleId: role.id,
                           },
                         }),
-                      )
-                    }
+                      );
+                    }}
                   >
                     <span>
                       <strong>{role.title}</strong>
@@ -5431,7 +5590,7 @@ function ProjectDetailView({
                     </span>
                     <b>
                       {Math.max(0, role.capacity - role.filled)} open{" "}
-                      <ArrowUpRight size={13} />
+                      {(canApplyToProject || project.isOwner) && <ArrowUpRight size={13} />}
                     </b>
                   </button>
                 ))}
@@ -5490,6 +5649,52 @@ function ProjectDetailView({
                 <ArrowUpRight size={15} />
               </button>
             )}
+          </div>
+        </section>
+      )}
+      {tab === "notifications" && canRecruit && (
+        <section className="project-application-section">
+          <header>
+            <div>
+              <span className="eyebrow">PROJECT NOTIFICATIONS</span>
+              <h2>{selectedApplicationRoleId ? `Applications for ${project.roles.find(role => role.id === selectedApplicationRoleId)?.title ?? "this role"}` : "Applications"}</h2>
+              <p>Review profile fit, skills and context before making a decision.</p>
+            </div>
+            <div className="application-section-tools">
+              {selectedApplicationRoleId && <button type="button" className="secondary-button" onClick={() => setSelectedApplicationRoleId(null)}>All applications</button>}
+              {project.pendingApplicationCount > 0 && <b>{project.pendingApplicationCount} pending</b>}
+            </div>
+          </header>
+          <div className="project-application-list">
+            {project.applications.filter(application => !selectedApplicationRoleId || application.roleId === selectedApplicationRoleId).map(application => (
+              <article key={application.id} className={application.status === "pending" ? "pending" : ""}>
+                <div className="application-summary">
+                  <button type="button" className="application-person" onClick={() => onProfile(application.applicantId)}>
+                    <Avatar person={{ name: application.applicantName ?? "n2 member", role: application.applicantProfession ?? "n2 member", img: application.applicantImage }} size="md" />
+                    <span><strong>{application.applicantName ?? "n2 member"}</strong><small>{application.applicantProfession ?? "n2 member"}</small></span>
+                  </button>
+                  <div className="application-fit" aria-label={`${application.fit.score}% profile fit`}><strong>{application.fit.score}%</strong><small>profile fit</small></div>
+                </div>
+                <p className="application-profile-brief">{application.profileBrief}</p>
+                <dl className="application-profile-details">
+                  <div><dt>Applied for</dt><dd><strong>{application.roleTitle}</strong> · {application.roleDepartment}</dd></div>
+                  <div><dt>Location</dt><dd>{application.applicantLocation || "Not shared"}</dd></div>
+                  <div><dt>Skills</dt><dd className="application-tags">{application.applicantSkills.length ? application.applicantSkills.map(skill => <span key={skill}>{skill}</span>) : "Not added"}</dd></div>
+                  <div><dt>Interests</dt><dd className="application-tags">{application.applicantInterests.length ? application.applicantInterests.map(interest => <span key={interest}>{interest}</span>) : "Not added"}</dd></div>
+                </dl>
+                {application.message && <div className="application-note"><small>APPLICATION NOTE</small><p>{application.message}</p></div>}
+                <div className="application-review-actions">
+                  <span className={`application-status ${application.status}`}>{application.status}</span>
+                  {application.status === "pending" && (
+                    <>
+                      <button type="button" className="secondary-button" onClick={() => decideApplication(application.id, "declined")}>Decline</button>
+                      <button type="button" className="primary-button" onClick={() => decideApplication(application.id, "accepted")}>Accept</button>
+                    </>
+                  )}
+                </div>
+              </article>
+            ))}
+            {!project.applications.some(application => !selectedApplicationRoleId || application.roleId === selectedApplicationRoleId) && <p className="profile-empty">No applications for this role yet.</p>}
           </div>
         </section>
       )}
@@ -6570,6 +6775,7 @@ type ConversationRecord = {
   unreadCount?: number;
   members: Array<{
     userId: string;
+    username: string;
     name: string | null;
     image: string | null;
     profession: string | null;
@@ -6728,6 +6934,7 @@ function MessagesView({
     [editMessageTarget, setEditMessageTarget] = useState<ChatMessage | null>(null),
     [deleteMessageTarget, setDeleteMessageTarget] = useState<ChatMessage | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const messageDraftRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingSecondsRef = useRef(0);
@@ -6978,7 +7185,7 @@ function MessagesView({
         ...row,
         ...(action === "rename" ? { name: String(values.name || "") || null } : {}),
         ...(action === "set_image" ? { image: values.image as string | null } : {}),
-        ...(added ? { members: [...row.members, { userId: String(added.id), name: String(added.name ?? "n2 member"), image: added.image as string | null, profession: added.profession as string | null }] } : {}),
+        ...(added ? { members: [...row.members, { userId: String(added.id), username: String(added.username ?? "member"), name: String(added.name ?? "n2 member"), image: added.image as string | null, profession: added.profession as string | null }] } : {}),
       };
     });
     return true;
@@ -7208,7 +7415,7 @@ function MessagesView({
           )}
           {sendError && <p className="chat-send-error">{sendError}</p>}
           <form
-            className="dm-composer"
+            className={`dm-composer${selected.members.length > 2 ? " has-mentions" : ""}`}
             onSubmit={(event) => {
               event.preventDefault();
               if (draft.trim() || attachment) send();
@@ -7226,9 +7433,14 @@ function MessagesView({
                 <button type="button" className="dm-nudge-action" onClick={() => { setShowAttachments(false); send("nudge"); }} disabled={isSending} title="Nudge this conversation"><Zap size={18}/><span>Nudge</span></button>
               </div>}
             </div>
+            {selected.members.length > 2 && <MentionPicker
+              people={selected.members.filter((member) => member.userId !== currentMember.id).map((member) => ({ id: member.userId, username: member.username, name: member.name, image: member.image, profession: member.profession }))}
+              onSelect={(person) => insertMentionAtCursor(draft, person.username, messageDraftRef.current, setDraft)}
+            />}
             <div className="dm-composer-main">
               {isRecording ? <div className="voice-recording" role="status"><span className="voice-wave recording" aria-hidden="true">{Array.from({length:16},(_,index)=><i key={index}/>)}</span><strong>{formatDuration(recordingSeconds)}</strong><small>Recording voice message</small></div> :
               <textarea
+                ref={messageDraftRef}
                 rows={1}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
@@ -8478,10 +8690,12 @@ function ProfileView({
   member,
   userId,
   onEdit,
+  onProject,
 }: {
   member: MemberPerson;
   userId?: string | null;
   onEdit: () => void;
+  onProject: (projectId: string) => void;
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
@@ -8618,16 +8832,23 @@ function ProfileView({
             ? <a className="profile-username" href={`/${profile.username}`}>@{profile.username} <ArrowUpRight size={12} /></a>
             : <span className="profile-username">@{profile.username}</span>
         )}
-        <p className="profile-role">
-          {profile?.isFounder ? (
-            <N2FounderLabel />
-          ) : profile?.isN2Admin && person.role === "n2 member" ? (
-            <N2IntAilliumWordmark />
-          ) : (
-            person.role
+        <div className="profile-role">
+          <span className="profile-identity">
+            {profile?.isFounder ? (
+              <N2FounderLabel />
+            ) : profile?.isN2Admin ? (
+              <N2IntAilliumWordmark />
+            ) : (
+              person.role
+            )}
+          </span>
+          {profile?.location && (
+            <>
+              <span className="profile-meta-separator" aria-hidden="true">·</span>
+              <span className="profile-location">{profile.location}</span>
+            </>
           )}
-          {profile?.location ? ` · ${profile.location}` : ""}
-        </p>
+        </div>
         <div className="profile-network-counts">
           <button
             className={section === "followers" ? "active" : ""}
@@ -8732,7 +8953,15 @@ function ProfileView({
                     </span>
                     <i>{project.status}</i>
                   </header>
-                  <h3>{project.title}</h3>
+                  <h3>
+                    <button
+                      type="button"
+                      onClick={() => onProject(project.id)}
+                      aria-label={`Open project ${project.title}`}
+                    >
+                      {project.title}
+                    </button>
+                  </h3>
                   <p>{project.summary}</p>
                   <footer>
                     <span>{project.industry}</span>
@@ -8851,6 +9080,7 @@ function PostThread({
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const replyRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     fetch(`/api/posts/${initialPost.id}/thread`)
       .then(async (response) => {
@@ -9034,9 +9264,11 @@ function PostThread({
           <EmojiPicker
             onSelect={(emoji) => setDraft((value) => `${value}${emoji}`)}
           />
+          <MentionPicker onSelect={(person) => insertMentionAtCursor(draft, person.username, replyRef.current, setDraft)}/>
           <label>
             <span className="sr-only">Write a reply</span>
             <input
+              ref={replyRef}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               placeholder={`Reply to ${post.authorName ?? "this post"}…`}
@@ -9394,7 +9626,7 @@ function ShortlistPanel({
             <span className="eyebrow">OWNER SHORTLIST</span>
             <h2>People who could move this forward</h2>
             <p>
-              Top five active candidates per role. You decide whom to invite.
+              Every open position is shown, with up to five active candidates per role.
             </p>
           </div>
           <button className="icon-button" onClick={onClose}>
@@ -9411,8 +9643,13 @@ function ShortlistPanel({
               <div className="shortlist-role">
                 <span>{role.phase}</span>
                 <strong>{role.roleTitle}</strong>
+                <small>
+                  {role.candidates.length
+                    ? `${role.candidates.length} ${role.candidates.length === 1 ? "match" : "matches"}`
+                    : "No matches yet"}
+                </small>
               </div>
-              {role.candidates.map((candidate) => (
+              {role.candidates.length ? role.candidates.map((candidate) => (
                 <article key={candidate.recommendationId}>
                   <button
                     className="shortlist-person"
@@ -9460,7 +9697,17 @@ function ShortlistPanel({
                     )}
                   </button>
                 </article>
-              ))}
+              )) : (
+                <div className="shortlist-role-empty">
+                  <UsersRound size={17} />
+                  <span>
+                    <strong>No suitable active match yet</strong>
+                    <small>
+                      This position remains visible while n2 checks new and updated member profiles.
+                    </small>
+                  </span>
+                </div>
+              )}
             </section>
           ))
         ) : (
@@ -9513,8 +9760,7 @@ function SettingsView({
     secondarySkill: "",
     tertiarySkill: "",
     interests: "",
-    city: "",
-    country: "",
+    location: "",
     timezone:
       Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/London",
     workMode: "remote",
@@ -9594,11 +9840,27 @@ function SettingsView({
         body: JSON.stringify({ type, data }),
       });
       if (response.ok) {
-        if (type === "avatar") setProfileImage(data);
+        if (type === "avatar") {
+          setProfileImage(data);
+          window.dispatchEvent(new CustomEvent("n2:profile-photo-changed", { detail: data }));
+        }
         else setCoverImage(data);
       }
     };
     reader.readAsDataURL(file);
+  }
+  async function removeProfileMedia(type: "avatar" | "banner") {
+    if (!profileUserId) return;
+    const response = await fetch(`/api/profiles/${profileUserId}/media`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type }),
+    });
+    if (!response.ok) return;
+    if (type === "avatar") {
+      setProfileImage("");
+      window.dispatchEvent(new CustomEvent("n2:profile-photo-changed", { detail: null }));
+    } else setCoverImage("");
   }
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -9650,8 +9912,7 @@ function SettingsView({
             secondarySkill: record.rankedSkills?.[1] ?? "",
             tertiarySkill: record.rankedSkills?.[2] ?? "",
             interests: (record.interests ?? []).join(", "),
-            city: record.city ?? "",
-            country: record.country ?? "",
+            location: record.location ?? [record.city, record.country].filter(Boolean).join(", "),
             timezone:
               record.timezone ??
               Intl.DateTimeFormat().resolvedOptions().timeZone ??
@@ -9762,7 +10023,7 @@ function SettingsView({
           ? JSON.parse(persistedProfileRef.current) as Partial<typeof profile>
           : {};
         const updates: Record<string, unknown> = {};
-        const scalarFields = ["name", "username", "headline", "profession", "industry", "bio", "city", "country", "timezone", "workMode"] as const;
+        const scalarFields = ["name", "username", "headline", "profession", "industry", "bio", "location", "timezone", "workMode"] as const;
         for (const field of scalarFields) {
           if (profile[field] !== previous[field]) updates[field] = profile[field];
         }
@@ -10090,6 +10351,11 @@ function SettingsView({
                   }
                 />
               </label>
+              {coverImage && (
+                <button type="button" className="remove-banner-button" onClick={() => removeProfileMedia("banner")}>
+                  <Trash2 size={13} /> Remove banner
+                </button>
+              )}
               <div className="profile-settings-lead">
                 <Avatar
                   person={{
@@ -10105,16 +10371,23 @@ function SettingsView({
                     Your n2 avatar is used until you upload a photo.
                   </small>
                 </div>
-                <label className="media-change">
-                  Change
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={(e) =>
-                      uploadProfileMedia("avatar", e.target.files?.[0])
-                    }
-                  />
-                </label>
+                <div className="profile-media-actions">
+                  {profileImage && (
+                    <button type="button" className="media-remove" onClick={() => removeProfileMedia("avatar")}>
+                      <Trash2 size={13} /> Remove photo
+                    </button>
+                  )}
+                  <label className="media-change">
+                    Change
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(e) =>
+                        uploadProfileMedia("avatar", e.target.files?.[0])
+                      }
+                    />
+                  </label>
+                </div>
               </div>
             </div>
             <div className="form-grid">
@@ -10175,20 +10448,12 @@ function SettingsView({
                 />
               </label>
               <label>
-                City
+                Location
                 <input
-                  value={profile.city}
+                  value={profile.location}
+                  placeholder="e.g. London, United Kingdom"
                   onChange={(e) =>
-                    setProfile({ ...profile, city: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Country
-                <input
-                  value={profile.country}
-                  onChange={(e) =>
-                    setProfile({ ...profile, country: e.target.value })
+                    setProfile({ ...profile, location: e.target.value })
                   }
                 />
               </label>
@@ -11152,11 +11417,22 @@ export default function HomePage() {
     role: "Public network",
   });
   const [authenticated, setAuthenticated] = useState(false);
+  const [expandedProfilePhoto, setExpandedProfilePhoto] = useState<{ src: string; alt: string } | null>(null);
   const latestBrowserNotification = useRef<string | null | false>(false);
   const deepLinkHandled = useRef(false);
   const updateUnreadCounts = useCallback((unread: number, messages: number) => {
     setUnreadNotifications(unread);
     setUnreadMessages(messages);
+  }, []);
+  useEffect(() => {
+    const expand = (event: Event) => setExpandedProfilePhoto((event as CustomEvent<{ src: string; alt: string }>).detail);
+    const changed = (event: Event) => setCurrentMember(current => ({ ...current, img: (event as CustomEvent<string | null>).detail }));
+    window.addEventListener("n2:expand-profile-photo", expand);
+    window.addEventListener("n2:profile-photo-changed", changed);
+    return () => {
+      window.removeEventListener("n2:expand-profile-photo", expand);
+      window.removeEventListener("n2:profile-photo-changed", changed);
+    };
   }, []);
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -11239,6 +11515,7 @@ export default function HomePage() {
       .then(async response => ({ response, data: await response.json() }))
       .then(({ response, data }) => {
         if (!response.ok || !data.project) return;
+        if (data.project.isOwner || data.project.isMember) return;
         const roles = (data.project.roles ?? []) as ProjectRoleRecord[];
         if (!roles.some(role => role.id === roleId && role.status === "open" && role.filled < role.capacity)) return;
         setContributionTarget({ projectId, projectTitle: data.project.title, roles, initialRoleId: roleId });
@@ -11433,6 +11710,16 @@ export default function HomePage() {
     setSelectedProfileId(currentMember.id ?? null);
     go("profile");
   }
+  function openProject(projectId: string) {
+    if (!authenticated) {
+      requireSignIn();
+      return;
+    }
+    setSelectedProjectId(projectId);
+    setView("projects");
+    setMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   return (
     <div
       className={`app-shell ${view === "network" && !selectedProjectId ? "network-shell" : ""}`}
@@ -11585,6 +11872,7 @@ export default function HomePage() {
                     setEditProfileRequested(true);
                     go("settings");
                   }}
+                  onProject={openProject}
                 />
               )}
               {authenticated && view === "settings" && (
@@ -11817,6 +12105,14 @@ export default function HomePage() {
           onClose={() => setContributionTarget(null)}
           onToast={setToast}
         />
+      )}
+      {expandedProfilePhoto && (
+        <div className="profile-photo-lightbox" role="presentation" onMouseDown={event => event.target === event.currentTarget && setExpandedProfilePhoto(null)}>
+          <section role="dialog" aria-modal="true" aria-label={`${expandedProfilePhoto.alt} profile photo`}>
+            <button type="button" className="icon-button" onClick={() => setExpandedProfilePhoto(null)} aria-label="Close profile photo"><X size={20} /></button>
+            <img src={expandedProfilePhoto.src} alt={expandedProfilePhoto.alt} />
+          </section>
+        </div>
       )}
       {toast && (
         <div className="toast">

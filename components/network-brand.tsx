@@ -26,6 +26,20 @@ export function Avatar({
       height={160}
       sizes="160px"
       unoptimized
+      data-expandable={person.img ? "true" : undefined}
+      role={person.img ? "button" : undefined}
+      tabIndex={person.img ? 0 : undefined}
+      onClick={person.img ? event => {
+        event.stopPropagation();
+        window.dispatchEvent(new CustomEvent("n2:expand-profile-photo", { detail: { src: person.img, alt: person.name } }));
+      } : undefined}
+      onKeyDown={person.img ? event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          window.dispatchEvent(new CustomEvent("n2:expand-profile-photo", { detail: { src: person.img, alt: person.name } }));
+        }
+      } : undefined}
     />
   );
 }

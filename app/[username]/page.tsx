@@ -92,7 +92,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         {publicProjects.map(project => <article className={styles.card} key={project.id}>
           <div className={styles.projectVisual} style={{background:project.accent}}/>
           {project.imageUrl&&<Image className={styles.media} src={project.imageUrl} alt="" width={1200} height={700} unoptimized/>}
-          <div className={styles.projectBody}><small>{project.industry} · {project.stage}</small><h2>{project.title}</h2><p>{project.summary}</p></div>
+          <div className={styles.projectBody}><small>{project.industry} · {project.stage}</small><h2><Link href={`/?view=projects&project=${project.id}`}>{project.title}</Link></h2><p>{project.summary}</p></div>
           <Replies items={commentMap.get(project.id) ?? []}/><footer className={styles.cardFooter}><span>{(commentMap.get(project.id) ?? []).length} replies</span><PublicProfileAction label="Reply or join project" authenticatedHref={`/?project=${project.id}`} /></footer>
         </article>)}
       </section>

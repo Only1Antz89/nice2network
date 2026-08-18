@@ -498,6 +498,11 @@ select:focus,
   color: var(--ink);
   border-color: var(--line);
 }
+html[data-colour-theme="dark"] .open-person:hover > svg {
+  background: #fff !important;
+  color: #111 !important;
+  border-color: #fff !important;
+}
 .n2-ai-mark {
   background: var(--solid);
   color: var(--solid-ink);
@@ -621,6 +626,11 @@ select:focus,
   background: var(--warning-soft);
   color: var(--ink);
   border-color: #7d6a32;
+}
+.role-fit.application-pending {
+  background: #123d2d;
+  color: #effff7;
+  border-color: #2b8c66;
 }
 .role-fit.match,
 .verified-banner,

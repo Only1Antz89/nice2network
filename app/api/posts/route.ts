@@ -8,6 +8,7 @@ import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
 import { createNotifications } from "@/lib/notifications";
 import { auth } from "@/auth";
+import { resolveMentionedUsers } from "@/lib/mentions";
 
 const imageData = z.string().max(2_900_000).refine(value => /^data:image\/(jpeg|png|webp|gif);base64,/i.test(value), "Choose a JPEG, PNG, WebP or GIF image");
 const videoData = z.string().max(3_500_000).refine(value => /^data:video\/(mp4|webm|quicktime);base64,/i.test(value), "Choose an MP4, WebM or QuickTime video");
@@ -60,8 +61,12 @@ export async function POST(request: Request) {
     }
     const [post] = await db.insert(timelinePosts).values({ authorId: member.id, body: input.body, linkedProjectIds: input.linkedProjectIds, attachmentType: input.attachmentType ?? null, attachmentUrl: input.attachmentUrl ?? null, videoUrl: input.videoUrl ?? null, visibility: input.visibility }).returning();
     if (input.visibility === "network") {
-      const followers = await db.select({ userId: follows.followerId }).from(follows).where(eq(follows.followingId, member.id));
-      await createNotifications(followers.map(({ userId }) => ({ userId, actorId: member.id, type: "following" as const, title: `${member.name ?? "A member you follow"} shared a post`, body: input.body.slice(0, 120), entityType: "post", entityId: post.id, href: `/?post=${post.id}` })));
+      const [followers, mentioned] = await Promise.all([db.select({ userId: follows.followerId }).from(follows).where(eq(follows.followingId, member.id)), resolveMentionedUsers(input.body, { excludeId: member.id })]);
+      const mentionedIds = new Set(mentioned.map((person) => person.id));
+      await createNotifications([
+        ...followers.filter(({ userId }) => !mentionedIds.has(userId)).map(({ userId }) => ({ userId, actorId: member.id, type: "following" as const, title: `${member.name ?? "A member you follow"} shared a post`, body: input.body.slice(0, 120), entityType: "post", entityId: post.id, href: `/?post=${post.id}` })),
+        ...mentioned.map((person) => ({ userId: person.id, actorId: member.id, type: "following" as const, title: `${member.name ?? "An n2 member"} tagged you in a post`, body: input.body.slice(0, 120), entityType: "post", entityId: post.id, href: `/?post=${post.id}` })),
+      ]);
     }
     await audit(member.id, "timeline.post_created", "post", post.id, { linkedProjectCount: input.linkedProjectIds.length, hasMedia: Boolean(input.attachmentUrl || input.videoUrl) });
     await trackProductEvent({ actorId: member.id, event: "timeline_post_created", properties: { linkedProjects: input.linkedProjectIds.length, media: input.attachmentType ?? (input.videoUrl ? "video_link" : "none") } });

@@ -4,7 +4,8 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { adminAssignments, postLikes, postReplies, postReposts, timelinePosts, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
-import { createNotification } from "@/lib/notifications";
+import { createNotifications } from "@/lib/notifications";
+import { resolveMentionedUsers } from "@/lib/mentions";
 import { trackProductEvent } from "@/lib/analytics";
 import { requirePostView } from "@/lib/content-access";
 
@@ -34,7 +35,11 @@ export async function POST(request:Request,{params}:{params:Promise<{postId:stri
     const [post]=await db.select({id:timelinePosts.id,authorId:timelinePosts.authorId}).from(timelinePosts).where(and(eq(timelinePosts.id,postId),eq(timelinePosts.status,"visible"))).limit(1);
     if(!post)return NextResponse.json({error:"Post not found"},{status:404});
     const [reply]=await db.insert(postReplies).values({postId,authorId:member.id,body:input.body}).returning();
-    await createNotification({userId:post.authorId,actorId:member.id,type:"project",title:`${member.name??"Someone"} replied to your post`,body:input.body.slice(0,120),entityType:"post",entityId:postId,href:`/?post=${postId}`});
+    const mentioned = await resolveMentionedUsers(input.body, { excludeId: member.id }), mentionedIds = new Set(mentioned.map((person) => person.id));
+    await createNotifications([
+      ...(!mentionedIds.has(post.authorId) ? [{userId:post.authorId,actorId:member.id,type:"project" as const,title:`${member.name??"Someone"} replied to your post`,body:input.body.slice(0,120),entityType:"post",entityId:postId,href:`/?post=${postId}`}] : []),
+      ...mentioned.map((person) => ({userId:person.id,actorId:member.id,type:"project" as const,title:`${member.name??"An n2 member"} tagged you in a reply`,body:input.body.slice(0,120),entityType:"post",entityId:postId,href:`/?post=${postId}`})),
+    ]);
     await trackProductEvent({actorId:member.id,event:"timeline_post_reply",properties:{postId}});
     return NextResponse.json({reply:{...reply,authorName:member.name,authorImage:member.image,authorProfession:null,authorIsAdmin:member.isN2Admin}},{status:201});
   } catch(error){return apiError(error)}

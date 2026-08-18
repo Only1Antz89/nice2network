@@ -23,6 +23,7 @@ const profileSchema = z.object({
   secondarySkill: z.string().trim().min(1).max(80),
   tertiarySkill: z.string().trim().min(1).max(80),
   interests: z.array(z.string().trim().min(1).max(80)).max(12).default([]),
+  location: z.string().trim().max(160).nullable().optional(),
   city: z.string().trim().max(100).nullable().optional(), country: z.string().trim().max(100).nullable().optional(),
   timezone: z.string().trim().min(3).max(80).default("Europe/London"), workMode: z.enum(["remote", "hybrid", "in_person"]).default("remote"),
   career: z.array(z.object({ id: z.uuid().optional(), title: z.string().trim().min(1).max(120), company: z.string().trim().min(1).max(120), location: z.string().trim().max(120).nullable().optional(), startDate: z.string().date().nullable().optional(), endDate: z.string().date().nullable().optional(), current: z.boolean().default(false), description: z.string().trim().max(6000).nullable().optional() })).max(20).default([]),
@@ -90,7 +91,7 @@ async function updateProfile(
       if (usernameOwner) throw new ApiError(409, "That username is already taken. Choose another one.");
     }
     const userChanges: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
-    const scalarFields = ["username", "name", "image", "coverImage", "headline", "profession", "industry", "bio", "primarySkill", "secondarySkill", "tertiarySkill", "interests", "city", "country", "timezone", "workMode"] as const;
+    const scalarFields = ["username", "name", "image", "coverImage", "headline", "profession", "industry", "bio", "primarySkill", "secondarySkill", "tertiarySkill", "interests", "location", "city", "country", "timezone", "workMode"] as const;
     for (const field of scalarFields) {
       if (input[field] !== undefined) Object.assign(userChanges, { [field]: input[field] });
     }
@@ -101,7 +102,7 @@ async function updateProfile(
         input.tertiarySkill ?? current.tertiarySkill,
       ].filter((skill): skill is string => Boolean(skill));
     }
-    if (input.city !== undefined || input.country !== undefined) {
+    if (input.location === undefined && (input.city !== undefined || input.country !== undefined)) {
       userChanges.location = [input.city ?? current.city, input.country ?? current.country].filter(Boolean).join(", ") || null;
     }
     await db.transaction(async tx => {

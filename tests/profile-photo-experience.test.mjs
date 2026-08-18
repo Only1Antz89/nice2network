@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+const brand = readFileSync(new URL("../components/network-brand.tsx", import.meta.url), "utf8");
+const mediaRoute = readFileSync(new URL("../app/api/profiles/[userId]/media/route.ts", import.meta.url), "utf8");
+
+test("real profile photos open in an accessible lightbox", () => {
+  assert.match(brand, /n2:expand-profile-photo/);
+  assert.match(page, /className="profile-photo-lightbox"/);
+});
+
+test("profile media can be removed independently", () => {
+  assert.match(page, /removeProfileMedia\("banner"\)/);
+  assert.match(page, /removeProfileMedia\("avatar"\)/);
+  assert.match(mediaRoute, /export async function DELETE/);
+});
+
+test("avatar changes update the signed-in sidebar photo", () => {
+  assert.match(page, /n2:profile-photo-changed/);
+  assert.match(page, /img: \(event as CustomEvent<string \| null>\)\.detail/);
+});

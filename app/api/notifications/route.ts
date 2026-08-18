@@ -1,8 +1,8 @@
-import { and, count, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, count, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { notificationPreferences, notifications, users } from "@/db/schema";
+import { applications, notificationPreferences, notifications, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
 import { sendDueMeetingReminders } from "@/lib/meet-reminders";
 
@@ -13,13 +13,22 @@ export async function GET() {
     // active member opens notifications keeps short reminders timely.
     await sendDueMeetingReminders().catch(() => undefined);
     const [items, [unread], [unreadMessages], [preferences]] = await Promise.all([
-      db.select({ id: notifications.id, type: notifications.type, title: notifications.title, body: notifications.body, entityType: notifications.entityType, entityId: notifications.entityId, href: notifications.href, readAt: notifications.readAt, createdAt: notifications.createdAt, actorName: users.name, actorImage: users.image })
-        .from(notifications).leftJoin(users, eq(users.id, notifications.actorId)).where(eq(notifications.userId, member.id)).orderBy(desc(notifications.createdAt)).limit(40),
+      db.select({ id: notifications.id, type: notifications.type, title: notifications.title, body: notifications.body, entityType: notifications.entityType, entityId: notifications.entityId, href: notifications.href, readAt: notifications.readAt, createdAt: notifications.createdAt, actorName: users.name, actorImage: users.image, applicationProjectId: applications.projectId })
+        .from(notifications)
+        .leftJoin(users, eq(users.id, notifications.actorId))
+        .leftJoin(applications, and(eq(notifications.entityType, "application"), sql`${applications.id}::text = ${notifications.entityId}`))
+        .where(eq(notifications.userId, member.id)).orderBy(desc(notifications.createdAt)).limit(40),
       db.select({ value: count() }).from(notifications).where(and(eq(notifications.userId, member.id), ne(notifications.type, "message"), isNull(notifications.readAt))),
       db.select({ value: count() }).from(notifications).where(and(eq(notifications.userId, member.id), eq(notifications.type, "message"), isNull(notifications.readAt))),
       db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, member.id)).limit(1),
     ]);
-    return NextResponse.json({ notifications: items, unread: unread.value, unreadMessages: unreadMessages.value, preferences: preferences ?? { messages: true, projects: true, matches: true, meets: true, officialNotices: true, followedUpdates: true, emailDigest: "weekly" } });
+    const linkedItems = items.map(({ applicationProjectId, ...item }) => ({
+      ...item,
+      href: applicationProjectId
+        ? `/?view=projects&project=${applicationProjectId}`
+        : item.href ?? (item.entityType === "project" && item.entityId ? `/?view=projects&project=${item.entityId}` : null),
+    }));
+    return NextResponse.json({ notifications: linkedItems, unread: unread.value, unreadMessages: unreadMessages.value, preferences: preferences ?? { messages: true, projects: true, matches: true, meets: true, officialNotices: true, followedUpdates: true, emailDigest: "weekly" } });
   } catch (error) { return apiError(error); }
 }
 
