@@ -4,15 +4,24 @@ import test from "node:test";
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("meet creation always advances through invites and confirms intentional host-only meets", async () => {
-  const page = await read("app/page.tsx");
+test("meet creation advances through invitees to a clear final create action", async () => {
+  const [page, theme] = await Promise.all([
+    read("app/page.tsx"),
+    read("app/dark-theme.css"),
+  ]);
 
   assert.match(page, /if \(meetStep === 1\) \{\s*continueMeetSetup\(\);\s*return;/);
   assert.match(page, /if \(!invitees\.length\) \{\s*setConfirmEmptyMeet\(true\);\s*return;/);
+  assert.match(page, />Invitees<\/span>/);
+  assert.match(page, /Continue to invitees/);
+  assert.match(page, /meetStep === 1 \? <button[^>]*>Continue to invitees[\s\S]*?: <button type="submit" className="primary-button">\{editing \? "Save changes" : "Create meet"\}<\/button>/);
   assert.match(page, /Create without invitees/);
   assert.match(page, /persistMeet\(meetFormRef\.current\)/);
   assert.match(page, /meet-detail-people/);
   assert.match(page, /meetRoleLabel\(detail\.mode/);
+  assert.match(theme, /\.meet-people-tabs > button,/);
+  assert.match(theme, /\.meet-people-tabs > button\.active \{\s*background: var\(--solid\) !important;\s*color: var\(--solid-ink\) !important;/);
+  assert.match(theme, /\.meet-people-results > button\.selected \{\s*background: var\(--positive-soft\) !important;/);
 });
 
 test("all meet types expose role-aware invitations while preserving co-hosts on mode changes", async () => {

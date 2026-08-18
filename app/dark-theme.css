@@ -248,6 +248,9 @@ html[data-colour-theme="dark"] {
 .meet-step-summary > button,
 .meet-selected-person,
 .meet-selected-person select,
+.meet-people-search,
+.meet-people-search input,
+.meet-people-tabs > button,
 .meet-people-results > button,
 .mobile-composer-tools button,
 .post-tools > label,
@@ -282,6 +285,14 @@ html[data-colour-theme="dark"] {
   background: var(--control) !important;
   color: var(--ink) !important;
   border-color: var(--line) !important;
+}
+.meet-people-tabs > button.active {
+  background: var(--solid) !important;
+  color: var(--solid-ink) !important;
+  border-color: var(--solid) !important;
+}
+.meet-people-results > button.selected {
+  background: var(--positive-soft) !important;
 }
 .onboarding-suggestions > div {
   gap: 7px;

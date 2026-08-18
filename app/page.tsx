@@ -8928,7 +8928,7 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
                 <div className="meet-flow-progress" aria-label={`Step ${meetStep} of 2`}>
                   <span className={meetStep >= 1 ? "active" : ""}>Details</span>
                   <i />
-                  <span className={meetStep >= 2 ? "active" : ""}>Invites</span>
+                  <span className={meetStep >= 2 ? "active" : ""}>Invitees</span>
                 </div>
                 <button type="button" className="icon-button" aria-label="Close meet editor" onClick={closeEditor}><X size={18} /></button>
               </div>
@@ -9075,7 +9075,7 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
               <p>{meetStep === 1 ? "Add the essentials now. Invitees come next." : `${invitees.length} ${invitees.length === 1 ? "person" : "people"} selected`}</p>
               <div>
                 {meetStep === 2 && <button type="button" className="secondary-button" onClick={() => setMeetStep(1)}><ArrowLeft size={16}/> Back</button>}
-                {meetStep === 1 ? <button type="button" className="primary-button" onClick={continueMeetSetup}>Continue to invites <ChevronRight size={16}/></button> : <button type="submit" className="primary-button">{invitees.length ? (editing ? "Save changes" : "Create meet") : (editing ? "Save without invitees" : "Create without invitees")}</button>}
+                {meetStep === 1 ? <button type="button" className="primary-button" onClick={continueMeetSetup}>Continue to invitees <ChevronRight size={16}/></button> : <button type="submit" className="primary-button">{editing ? "Save changes" : "Create meet"}</button>}
               </div>
             </footer>
           </form>
