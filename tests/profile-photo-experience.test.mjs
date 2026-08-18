@@ -4,6 +4,7 @@ import test from "node:test";
 
 const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 const brand = readFileSync(new URL("../components/network-brand.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const mediaRoute = readFileSync(new URL("../app/api/profiles/[userId]/media/route.ts", import.meta.url), "utf8");
 
 test("real profile photos open in an accessible lightbox", () => {
@@ -20,4 +21,9 @@ test("profile media can be removed independently", () => {
 test("avatar changes update the signed-in sidebar photo", () => {
   assert.match(page, /n2:profile-photo-changed/);
   assert.match(page, /img: \(event as CustomEvent<string \| null>\)\.detail/);
+  assert.match(page, /fetch\(`\/api\/profiles\/\$\{encodeURIComponent\(memberId\)\}`/);
+  assert.match(page, /img: profile\.image \?\? null/);
+  assert.match(page, /profile-nav-button/);
+  assert.match(styles, /\.sidebar nav button\.profile-nav-button>\.avatar/);
+  assert.match(styles, /object-fit:cover/);
 });

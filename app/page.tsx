@@ -496,78 +496,82 @@ type MentionPerson = {
   profession?: string | null;
 };
 
-function MentionPicker({
-  onSelect,
-  people,
-  onOpenChange,
+function activeMentionAtCursor(
+  value: string,
+  input: HTMLInputElement | HTMLTextAreaElement | null,
+) {
+  const cursor = input?.selectionStart ?? value.length;
+  const match = value.slice(0, cursor).match(/(?:^|\s)@([a-z0-9_-]*)$/i);
+  if (!match) return null;
+  return { query: match[1], start: cursor - match[1].length - 1, end: cursor };
+}
+
+function MentionSuggestions({
+  value,
+  input,
+  setValue,
+  allowedIds,
+  placement,
 }: {
-  onSelect: (person: MentionPerson) => void;
-  people?: MentionPerson[];
-  onOpenChange?: (open: boolean) => void;
+  value: string;
+  input: HTMLInputElement | HTMLTextAreaElement | null;
+  setValue: (value: string) => void;
+  allowedIds?: string[];
+  placement: "post" | "reply" | "message";
 }) {
-  const [open, setOpen] = useState(false),
-    [query, setQuery] = useState(""),
-    [results, setResults] = useState<MentionPerson[]>([]),
+  const activeMention = activeMentionAtCursor(value, input);
+  const query = activeMention?.query ?? "";
+  const [results, setResults] = useState<MentionPerson[]>([]),
     [loading, setLoading] = useState(false);
-  const available = people
-    ? people.filter((person) =>
-        `${person.name ?? ""} ${person.username}`.toLowerCase().includes(query.trim().toLowerCase()),
-      )
-    : results;
+  const allowedKey = allowedIds?.join(",") ?? "";
   useEffect(() => {
-    if (people || !open || query.trim().length < 2) {
+    if (!activeMention) {
       setResults([]);
       setLoading(false);
       return;
     }
     const controller = new AbortController(), timer = setTimeout(() => {
       setLoading(true);
-      fetch(`/api/search?q=${encodeURIComponent(query.trim())}`, { signal: controller.signal })
+      fetch(`/api/search?q=${encodeURIComponent(query.trim())}&scope=connections`, { signal: controller.signal })
         .then((response) => response.ok ? response.json() : { people: [] })
-        .then((data) => setResults((data.people ?? []).filter((person: MentionPerson) => person.username)))
+        .then((data) => setResults((data.people ?? []).filter((person: MentionPerson) =>
+          person.username && (!allowedIds || allowedIds.includes(person.id)),
+        )))
         .catch(() => undefined)
         .finally(() => setLoading(false));
     }, 180);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [open, people, query]);
-  function toggle(next: boolean) {
-    setOpen(next);
-    onOpenChange?.(next);
-    if (!next) setQuery("");
-  }
+  }, [Boolean(activeMention), query, allowedKey]);
+  if (!activeMention) return null;
   return (
-    <div className="mention-picker">
-      <button type="button" className="mention-trigger" onClick={() => toggle(!open)} aria-label="Tag a member" aria-expanded={open}>
-        <span aria-hidden="true">@</span><small>Tag</small>
-      </button>
-      {open && <div className="mention-popover">
-        <label><Search size={14}/><input autoFocus value={query} onChange={(event) => setQuery(event.target.value.replace(/^@/, ""))} placeholder={people ? "Find a group member" : "Search name or username"}/></label>
+    <div className={`mention-suggestions-anchor mention-${placement}`}>
+      <div className="mention-popover" role="listbox" aria-label="Connected profiles">
+        <div className="mention-query"><Search size={14}/><span>{query ? `Connected profiles matching @${query}` : "Choose a connected profile"}</span></div>
         <div className="mention-results">
-          {available.slice(0, 8).map((person) => <button type="button" key={person.id} onClick={() => { onSelect(person); toggle(false); }}>
+          {results.slice(0, 8).map((person) => <button type="button" role="option" aria-selected="false" key={person.id} onClick={() => replaceActiveMention(value, person.username, input, setValue)}>
             <Avatar person={{ name: person.name ?? person.username, role: person.profession ?? `@${person.username}`, img: person.image }} size="sm"/>
             <span><strong>{person.name ?? person.username}</strong><small>@{person.username}</small></span>
           </button>)}
           {loading && <p>Searching…</p>}
-          {!loading && query.trim().length < 2 && !people && <p>Type at least 2 characters.</p>}
-          {!loading && (people || query.trim().length >= 2) && !available.length && <p>No members found.</p>}
+          {!loading && !results.length && <p>No connected profiles found.</p>}
         </div>
-      </div>}
+      </div>
     </div>
   );
 }
 
-function insertMentionAtCursor(
+function replaceActiveMention(
   value: string,
   username: string,
   input: HTMLInputElement | HTMLTextAreaElement | null,
   setValue: (value: string) => void,
 ) {
-  const start = input?.selectionStart ?? value.length, end = input?.selectionEnd ?? start;
-  const leadingSpace = start > 0 && !/\s/.test(value[start - 1]) ? " " : "";
-  const insertion = `${leadingSpace}@${username} `;
-  setValue(`${value.slice(0, start)}${insertion}${value.slice(end)}`);
+  const activeMention = activeMentionAtCursor(value, input);
+  if (!activeMention) return;
+  const insertion = `@${username} `;
+  setValue(`${value.slice(0, activeMention.start)}${insertion}${value.slice(activeMention.end)}`);
   requestAnimationFrame(() => {
-    const cursor = start + insertion.length;
+    const cursor = activeMention.start + insertion.length;
     input?.focus();
     input?.setSelectionRange(cursor, cursor);
   });
@@ -3266,6 +3270,12 @@ function PostComposer({
           placeholder="What are you thinking about, building or looking to explore?"
           maxLength={3000}
         />
+        <MentionSuggestions
+          value={body}
+          input={bodyRef.current}
+          setValue={setBody}
+          placement="post"
+        />
         {attachment && (
           <div className="attachment-preview">
             <button type="button" onClick={() => setAttachment(null)}>
@@ -3280,7 +3290,6 @@ function PostComposer({
           </div>
         )}
         <div className="post-tools">
-          <MentionPicker onSelect={(person) => insertMentionAtCursor(body, person.username, bodyRef.current, setBody)}/>
           <EmojiPicker
             onSelect={(emoji) => setBody((value) => `${value}${emoji}`)}
             align="right"
@@ -7415,7 +7424,7 @@ function MessagesView({
           )}
           {sendError && <p className="chat-send-error">{sendError}</p>}
           <form
-            className={`dm-composer${selected.members.length > 2 ? " has-mentions" : ""}`}
+            className="dm-composer"
             onSubmit={(event) => {
               event.preventDefault();
               if (draft.trim() || attachment) send();
@@ -7433,9 +7442,12 @@ function MessagesView({
                 <button type="button" className="dm-nudge-action" onClick={() => { setShowAttachments(false); send("nudge"); }} disabled={isSending} title="Nudge this conversation"><Zap size={18}/><span>Nudge</span></button>
               </div>}
             </div>
-            {selected.members.length > 2 && <MentionPicker
-              people={selected.members.filter((member) => member.userId !== currentMember.id).map((member) => ({ id: member.userId, username: member.username, name: member.name, image: member.image, profession: member.profession }))}
-              onSelect={(person) => insertMentionAtCursor(draft, person.username, messageDraftRef.current, setDraft)}
+            {selected.members.length > 2 && <MentionSuggestions
+              value={draft}
+              input={messageDraftRef.current}
+              setValue={setDraft}
+              allowedIds={selected.members.filter((member) => member.userId !== currentMember.id).map((member) => member.userId)}
+              placement="message"
             />}
             <div className="dm-composer-main">
               {isRecording ? <div className="voice-recording" role="status"><span className="voice-wave recording" aria-hidden="true">{Array.from({length:16},(_,index)=><i key={index}/>)}</span><strong>{formatDuration(recordingSeconds)}</strong><small>Recording voice message</small></div> :
@@ -9264,7 +9276,12 @@ function PostThread({
           <EmojiPicker
             onSelect={(emoji) => setDraft((value) => `${value}${emoji}`)}
           />
-          <MentionPicker onSelect={(person) => insertMentionAtCursor(draft, person.username, replyRef.current, setDraft)}/>
+          <MentionSuggestions
+            value={draft}
+            input={replyRef.current}
+            setValue={setDraft}
+            placement="reply"
+          />
           <label>
             <span className="sr-only">Write a reply</span>
             <input
@@ -9302,6 +9319,7 @@ function ProjectComments({
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const commentRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     fetch(`/api/projects/${project.id}/comments`)
       .then((r) => (r.ok ? r.json() : { comments: [] }))
@@ -9463,9 +9481,16 @@ function ProjectComments({
           <EmojiPicker
             onSelect={(emoji) => setDraft((value) => `${value}${emoji}`)}
           />
+          <MentionSuggestions
+            value={draft}
+            input={commentRef.current}
+            setValue={setDraft}
+            placement="reply"
+          />
           <label>
             <span className="sr-only">Write a project comment</span>
             <input
+              ref={commentRef}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               placeholder="Add a thoughtful comment…"
@@ -11486,6 +11511,34 @@ export default function HomePage() {
       .finally(() => setSessionChecked(true));
   }, []);
   useEffect(() => {
+    if (!authenticated || !currentMember.id) return;
+    const memberId = currentMember.id;
+    const controller = new AbortController();
+    fetch(`/api/profiles/${encodeURIComponent(memberId)}`, {
+      signal: controller.signal,
+      cache: "no-store",
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result) => {
+        const profile = result?.profile;
+        if (!profile) return;
+        setCurrentMember((current) =>
+          current.id === memberId
+            ? {
+                ...current,
+                name: profile.name ?? current.name,
+                role: profile.profession ?? current.role,
+                img: profile.image ?? null,
+              }
+            : current,
+        );
+      })
+      .catch((error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) return;
+      });
+    return () => controller.abort();
+  }, [authenticated, currentMember.id]);
+  useEffect(() => {
     if (!sessionChecked || authenticated) return;
     if (window.sessionStorage.getItem("n2-guest-peeked") === "true") return;
     setInitialGuestPrompt(true);
@@ -11743,7 +11796,7 @@ export default function HomePage() {
               return (
                 <button
                   key={item.id}
-                  className={view === item.id ? "active" : ""}
+                  className={`${view === item.id ? "active" : ""} ${isProfile ? "profile-nav-button" : ""}`.trim()}
                   onClick={() => isProfile ? openOwnProfile() : go(item.id)}
                 >
                   {isProfile && authenticated
