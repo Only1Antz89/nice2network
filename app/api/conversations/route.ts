@@ -6,6 +6,7 @@ import { adminAssignments, conversationMembers, conversations, follows, notifica
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { trackProductEvent } from "@/lib/analytics";
 import { getMessageEligibility } from "@/lib/messaging-permissions";
+import { hasActiveSanction } from "@/lib/admin-sanctions";
 
 const createSchema = z.object({ recipientIds: z.array(z.uuid()).min(1).max(7), projectId: z.uuid().optional(), name: z.string().trim().max(100).optional() });
 const actionSchema = z.object({
@@ -33,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(request:Request){
-  try{const member=await requireMember(),input=createSchema.parse(await request.json()),db=getDb(),recipientIds=[...new Set(input.recipientIds)].filter(id=>id!==member.id);if(!recipientIds.length)throw new ApiError(400,"Choose another member");
+  try{const member=await requireMember();if(await hasActiveSanction(member.id,["messaging_restriction"]))throw new ApiError(403,"Messaging is restricted on this account");const input=createSchema.parse(await request.json()),db=getDb(),recipientIds=[...new Set(input.recipientIds)].filter(id=>id!==member.id);if(!recipientIds.length)throw new ApiError(400,"Choose another member");
     const profiles=await db.select({id:users.id,ageBand:users.ageBand,messagePermission:privacySettings.messagePermission,isN2Admin:sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`}).from(users).leftJoin(privacySettings,eq(privacySettings.userId,users.id)).leftJoin(adminAssignments,eq(adminAssignments.userId,users.id)).where(and(inArray(users.id,recipientIds),eq(users.status,"active")));if(profiles.length!==recipientIds.length)throw new ApiError(404,"One or more members are unavailable");
     const senderProjects=await db.select({projectId:projectMembers.projectId}).from(projectMembers).where(eq(projectMembers.userId,member.id)),sharedRows=senderProjects.length?await db.select({userId:projectMembers.userId,projectId:projectMembers.projectId}).from(projectMembers).where(and(inArray(projectMembers.userId,recipientIds),inArray(projectMembers.projectId,senderProjects.map(row=>row.projectId)))):[],mutualRows=await db.select({followerId:follows.followerId,followingId:follows.followingId}).from(follows).where(or(and(eq(follows.followerId,member.id),inArray(follows.followingId,recipientIds)),and(inArray(follows.followerId,recipientIds),eq(follows.followingId,member.id))));
     const [sender]=await db.select({ageBand:users.ageBand,isN2Admin:sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`}).from(users).leftJoin(adminAssignments,eq(adminAssignments.userId,users.id)).where(eq(users.id,member.id)).limit(1);

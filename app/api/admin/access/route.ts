@@ -1,16 +1,17 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { adminMfa, users } from "@/db/schema";
 import { getAdminIdentity } from "@/lib/admin";
-import { createAdminCookie, createTotpSecret, verifyAdminCookie, verifyTotp } from "@/lib/admin-mfa";
+import { createAdminCookie, createTotpSecret, matchingTotpCounter, verifyAdminCookie } from "@/lib/admin-mfa";
 import { ApiError, apiError } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { decrypt, encrypt } from "@/lib/integrations";
 import { isSecureRequest } from "@/lib/http";
 import { enforceRateLimit, requestIp } from "@/lib/rate-limit";
+import { enforceDistributedRateLimit } from "@/lib/distributed-rate-limit";
 
 export async function GET() {
   try {
@@ -28,7 +29,10 @@ export async function POST(request: Request) {
     if (!identity) throw new ApiError(403, "Administrator access required");
     if (identity.forcePasswordChange) throw new ApiError(428, "Change your temporary password first");
     const input = z.discriminatedUnion("action", [z.object({ action: z.literal("setup") }), z.object({ action: z.literal("verify"), code: z.string().regex(/^\d{6}$/) })]).parse(await request.json());
-    if (input.action === "verify") enforceRateLimit(`admin-mfa:${identity.user.id}:${requestIp(request)}`, 8, 10 * 60_000);
+    if (input.action === "verify") {
+      enforceRateLimit(`admin-mfa:${identity.user.id}:${requestIp(request)}`, 8, 10 * 60_000);
+      await enforceDistributedRateLimit(`admin-mfa:${identity.user.id}:${requestIp(request)}`, 8, 10 * 60_000);
+    }
     const db = getDb();
     let [record] = await db.select().from(adminMfa).where(eq(adminMfa.userId, identity.user.id)).limit(1);
     if (input.action === "setup") {
@@ -43,8 +47,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ enrolled: false, secret, otpAuthUrl: `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&digits=6&period=30` });
     }
     if (!record) throw new ApiError(400, "Start authenticator setup first");
-    if (!verifyTotp(decrypt(record.secretEncrypted), input.code)) throw new ApiError(400, "That authenticator code is not valid");
-    await db.update(adminMfa).set({ enabledAt: record.enabledAt ?? new Date(), lastUsedAt: new Date() }).where(eq(adminMfa.userId, identity.user.id));
+    const counter = matchingTotpCounter(decrypt(record.secretEncrypted), input.code);
+    if (counter === null) throw new ApiError(400, "That authenticator code is not valid");
+    if (record.lastCounter !== null && record.lastCounter !== undefined && counter <= record.lastCounter) throw new ApiError(409, "That authenticator code has already been used. Wait for the next code");
+    const [used] = await db.update(adminMfa).set({ enabledAt: record.enabledAt ?? new Date(), lastUsedAt: new Date(), lastCounter: counter }).where(and(eq(adminMfa.userId, identity.user.id), or(isNull(adminMfa.lastCounter), lt(adminMfa.lastCounter, counter)))).returning({ userId: adminMfa.userId });
+    if (!used) throw new ApiError(409, "That authenticator code has already been used. Wait for the next code");
     await db.update(users).set({ mfaEnrolledAt: new Date(), updatedAt: new Date() }).where(eq(users.id, identity.user.id));
     const cookieStore = await cookies();
     cookieStore.set("n2_admin_verified", createAdminCookie(identity.user.id), { httpOnly: true, sameSite: "strict", secure: isSecureRequest(request), maxAge: 12 * 60 * 60, path: "/" });

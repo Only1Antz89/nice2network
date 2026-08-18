@@ -91,7 +91,7 @@ export async function validateMeetingCohostCandidates(primaryHostId: string, can
       and(eq(blocks.blockerId, primaryHostId), inArray(blocks.blockedId, ids)),
       and(eq(blocks.blockedId, primaryHostId), inArray(blocks.blockerId, ids)),
     )),
-    db.select({ userId: sanctions.userId }).from(sanctions).where(and(inArray(sanctions.userId, ids), eq(sanctions.status, "active"), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, new Date())))),
+    db.select({ userId: sanctions.userId }).from(sanctions).where(and(inArray(sanctions.userId, ids), eq(sanctions.status, "active"), inArray(sanctions.type, ["meeting_restriction", "suspension", "ban"]), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, new Date())))),
   ]);
   const candidatesById = new Map(candidates.map(candidate => [candidate.id, candidate]));
   const outbound = new Set(relationships.filter(row => row.followerId === primaryHostId).map(row => row.followingId));

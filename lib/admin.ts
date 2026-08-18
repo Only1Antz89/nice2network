@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api";
 import { verifyAdminCookie } from "@/lib/admin-mfa";
 import { roleAllows } from "@/lib/admin-roles";
 import type { AdminPermission, AdminRole } from "@/lib/admin-roles";
-export { adminRoles, canAssignAdminRole, canManageAdminRole, roleAllows } from "@/lib/admin-roles";
+export { adminRoles, canAssignAdminRole, canManageAdminRole, permissionsForRole, roleAllows } from "@/lib/admin-roles";
 export type { AdminPermission, AdminRole } from "@/lib/admin-roles";
 
 export async function getAdminIdentity() {

@@ -166,7 +166,7 @@ async function eligibleCandidates(project: typeof projects.$inferSelect) {
   const [owner] = await db.select({ ageBand: users.ageBand }).from(users).where(eq(users.id, project.ownerId)).limit(1);
   const [blocked, sanctioned, careers, loads, ownerProjects] = await Promise.all([
     db.select().from(blocks).where(or(and(eq(blocks.blockerId, project.ownerId), inArray(blocks.blockedId, ids)), and(eq(blocks.blockedId, project.ownerId), inArray(blocks.blockerId, ids)))),
-    db.select({ userId: sanctions.userId }).from(sanctions).where(and(inArray(sanctions.userId, ids), eq(sanctions.status, "active"), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, now)))),
+    db.select({ userId: sanctions.userId }).from(sanctions).where(and(inArray(sanctions.userId, ids), eq(sanctions.status, "active"), inArray(sanctions.type, ["suspension", "ban"]), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, now)))),
     db.select({ userId: careerHistory.userId, title: careerHistory.title }).from(careerHistory).where(inArray(careerHistory.userId, ids)),
     db.select({ userId: projectMembers.userId, total: count() }).from(projectMembers).innerJoin(projects, and(eq(projects.id, projectMembers.projectId), eq(projects.status, "active"))).where(inArray(projectMembers.userId, ids)).groupBy(projectMembers.userId),
     db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, project.ownerId)),

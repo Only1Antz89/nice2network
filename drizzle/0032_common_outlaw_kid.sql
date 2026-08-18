@@ -1,0 +1,1 @@
+ALTER TABLE "admin_mfa" ADD COLUMN "last_counter" integer;

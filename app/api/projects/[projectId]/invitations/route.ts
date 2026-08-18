@@ -9,6 +9,7 @@ import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
 import { createNotification } from "@/lib/notifications";
 import { createCoOwnerInvitations } from "@/lib/project-co-owners";
+import { hasActiveSanction } from "@/lib/admin-sanctions";
 
 const schema = z.object({ email: z.email().optional(), inviteeId: z.uuid().optional(), roleId: z.uuid().optional(), membershipRole: z.enum(["contributor", "co_owner"]).default("contributor") })
   .refine(value => value.email || value.inviteeId, "Choose a member or provide an email");
@@ -16,6 +17,7 @@ const schema = z.object({ email: z.email().optional(), inviteeId: z.uuid().optio
 export async function POST(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
   try {
     const member = await requireMember();
+    if (await hasActiveSanction(member.id, ["invitation_restriction"])) throw new ApiError(403, "Project invitations are restricted on this account");
     const { projectId } = await params;
     const input = schema.parse(await request.json());
     const db = getDb();

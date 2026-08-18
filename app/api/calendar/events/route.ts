@@ -8,6 +8,7 @@ import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
 import { MEETING_CAPACITY, meetingCohostIds, validateMeetingCohostCandidates, type MeetingMode } from "@/lib/meetings";
 import { createNotifications } from "@/lib/notifications";
+import { hasActiveSanction } from "@/lib/admin-sanctions";
 
 const schema = z.object({
   provider: z.enum(["n2", "google", "microsoft", "in_person"]).default("n2"),
@@ -100,6 +101,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const member = await requireMember();
+    if (await hasActiveSanction(member.id, ["meeting_restriction"])) throw new ApiError(403, "Creating meets is restricted on this account");
     const input = schema.parse(await request.json());
     const db = getDb();
     const mode = modeFor(input);

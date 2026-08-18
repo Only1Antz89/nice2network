@@ -54,7 +54,7 @@ export async function createCoOwnerInvitations(tx: Transaction, input: {
       and(eq(blocks.blockerId, input.ownerId), inArray(blocks.blockedId, ids)),
       and(eq(blocks.blockedId, input.ownerId), inArray(blocks.blockerId, ids)),
     )),
-    tx.select({ userId: sanctions.userId }).from(sanctions).where(and(inArray(sanctions.userId, ids), eq(sanctions.status, "active"), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, new Date())))),
+    tx.select({ userId: sanctions.userId }).from(sanctions).where(and(inArray(sanctions.userId, ids), eq(sanctions.status, "active"), inArray(sanctions.type, ["invitation_restriction", "suspension", "ban"]), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, new Date())))),
     tx.select({ userId: projectMembers.userId }).from(projectMembers).where(and(eq(projectMembers.projectId, input.projectId), inArray(projectMembers.userId, ids))),
     tx.select({ inviteeId: invitations.inviteeId }).from(invitations).where(and(eq(invitations.projectId, input.projectId), eq(invitations.membershipRole, "co_owner"), eq(invitations.status, "pending"), gt(invitations.expiresAt, new Date()), inArray(invitations.inviteeId, ids))),
     tx.execute(sql`select

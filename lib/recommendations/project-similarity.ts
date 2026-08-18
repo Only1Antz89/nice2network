@@ -107,7 +107,7 @@ export async function previewSimilarProjects(input: {
       and(eq(blocks.blockerId, input.userId), inArray(blocks.blockedId, targetOwnerIds)),
       and(eq(blocks.blockedId, input.userId), inArray(blocks.blockerId, targetOwnerIds)),
     )),
-    db.select({ userId: sanctions.userId }).from(sanctions).where(and(inArray(sanctions.userId, targetOwnerIds), eq(sanctions.status, "active"), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, now)))),
+    db.select({ userId: sanctions.userId }).from(sanctions).where(and(inArray(sanctions.userId, targetOwnerIds), eq(sanctions.status, "active"), inArray(sanctions.type, ["suspension", "ban"]), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, now)))),
     db.select().from(projectRoles).where(and(inArray(projectRoles.projectId, candidateIds), eq(projectRoles.status, "open"))),
     db.select({ projectId: milestones.projectId, status: milestones.status }).from(milestones).where(inArray(milestones.projectId, candidateIds)),
     db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(inArray(projectMembers.projectId, candidateIds)),

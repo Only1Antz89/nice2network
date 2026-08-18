@@ -33,10 +33,11 @@ function totp(secret: string, counter: number) {
   return String(value % 1_000_000).padStart(6, "0");
 }
 
-export function verifyTotp(secret: string, code: string) {
-  if (!/^\d{6}$/.test(code)) return false;
+export function matchingTotpCounter(secret: string, code: string) {
+  if (!/^\d{6}$/.test(code)) return null;
   const counter = Math.floor(Date.now() / 30_000);
-  return [-1, 0, 1].some((offset) => timingSafeEqual(Buffer.from(totp(secret, counter + offset)), Buffer.from(code)));
+  for (const offset of [-1, 0, 1]) if (timingSafeEqual(Buffer.from(totp(secret, counter + offset)), Buffer.from(code))) return counter + offset;
+  return null;
 }
 
 function signingKey() {

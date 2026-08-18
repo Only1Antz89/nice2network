@@ -272,15 +272,17 @@ test("keeps the server and browser timeline heading deterministic", async () => 
 });
 
 test("makes post and project three-dot menus functional", async () => {
-  const [page, posts, saved, reports] = await Promise.all([
+  const [page, posts, saved, reports, moderationTargets] = await Promise.all([
     read("app/page.tsx"), read("app/api/posts/[postId]/route.ts"),
     read("app/api/saved-items/route.ts"), read("app/api/moderation/reports/route.ts"),
+    read("lib/moderation-targets.ts"),
   ]);
   for (const action of ["Pin", "Bookmark", "Edit post", "Delete post", "Report post"]) assert.match(page, new RegExp(action));
   assert.match(page, /FallbackProjectMenu/);
   assert.match(posts, /Only the post owner can change this post/);
   assert.match(saved, /"post"/);
-  assert.match(reports, /"post"/);
+  assert.match(reports, /moderationTargetTypes/);
+  assert.match(moderationTargets, /"post"/);
 });
 
 test("edits and deletes posts inside branded, dismissible interfaces", async () => {

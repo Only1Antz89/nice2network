@@ -33,6 +33,7 @@ export const users = pgTable("users", {
   availability: text("availability").notNull().default("open"),
   role: text("role").notNull().default("member"),
   status: text("status").notNull().default("active"),
+  sessionVersion: integer("session_version").notNull().default(0),
   forcePasswordChange: boolean("force_password_change").notNull().default(false),
   mfaEnrolledAt: timestamp("mfa_enrolled_at", { withTimezone: true }),
   onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
@@ -384,8 +385,16 @@ export const adminMfa = pgTable("admin_mfa", {
   secretEncrypted: text("secret_encrypted").notNull(),
   enabledAt: timestamp("enabled_at", { withTimezone: true }),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  lastCounter: integer("last_counter"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const securityRateLimits = pgTable("security_rate_limits", {
+  keyHash: text("key_hash").primaryKey(),
+  count: integer("count").notNull().default(0),
+  resetAt: timestamp("reset_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [index("security_rate_limits_reset_idx").on(table.resetAt)]);
 
 export const sanctions = pgTable("sanctions", {
   id: uuid("id").defaultRandom().primaryKey(),

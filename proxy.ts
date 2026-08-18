@@ -13,6 +13,7 @@ export function proxy(request: NextRequest) {
   if (fetchSite === "cross-site") return NextResponse.json({ error: "Cross-site request blocked" }, { status: 403 });
 
   const origin = request.headers.get("origin");
+  if (request.nextUrl.pathname.startsWith("/api/admin/") && !origin) return NextResponse.json({ error: "Request origin required" }, { status: 403 });
   const configured = process.env.NEXT_PUBLIC_APP_URL ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : request.nextUrl.origin);
   if (origin) {
     try {

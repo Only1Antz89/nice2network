@@ -9,9 +9,10 @@ import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb, isDatabaseConfigured } from "@/db";
 import { accounts, adminAssignments, authenticators, sessions, users, verificationTokens } from "@/db/schema";
 import { enforceRateLimit, requestIp } from "@/lib/rate-limit";
+import { enforceDistributedRateLimit } from "@/lib/distributed-rate-limit";
 
-function authVersion(passwordHash: string | null) {
-  return createHmac("sha256", process.env.AUTH_SECRET!).update(passwordHash ?? "oauth-only").digest("base64url");
+function authVersion(passwordHash: string | null, sessionVersion: number) {
+  return createHmac("sha256", process.env.AUTH_SECRET!).update(`${passwordHash ?? "oauth-only"}:${sessionVersion}`).digest("base64url");
 }
 
 const providers = [];
@@ -23,6 +24,7 @@ providers.push(Credentials({
     if (!isDatabaseConfigured() || typeof credentials.email !== "string" || typeof credentials.password !== "string") return null;
     const email = credentials.email.trim().toLowerCase();
     enforceRateLimit(`signin:${requestIp(request)}:${email}`, 8, 15 * 60_000);
+    await enforceDistributedRateLimit(`signin:${requestIp(request)}:${email}`, 8, 15 * 60_000);
     const [member] = await getDb().select().from(users).where(eq(users.email, email)).limit(1);
     if (!member?.passwordHash || member.status !== "active" || !(await compare(credentials.password, member.passwordHash))) return null;
     return { id: member.id, email: member.email, name: member.name, image: member.image };
@@ -46,10 +48,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (userId && isDatabaseConfigured()) {
         const now = new Date();
         const [[member], [admin]] = await Promise.all([
-          getDb().select({ forcePasswordChange: users.forcePasswordChange, passwordHash: users.passwordHash, status: users.status }).from(users).where(eq(users.id, userId)).limit(1),
+          getDb().select({ forcePasswordChange: users.forcePasswordChange, passwordHash: users.passwordHash, sessionVersion: users.sessionVersion, status: users.status }).from(users).where(eq(users.id, userId)).limit(1),
           getDb().select({ id: adminAssignments.id }).from(adminAssignments).where(and(eq(adminAssignments.userId, userId), eq(adminAssignments.status, "active"), or(isNull(adminAssignments.expiresAt), gt(adminAssignments.expiresAt, now)))).limit(1),
         ]);
-        const currentVersion = member ? authVersion(member.passwordHash) : "";
+        const currentVersion = member ? authVersion(member.passwordHash, member.sessionVersion) : "";
         if (user?.id) token.authVersion = currentVersion;
         token.authValid = Boolean(member?.status === "active" && token.authVersion === currentVersion);
         token.forcePasswordChange = token.authValid ? member?.forcePasswordChange ?? false : false;

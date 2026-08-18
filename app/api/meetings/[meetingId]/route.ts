@@ -50,7 +50,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ meetingId:
     const [currentMember] = await db.select(profileFields).from(users).where(eq(users.id, member.id)).limit(1);
     const viewerFollows = sql<boolean>`exists(select 1 from ${follows} mine where mine.follower_id=${member.id} and mine.following_id=${users.id})`;
     const followsViewer = sql<boolean>`exists(select 1 from ${follows} theirs where theirs.follower_id=${users.id} and theirs.following_id=${member.id})`;
-    const isRestricted = sql<boolean>`exists(select 1 from ${sanctions} s where s.user_id=${users.id} and s.status='active' and (s.expires_at is null or s.expires_at > now()))`;
+    const isRestricted = sql<boolean>`exists(select 1 from ${sanctions} s where s.user_id=${users.id} and s.status='active' and s.type in ('meeting_restriction','suspension','ban') and (s.expires_at is null or s.expires_at > now()))`;
     const participants = await db.select({
       ...profileFields,
       status: meetingParticipants.status,

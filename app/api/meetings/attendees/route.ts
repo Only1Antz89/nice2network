@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     const viewerFollows = sql<boolean>`exists(select 1 from ${follows} mine where mine.follower_id=${member.id} and mine.following_id=${users.id})`;
     const followsViewer = sql<boolean>`exists(select 1 from ${follows} theirs where theirs.follower_id=${users.id} and theirs.following_id=${member.id})`;
     const isBlocked = sql<boolean>`exists(select 1 from ${blocks} b where (b.blocker_id=${member.id} and b.blocked_id=${users.id}) or (b.blocker_id=${users.id} and b.blocked_id=${member.id}))`;
-    const isRestricted = sql<boolean>`exists(select 1 from ${sanctions} s where s.user_id=${users.id} and s.status='active' and (s.expires_at is null or s.expires_at > now()))`;
+    const isRestricted = sql<boolean>`exists(select 1 from ${sanctions} s where s.user_id=${users.id} and s.status='active' and s.type in ('meeting_restriction','suspension','ban') and (s.expires_at is null or s.expires_at > now()))`;
     const term = `%${query}%`;
     const rows = await db.select({ id: users.id, name: users.name, image: users.image, profession: users.profession, viewerFollows, followsViewer, isRestricted })
       .from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).where(and(

@@ -50,7 +50,7 @@ async function loadCandidates(userId: string, ageBands: string[], publicOnly = f
   }).from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).where(and(
     ne(users.id, userId), eq(users.status, "active"), sql`${users.emailVerified} is not null`,
     sql`${users.onboardingCompletedAt} is not null`, inArray(users.ageBand, ageBands), visibility,
-    sql`not exists (select 1 from sanctions s where s.user_id=${users.id} and s.status='active' and (s.expires_at is null or s.expires_at>now()))`,
+    sql`not exists (select 1 from sanctions s where s.user_id=${users.id} and s.status='active' and s.type in ('suspension','ban') and (s.expires_at is null or s.expires_at>now()))`,
   )).limit(250);
 }
 

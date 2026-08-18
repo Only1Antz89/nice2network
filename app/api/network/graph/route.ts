@@ -151,7 +151,7 @@ export async function GET(request: Request) {
           and exists(select 1 from follows f where f.follower_id=${member.id} and f.following_id=u.id)
           and not exists(select 1 from network_map_hides h where h.viewer_id=${member.id} and h.hidden_user_id=u.id)
           and not exists(select 1 from blocks b where (b.blocker_id=${member.id} and b.blocked_id=u.id) or (b.blocker_id=u.id and b.blocked_id=${member.id}))
-          and not exists(select 1 from sanctions s where s.user_id=u.id and s.status='active' and (s.expires_at is null or s.expires_at>now()))
+          and not exists(select 1 from sanctions s where s.user_id=u.id and s.status='active' and s.type in ('suspension','ban') and (s.expires_at is null or s.expires_at>now()))
       `)) as unknown as RawPerson[];
     }
 
@@ -207,7 +207,7 @@ export async function GET(request: Request) {
         and u.status='active' and u.email_verified is not null and u.onboarding_completed_at is not null
         and not exists(select 1 from network_map_hides h where h.viewer_id=${member.id} and h.hidden_user_id=u.id)
         and not exists(select 1 from blocks b where (b.blocker_id=${member.id} and b.blocked_id=u.id) or (b.blocker_id=u.id and b.blocked_id=${member.id}))
-        and not exists(select 1 from sanctions s where s.user_id=u.id and s.status='active' and (s.expires_at is null or s.expires_at>now()))
+        and not exists(select 1 from sanctions s where s.user_id=u.id and s.status='active' and s.type in ('suspension','ban') and (s.expires_at is null or s.expires_at>now()))
       order by connected_to_focus desc,relevance desc,u.name asc`;
 
     let graphRows: RawPerson[] = [], listRows: RawPerson[] = [];

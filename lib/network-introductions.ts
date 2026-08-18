@@ -51,7 +51,7 @@ export async function validateIntroductionPath(
       and b.blocked_id in (${requesterId}::uuid,${connectorId}::uuid,${targetId}::uuid)
     union all
     select 1 from sanctions s where s.user_id in (${requesterId}::uuid,${connectorId}::uuid,${targetId}::uuid)
-      and s.status='active' and (s.expires_at is null or s.expires_at>now())
+      and s.status='active' and s.type in ('suspension','ban') and (s.expires_at is null or s.expires_at>now())
     limit 1
   `)) as unknown as Array<{ value: number }>;
   if (restricted) throw new ApiError(403, "This introduction is unavailable");

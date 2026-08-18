@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { projectEyes, projectRecommendations, projects, recommendationEvents, sanctions, users } from "@/db/schema";
@@ -15,7 +15,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ projectId
     if (!project) throw new ApiError(404, "Project not found");
     if (project.ownerId === member.id) throw new ApiError(400, "Project owners cannot add a view to their own project");
     const [eligible] = await db.select({ status: users.status, verified: users.emailVerified }).from(users).where(eq(users.id, member.id)).limit(1);
-    const [sanction] = await db.select({ id: sanctions.id }).from(sanctions).where(and(eq(sanctions.userId, member.id), eq(sanctions.status, "active"), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, new Date())))).limit(1);
+    const [sanction] = await db.select({ id: sanctions.id }).from(sanctions).where(and(eq(sanctions.userId, member.id), eq(sanctions.status, "active"), inArray(sanctions.type, ["suspension", "ban"]), or(isNull(sanctions.expiresAt), gt(sanctions.expiresAt, new Date())))).limit(1);
     if (!eligible?.verified || eligible.status !== "active" || sanction) throw new ApiError(403, "This account cannot influence project popularity");
     const [existing] = await db.select().from(projectEyes).where(and(eq(projectEyes.projectId, projectId), eq(projectEyes.userId, member.id))).limit(1);
     if (existing) await db.delete(projectEyes).where(and(eq(projectEyes.projectId, projectId), eq(projectEyes.userId, member.id)));
