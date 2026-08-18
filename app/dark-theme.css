@@ -540,10 +540,12 @@ html[data-colour-theme="dark"] .open-person:hover > svg {
   border-color: var(--ink);
 }
 
-.project-kicker span:first-child,
-.project-blue .project-kicker span:first-child {
-  background: transparent;
+.project-kicker .project-type-label,
+.project-blue .project-kicker .project-type-label {
+  background: none !important;
   color: var(--ink);
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 /* Menus, drawers and overlays retain separation from the page beneath. */

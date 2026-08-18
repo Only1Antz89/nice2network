@@ -527,10 +527,10 @@ test("keeps project labels neutral and preserves server-owned founder identity",
     read("app/dark-theme.css"),
   ]);
   assert.match(styles, /--orange:#ff6b35/);
-  assert.match(styles, /project-kicker span:first-child\{background:transparent!important;color:var\(--ink\)!important;border-radius:0;padding-inline:0\}/);
-  assert.doesNotMatch(styles, /project-kicker span:first-child\{background:var\(--orange\)!important/);
-  assert.match(darkStyles, /\.project-kicker span:first-child,\s*\.project-blue \.project-kicker span:first-child \{\s*background: transparent;\s*color: var\(--ink\);\s*\}/);
-  assert.doesNotMatch(darkStyles, /\.project-kicker span:first-child[\s\S]{0,160}background: var\(--accent-soft\)/);
+  assert.match(styles, /project-kicker \.project-type-label\{background:none!important;color:var\(--ink\)!important;border:0!important/);
+  assert.doesNotMatch(styles, /project-type-label\{background:var\(--orange\)!important/);
+  assert.match(darkStyles, /\.project-kicker \.project-type-label,\s*\.project-blue \.project-kicker \.project-type-label \{\s*background: none !important;\s*color: var\(--ink\);\s*border: 0 !important;/);
+  assert.doesNotMatch(darkStyles, /\.project-type-label[\s\S]{0,160}background: var\(--accent-soft\)/);
   assert.match(profile, /isFounder: sql<boolean>`\$\{users\.role\} = 'founder'`/);
   assert.match(brand, /function N2FounderLabel/);
   assert.match(brand, /className="n2-founder-label">n2 Founder/);

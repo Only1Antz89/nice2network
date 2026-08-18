@@ -1827,7 +1827,7 @@ function ProjectCard({
       <div className="project-body">
         <div className="project-card-title">
           <div className="project-kicker">
-            <span>PROJECT</span>
+            <span className="project-type-label">PROJECT</span>
             <span>
               {project?.industry.toUpperCase() ??
                 (second ? "COMMUNITY" : "CLIMATE")}
