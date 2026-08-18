@@ -12,7 +12,9 @@ test("each open role exposes its own total and pending application counts", () =
   assert.match(projectRoute, /applicationCounts=new Map/);
   assert.match(projectRoute, /applicationCount:applicationCounts\.get\(role\.id\)\?\.all\?\?0/);
   assert.match(projectRoute, /pendingApplicationCount:applicationCounts\.get\(role\.id\)\?\.pending\?\?0/);
-  assert.match(page, /aria-label=\{`\$\{role\.applicationCount \?\? 0\} applications`\}/);
+  assert.match(page, /className="detail-role-title"/);
+  assert.match(page, /\(role\.applicationCount \?\? 0\) > 0/);
+  assert.match(page, /aria-label=\{`\$\{role\.applicationCount\} applications`\}/);
   assert.match(page, /className="role-application-badge"/);
 });
 

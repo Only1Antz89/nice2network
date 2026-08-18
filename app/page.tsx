@@ -5878,21 +5878,23 @@ function ProjectDetailView({
                     }}
                   >
                     <span>
-                      <strong>{role.title}</strong>
+                      <span className="detail-role-title">
+                        <strong>{role.title}</strong>
+                        {canRecruit && (role.applicationCount ?? 0) > 0 && (
+                          <em
+                            className="role-application-badge"
+                            aria-label={`${role.applicationCount} applications`}
+                            title={`${role.applicationCount} applications`}
+                          >
+                            {role.applicationCount}
+                          </em>
+                        )}
+                      </span>
                       <small>
                         {role.department} · {role.phase} · {role.criticality}
                       </small>
                     </span>
                     <b>
-                      {canRecruit && (
-                        <em
-                          className="role-application-badge"
-                          aria-label={`${role.applicationCount ?? 0} applications`}
-                          title={`${role.applicationCount ?? 0} applications`}
-                        >
-                          {role.applicationCount ?? 0}
-                        </em>
-                      )}
                       {Math.max(0, role.capacity - role.filled)} open{" "}
                       {(canApplyToProject || project.isOwner) && <ArrowUpRight size={13} />}
                     </b>
