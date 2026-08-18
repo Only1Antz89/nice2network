@@ -13,9 +13,14 @@ export async function enforceDistributedRateLimit(key: string, limit: number, wi
     .onConflictDoUpdate({
       target: securityRateLimits.keyHash,
       set: {
-        count: sql`case when ${securityRateLimits.resetAt} <= ${now} then 1 else ${securityRateLimits.count} + 1 end`,
-        resetAt: sql`case when ${securityRateLimits.resetAt} <= ${now} then ${resetAt} else ${securityRateLimits.resetAt} end`,
-        updatedAt: now,
+        // Date values interpolated directly into raw SQL do not inherit the
+        // timestamp column encoder. postgres-js therefore receives a Date
+        // object and rejects the whole sign-in query with ERR_INVALID_ARG_TYPE.
+        // Keep clock comparisons inside PostgreSQL and bind only the numeric
+        // window, whose type is unambiguous.
+        count: sql`case when ${securityRateLimits.resetAt} <= now() then 1 else ${securityRateLimits.count} + 1 end`,
+        resetAt: sql`case when ${securityRateLimits.resetAt} <= now() then now() + (${windowMs} * interval '1 millisecond') else ${securityRateLimits.resetAt} end`,
+        updatedAt: sql`now()`,
       },
     })
     .returning({ count: securityRateLimits.count });

@@ -55,6 +55,14 @@ test("revokes JWT access after password or account status changes", async () => 
   assert.match(reset, /db\.transaction/);
 });
 
+test("distributed sign-in rate limiting keeps Date objects out of raw SQL", async () => {
+  const source = await read("lib/distributed-rate-limit.ts");
+  assert.match(source, /resetAt: sql`case when .* <= now\(\) then now\(\) \+ \(\$\{windowMs\} \* interval '1 millisecond'\)/s);
+  assert.match(source, /updatedAt: sql`now\(\)`/);
+  assert.doesNotMatch(source, /sql`[^`]*\$\{now\}/);
+  assert.doesNotMatch(source, /sql`[^`]*\$\{resetAt\}/);
+});
+
 test("enforces connection-scoped direct content access and safe attachment schemes", async () => {
   const [access, thread, updates] = await Promise.all([
     read("lib/content-access.ts"),
