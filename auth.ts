@@ -1,4 +1,4 @@
-import NextAuth, { CredentialsSignin } from "next-auth";
+import NextAuth, { CredentialsSignin, type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
@@ -40,7 +40,7 @@ providers.push(Credentials({
   },
 }));
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const authConfig = {
   // With no database there are no accounts to authenticate; a fixed preview-only
   // secret lets the public shell read an empty session without weakening a
   // configured deployment, where AUTH_SECRET remains mandatory.
@@ -71,4 +71,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     session({ session, token }) { if (session.user) { session.user.id = token.authValid ? String(token.userId ?? token.sub ?? "") : ""; session.user.isN2Admin = Boolean(token.isN2Admin); session.user.forcePasswordChange = Boolean(token.forcePasswordChange); } return session; },
   },
-});
+} satisfies NextAuthConfig;
+
+export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
