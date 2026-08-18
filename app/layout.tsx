@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Noto_Color_Emoji } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "./people.css";
 import "./network.css";
@@ -13,7 +13,6 @@ import { getDeploymentVersion } from "@/lib/deployment-version";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
-const notoColorEmoji = Noto_Color_Emoji({ variable: "--font-noto-color-emoji", subsets: ["emoji"], weight: "400", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://nice2network.vercel.app"),
@@ -35,5 +34,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable} ${notoColorEmoji.variable}`}><AccessibilityController/><DeploymentRefresh initialVersion={getDeploymentVersion()}/>{children}<CookieBanner/><SiteAnalytics/></body></html>;
+  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable}`}><AccessibilityController/><DeploymentRefresh initialVersion={getDeploymentVersion()}/>{children}<CookieBanner/><SiteAnalytics/></body></html>;
 }

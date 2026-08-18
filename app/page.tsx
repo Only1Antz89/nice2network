@@ -60,16 +60,10 @@ import {
 } from "lucide-react";
 import { FormEvent, type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import EmojiPicker from "@/components/emoji-picker";
-import GuestAuthPrompt from "@/components/guest-auth-prompt";
-import HelpPanel from "@/components/help-panel";
 import type { NotificationRecord } from "@/components/notification-panel";
-import NotificationsPage from "@/components/notifications-page";
-import SearchOverlay from "@/components/search-overlay";
-import ShareSheet from "@/components/share-sheet";
 import N2OrbitMark from "@/components/n2-orbit-mark";
-import ActionDialog from "@/components/action-dialog";
 import PeopleDiscoveryPanel from "@/components/people-discovery-panel";
 import { PROJECT_ACCENT } from "@/lib/content-accents";
 import {
@@ -100,6 +94,14 @@ import {
   storeAndApplyAccessibilityPreferences,
   type AccessibilityPreferences,
 } from "@/lib/accessibility-preferences";
+
+const ActionDialog = dynamic(() => import("@/components/action-dialog"));
+const EmojiPicker = dynamic(() => import("@/components/emoji-picker"));
+const GuestAuthPrompt = dynamic(() => import("@/components/guest-auth-prompt"));
+const HelpPanel = dynamic(() => import("@/components/help-panel"));
+const NotificationsPage = dynamic(() => import("@/components/notifications-page"));
+const SearchOverlay = dynamic(() => import("@/components/search-overlay"));
+const ShareSheet = dynamic(() => import("@/components/share-sheet"));
 
 type View =
   | "feed"
@@ -1900,7 +1902,7 @@ function ProjectCard({
               )
             }
           >
-            <img src={project.imageUrl} alt={`${project.title} project`} />
+            <img src={project.imageUrl} alt={`${project.title} project`} loading="lazy" decoding="async" />
           </button>
         )}
         <div className="project-meta">
@@ -3180,6 +3182,8 @@ function TimelinePostCard({
           className="post-media"
           src={post.attachmentUrl}
           alt="Post attachment"
+          loading="lazy"
+          decoding="async"
         />
       )}
       {post.attachmentType === "video" && post.attachmentUrl && (
@@ -3585,21 +3589,32 @@ function PostComposer({
 function NetworkPulse({ onProjects }: { onProjects: () => void }) {
   const [slides, setSlides] = useState<PulseSlide[]>([]),
     [active, setActive] = useState(0),
-    [paused, setPaused] = useState(false);
+    [paused, setPaused] = useState(false),
+    [enabled, setEnabled] = useState(false);
   useEffect(() => {
-    fetch("/api/network-pulse")
+    const media = window.matchMedia("(min-width: 1361px)");
+    const sync = () => setEnabled(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    fetch("/api/network-pulse", { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : { slides: [] }))
       .then((data) => setSlides(data.slides ?? []))
       .catch(() => undefined);
-  }, []);
+    return () => controller.abort();
+  }, [enabled]);
   useEffect(() => {
-    if (paused || slides.length < 2) return;
+    if (!enabled || paused || slides.length < 2) return;
     const timer = setInterval(
       () => setActive((index) => (index + 1) % slides.length),
       5500,
     );
     return () => clearInterval(timer);
-  }, [paused, slides.length]);
+  }, [enabled, paused, slides.length]);
   useEffect(() => {
     if (active >= slides.length) setActive(0);
   }, [active, slides.length]);
@@ -3615,6 +3630,7 @@ function NetworkPulse({ onProjects }: { onProjects: () => void }) {
   function move(direction: number) {
     setActive((index) => (index + direction + slides.length) % slides.length);
   }
+  if (!enabled) return null;
   return (
     <section
       className="rail-card pulse-card"
@@ -4846,6 +4862,8 @@ function UpdatesPanel({
                 <img
                   src={update.attachmentUrl}
                   alt={update.attachmentName ?? "Update attachment"}
+                  loading="lazy"
+                  decoding="async"
                 />
               )}{" "}
               {update.attachmentType === "video" && update.attachmentUrl && (
@@ -7826,7 +7844,7 @@ function MessagesView({
               className={`bubble ${message.senderId === currentMember.id ? "mine" : "theirs"} ${message.status === "deleted" ? "deleted" : ""}`}
             >
               {message.attachmentType === "image" && message.attachmentUrl && (
-                <img src={message.attachmentUrl} alt="Message attachment" />
+                <img src={message.attachmentUrl} alt="Message attachment" loading="lazy" decoding="async" />
               )}
               {message.attachmentType === "video" && message.attachmentUrl && (
                 <video src={message.attachmentUrl} controls />
@@ -7943,7 +7961,7 @@ function MessagesView({
           <div className="message-search compact"><UserPlus size={15}/><input value={memberSearch} onChange={event=>setMemberSearch(event.target.value)} placeholder="Add a member"/></div>
           {memberSearch.trim().length>=2&&<div className="chat-add-results">{memberResults.filter(person=>person.canMessage!==false&&!selected.members.some(member=>member.userId===String(person.id))).slice(0,4).map(person=><button key={String(person.id)} onClick={()=>updateConversation("add_member",{userId:String(person.id)})}><Avatar person={{name:String(person.name),role:String(person.profession??"Member"),img:person.image as string|null}} size="sm"/><span><strong>{String(person.name)}</strong><small>{String(person.profession??"Member")}</small></span><Plus size={15}/></button>)}</div>}
         </section>
-        <section className="chat-details-section"><div className="chat-details-heading"><strong>Media and files</strong><span>{sharedMedia.length}</span></div>{sharedMedia.length?<div className="chat-media-grid">{sharedMedia.map(message=>message.attachmentType==="image"?<a key={message.id} href={message.attachmentUrl!} target="_blank" rel="noreferrer"><img src={message.attachmentUrl!} alt="Shared chat media"/></a>:<a key={message.id} href={message.attachmentUrl!} download><span>{message.attachmentType==="video"?<Video size={19}/>:message.attachmentType==="audio"?<AudioLines size={19}/>:<Paperclip size={19}/>}</span><small>{message.attachmentType}</small></a>)}</div>:<p className="chat-details-empty">Media and files shared in this chat will appear here.</p>}</section>
+        <section className="chat-details-section"><div className="chat-details-heading"><strong>Media and files</strong><span>{sharedMedia.length}</span></div>{sharedMedia.length?<div className="chat-media-grid">{sharedMedia.map(message=>message.attachmentType==="image"?<a key={message.id} href={message.attachmentUrl!} target="_blank" rel="noreferrer"><img src={message.attachmentUrl!} alt="Shared chat media" loading="lazy" decoding="async"/></a>:<a key={message.id} href={message.attachmentUrl!} download><span>{message.attachmentType==="video"?<Video size={19}/>:message.attachmentType==="audio"?<AudioLines size={19}/>:<Paperclip size={19}/>}</span><small>{message.attachmentType}</small></a>)}</div>:<p className="chat-details-empty">Media and files shared in this chat will appear here.</p>}</section>
         {conversationError&&<p className="messages-error"><CircleAlert size={15}/>{conversationError}</p>}
         <footer><button className="secondary-button" onClick={()=>conversationAction(selected.archivedAt?"restore":"archive")}><Archive size={15}/>{selected.archivedAt?"Restore chat":"Archive chat"}</button><button className="secondary-button danger" onClick={()=>conversationAction("delete")}><Trash2 size={15}/>Delete chat</button></footer>
       </section></div>}
@@ -9136,7 +9154,7 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
                 <X size={18} />
               </button>
             </header>
-            {detail.thumbnailUrl && <img className="meet-detail-cover" src={detail.thumbnailUrl} alt="" />}
+            {detail.thumbnailUrl && <img className="meet-detail-cover" src={detail.thumbnailUrl} alt="" loading="lazy" decoding="async" />}
             <p>{detail.description || "No description added."}</p>
             {detail.provider === "in_person" && detail.location && <InPersonMeetMap location={detail.location} />}
             <div className="saved-actions">
@@ -9263,7 +9281,7 @@ function SavedContentCard({ item, onOpen, compact = false }: { item: SavedConten
     Icon = item.entityType === "project" ? BriefcaseBusiness : item.entityType === "meeting" ? CalendarDays : MessageCircle;
   return (
     <article className={`saved-content-card saved-${item.entityType} ${compact ? "compact" : ""}`}>
-      {image && <img src={image} alt="" />}
+      {image && <img src={image} alt="" loading="lazy" decoding="async" />}
       <button type="button" onClick={() => onOpen(item)} aria-label={`Open ${kindLabel.toLowerCase()} ${title}`}>
         <span className="saved-content-kind"><Icon size={14} /> {kindLabel}</span>
         <strong>{title}</strong>
@@ -9636,7 +9654,7 @@ function ProfileView({
               {media.map((item) =>
                 item.attachmentType === "image" && item.attachmentUrl ? (
                   <article key={item.id}>
-                    <img src={item.attachmentUrl} alt={item.body} />
+                    <img src={item.attachmentUrl} alt={item.body} loading="lazy" decoding="async" />
                     <p>{item.body}</p>
                   </article>
                 ) : item.attachmentType === "video" && item.attachmentUrl ? (
@@ -12171,6 +12189,7 @@ export default function HomePage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [expandedProfilePhoto, setExpandedProfilePhoto] = useState<{ src: string; alt: string } | null>(null);
   const latestBrowserNotification = useRef<string | null | false>(false);
+  const peopleSuggestionsLoaded = useRef(false);
   const deepLinkHandled = useRef(false);
   const updateUnreadCounts = useCallback((unread: number, messages: number) => {
     setUnreadNotifications(unread);
@@ -12414,11 +12433,19 @@ export default function HomePage() {
   }, [authenticated]);
   useEffect(() => {
     if (!authenticated) return;
-    fetch("/api/people/suggestions?limit=3")
+    const wideRail = window.matchMedia("(min-width: 1361px)");
+    if (!wideRail.matches && !searchOpen && !peopleOpen) return;
+    if (peopleSuggestionsLoaded.current) return;
+    const controller = new AbortController();
+    fetch("/api/people/suggestions?limit=3", { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : { suggestions: [] }))
-      .then((data) => setPeopleSuggestions(data.suggestions ?? []))
+      .then((data) => {
+        peopleSuggestionsLoaded.current = true;
+        setPeopleSuggestions(data.suggestions ?? []);
+      })
       .catch(() => undefined);
-  }, [authenticated]);
+    return () => controller.abort();
+  }, [authenticated, peopleOpen, searchOpen]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 3200);

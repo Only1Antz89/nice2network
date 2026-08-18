@@ -77,9 +77,20 @@ html{scroll-padding-bottom:calc(110px + var(--keyboard-inset))}.modal-backdrop{m
 @media(max-width:820px){.auth-shell{display:block}.auth-story{display:none}.auth-side{padding:85px 20px 35px;position:relative}.mobile-auth-logo{display:flex;position:absolute;top:25px;left:24px;align-items:center;gap:8px;color:var(--ink);text-decoration:none;font-size:12px;font-weight:700}.mobile-auth-logo span{width:29px;height:29px;border-radius:50%;display:grid;place-items:center;background:var(--solid);color:var(--solid-ink);font:9px var(--font-geist-mono)}}
 @media(max-width:560px){.auth-side>.auth-card{padding:25px 20px}.signup-grid{grid-template-columns:1fr 1fr}.onboarding-page>header{padding:0 18px}.onboarding-page>header>a{font-size:0}.onboarding-page>header>a span{font-size:9px}.onboarding-card{margin-top:35px}.onboarding-card h1{font-size:28px}}
 
-/* Google Noto Color Emoji keeps member expression consistent across platforms. */
-body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-serif}
-.emoji-glyph{font-family:var(--font-noto-color-emoji),"Apple Color Emoji","Segoe UI Emoji",sans-serif}
+/* Prefer the platform emoji font: it is already cached by the operating system
+   and avoids making every visitor download a large colour-font subset. */
+body{font-family:var(--font-geist-sans),Arial,sans-serif}
+.emoji-glyph{font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif}
+
+/* Skip layout and paint work for feed content until it approaches the viewport.
+   The remembered intrinsic size keeps long timelines stable while scrolling. */
+@supports (content-visibility:auto){
+  .timeline-post,.project-card,.new-joiner-card,.official-notice,.connection-card,
+  .project-update-list>article,.media-grid>article,.saved-content-card{
+    content-visibility:auto;
+    contain-intrinsic-block-size:auto 420px;
+  }
+}
 .emoji-picker{position:relative;display:grid;place-items:center;flex:none}
 .emoji-trigger{width:34px;height:34px;border:1px solid var(--line)!important;border-radius:50%!important;background:#fff!important;color:var(--ink)!important;padding:0!important;display:grid!important;place-items:center!important}
 .emoji-trigger:hover,.emoji-trigger[aria-expanded="true"]{background:var(--soft)!important;border-color:#aaa!important}
