@@ -38,7 +38,8 @@ test("meet card actions can pin, bookmark and safely delete hosted meets", async
   assert.match(page, /onSave\(meet, "bookmark"\)/);
   assert.match(page, /onEdit\(meet\)/);
   assert.match(page, /<Pencil size=\{14\}/);
-  assert.match(page, /meet\.canEdit &&/);
+  assert.match(page, /meet\.canManage &&/);
+  assert.match(page, /meet\.canDelete &&/);
   assert.match(page, /method: "DELETE"/);
   assert.match(route, /export async function DELETE/);
   assert.match(route, /existing\.createdBy !== member\.id/);

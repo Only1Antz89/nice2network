@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
@@ -10,6 +10,8 @@ import { trackProductEvent } from "@/lib/analytics";
 import { canonicalTerm, feedScore } from "@/lib/recommendations/scoring";
 import { getActiveAlgorithmSettings, recomputeProjectRecommendations } from "@/lib/recommendations/service";
 import { ensureProjectEmbedding } from "@/lib/recommendations/project-similarity";
+import { coOwnerIdsSchema, createCoOwnerInvitations, type CoOwnerInvitationDelivery } from "@/lib/project-co-owners";
+import { createNotifications } from "@/lib/notifications";
 
 const roleSchema = z.object({
   title: z.string().min(2).max(80), department: z.string().min(2).max(80), description: z.string().max(500).optional(),
@@ -24,6 +26,7 @@ const inputSchema = z.object({
   workMode: z.enum(["remote", "hybrid", "in_person"]).default("remote"), city: z.string().max(100).nullable().optional(), country: z.string().max(100).nullable().optional(), timezone: z.string().max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true), accent: z.string().regex(/^#[0-9a-f]{6}$/i).default("#ff6b35"),
   imageUrl: z.string().max(1_500_000).refine(value=>!value||/^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
   roles: z.array(roleSchema).max(18).default([]),
+  coOwnerIds: coOwnerIdsSchema,
 });
 
 type FeedProject = Awaited<ReturnType<typeof baseProjects>>[number] & { matchScore?: number; recommendationId?: string; recommendationTier?: string; recommendationReasons?: string[]; matchedRole?: string; feedScore?: number; eyeMomentum?: number };
@@ -33,11 +36,12 @@ async function baseProjects(memberId: string, condition: ReturnType<typeof and> 
   const commentCount = sql<number>`(select count(*)::int from project_comments pc where pc.project_id = ${projects.id} and pc.status = 'visible')`;
   return getDb().select({
     id: projects.id, title: projects.title, summary: projects.summary, description: projects.description, industry: projects.industry, stage: projects.stage,
-    status: projects.status, visibility: projects.visibility, accent: projects.accent, imageUrl:projects.imageUrl, workMode: projects.workMode, city: projects.city, country: projects.country,
+    status: projects.status, visibility: projects.visibility, accent: projects.accent, imageUrl:projects.imageUrl, workMode: projects.workMode, city: projects.city, country: projects.country, deletionRequestedAt:projects.deletionRequestedAt, deletionScheduledAt:projects.deletionScheduledAt, deletionRequestedBy:projects.deletionRequestedBy,
     ownerId: projects.ownerId, ownerName: users.name, ownerImage: users.image,
     isDemo: sql<boolean>`${users.role} = 'demo_member'`,
     ownerIsAdmin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`,
     isOwner: sql<boolean>`${projects.ownerId} = ${memberId} or exists (select 1 from project_members pm where pm.project_id = ${projects.id} and pm.user_id = ${memberId} and pm.membership_role = 'co_owner')`,
+    isPrimaryOwner: sql<boolean>`${projects.ownerId} = ${memberId}`,
     isMember: sql<boolean>`${projects.ownerId} = ${memberId} or exists (select 1 from project_members pm where pm.project_id = ${projects.id} and pm.user_id = ${memberId})`,
     isFollowingProject: sql<boolean>`exists(select 1 from ${projectFollows} pf where pf.project_id=${projects.id} and pf.user_id=${memberId})`,
     isPinned: sql<boolean>`coalesce(${savedItems.pinned}, false)`, isBookmarked: sql<boolean>`coalesce(${savedItems.bookmarked}, false)`, eyeCount, commentCount,
@@ -76,7 +80,7 @@ export async function GET(request: Request) {
     const memberships = viewerId?await db.select({ projectId: projectMembers.projectId }).from(projectMembers).where(eq(projectMembers.userId, viewerId)):[];
     const memberProjectIds = memberships.map(row => row.projectId);
     const condition = scope === "mine"
-      ? or(eq(projects.ownerId, memberId), memberProjectIds.length ? inArray(projects.id, memberProjectIds) : eq(projects.ownerId, memberId))
+      ? and(ne(projects.status, "deleted"), or(eq(projects.ownerId, memberId), memberProjectIds.length ? inArray(projects.id, memberProjectIds) : eq(projects.ownerId, memberId)))
       : and(eq(projects.status, "active"), eq(projects.visibility, "network"));
     let rows: FeedProject[] = await baseProjects(memberId, condition);
     rows = rows.filter(row =>
@@ -130,14 +134,18 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const member = await requireMember(), input = inputSchema.parse(await request.json()), db = getDb();
+    let coOwnerInvitations: CoOwnerInvitationDelivery[] = [];
     const project = await db.transaction(async tx => {
-      const [created] = await tx.insert(projects).values({ ...input, ownerId: member.id, location: [input.city, input.country].filter(Boolean).join(", ") || null }).returning();
+      const { roles, coOwnerIds, ...projectInput } = input;
+      const [created] = await tx.insert(projects).values({ ...projectInput, ownerId: member.id, location: [input.city, input.country].filter(Boolean).join(", ") || null }).returning();
       await tx.insert(projectMembers).values({ projectId: created.id, userId: member.id, membershipRole: "owner", department: "Leadership" });
-      if (input.roles.length) await tx.insert(projectRoles).values(input.roles.map(role => ({ ...role, projectId: created.id, requiredSkills: role.requiredSkills.length ? role.requiredSkills : role.skills, reason: role.reason ?? role.description })));
+      if (roles.length) await tx.insert(projectRoles).values(roles.map(role => ({ ...role, projectId: created.id, requiredSkills: role.requiredSkills.length ? role.requiredSkills : role.skills, reason: role.reason ?? role.description })));
+      coOwnerInvitations = await createCoOwnerInvitations(tx, { projectId: created.id, ownerId: member.id, coOwnerIds });
       return created;
     });
     await recomputeProjectRecommendations(project.id);
     after(() => ensureProjectEmbedding(project.id).catch(() => undefined));
+    after(() => createNotifications(coOwnerInvitations.map(invitation => ({ userId: invitation.inviteeId, actorId: member.id, type: "invitation", title: `${member.name ?? "An n2 member"} invited you to co-own a project`, body: project.title, entityType: "invitation", entityId: invitation.invitationId, href: `/invite/${invitation.token}` }))).catch(() => undefined));
     await audit(member.id, "project.created", "project", project.id, { roleCount: input.roles.length });
     await trackProductEvent({ actorId: member.id, event: "project_created", entityType: "project", entityId: project.id, properties: { industry: input.industry, stage: input.stage, roleCount: input.roles.length } });
     return NextResponse.json(project, { status: 201 });

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
@@ -8,8 +8,9 @@ import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
 import { createNotification } from "@/lib/notifications";
+import { createCoOwnerInvitations } from "@/lib/project-co-owners";
 
-const schema = z.object({ email: z.email().optional(), inviteeId: z.uuid().optional(), roleId: z.uuid().optional() })
+const schema = z.object({ email: z.email().optional(), inviteeId: z.uuid().optional(), roleId: z.uuid().optional(), membershipRole: z.enum(["contributor", "co_owner"]).default("contributor") })
   .refine(value => value.email || value.inviteeId, "Choose a member or provide an email");
 
 export async function POST(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
@@ -20,6 +21,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
     const db = getDb();
     const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.ownerId, member.id))).limit(1);
     if (!project) throw new ApiError(403, "Only a project owner can invite people");
+    if (project.status === "pending_deletion") throw new ApiError(409, "This project is pending deletion and is read-only");
+    if (project.status === "deleted") throw new ApiError(404, "Project not found");
+
+    if (input.membershipRole === "co_owner") {
+      if (!input.inviteeId) throw new ApiError(400, "Choose a mutual connection to invite as co-owner");
+      if (input.email) throw new ApiError(400, "Co-owner invitations must be sent to an existing mutual connection");
+      if (input.roleId) throw new ApiError(400, "Co-owners are appointed to Leadership rather than a recruitment role");
+      const [delivery] = await db.transaction(tx => createCoOwnerInvitations(tx, { projectId, ownerId: member.id, coOwnerIds: [input.inviteeId!] }));
+      after(() => createNotification({ userId: delivery.inviteeId, actorId: member.id, type: "invitation", title: `${member.name ?? "An n2 member"} invited you to co-own a project`, body: project.title, entityType: "invitation", entityId: delivery.invitationId, href: `/invite/${delivery.token}` }).catch(() => undefined));
+      await audit(member.id, "project.co_owner_invited", "project", projectId, { invitationId: delivery.invitationId, inviteeId: delivery.inviteeId });
+      return NextResponse.json({ id: delivery.invitationId, inviteUrl: `${process.env.NEXT_PUBLIC_APP_URL}/invite/${delivery.token}` }, { status: 201 });
+    }
 
     if (input.inviteeId) {
       const [inviter] = await db.select({ ageBand: users.ageBand }).from(users).where(eq(users.id, member.id)).limit(1);
@@ -33,7 +46,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
 
     const token = randomBytes(32).toString("base64url");
     const tokenHash = createHash("sha256").update(token).digest("hex");
-    const [invitation] = await db.insert(invitations).values({ ...input, projectId, invitedBy: member.id, tokenHash, expiresAt: new Date(Date.now() + 7 * 86_400_000) }).returning();
+    const [invitation] = await db.insert(invitations).values({ ...input, membershipRole: "contributor", projectId, invitedBy: member.id, tokenHash, expiresAt: new Date(Date.now() + 7 * 86_400_000) }).returning();
     if(input.inviteeId)await createNotification({userId:input.inviteeId,actorId:member.id,type:"invitation",title:`${member.name??"An n2 member"} invited you to a project`,body:project.title,entityType:"invitation",entityId:invitation.id,href:`/invite/${token}`});
     await audit(member.id, "project.invited", "project", projectId, { invitationId: invitation.id });
     await trackProductEvent({ actorId: member.id, event: "project_invitation_created", entityType: "project", entityId: projectId });

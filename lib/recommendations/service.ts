@@ -15,6 +15,8 @@ import { blueprintInputSchema, projectBlueprintSchema, type BlueprintInput, type
 import { fallbackBlueprint } from "./fallback";
 import { createBlueprintProvider, withOneRetry } from "./providers";
 import { isRolePhaseActive, scoreRoleMatch } from "./scoring";
+import { assertProjectMutable } from "@/lib/project-access";
+import { createCoOwnerInvitations, type CoOwnerInvitationDelivery } from "@/lib/project-co-owners";
 
 export const DEFAULT_ALGORITHM_WEIGHTS = {
   requiredSkills: 35, profession: 20, career: 10, compatibility: 15, availability: 8, relevance: 5, learned: 5, warmPath: 2,
@@ -93,13 +95,16 @@ export async function generateProjectBlueprint(projectId: string, requestedBy: s
   return { ...record, latencyMs: Date.now() - started, usedFallback: Boolean(failureStatus) };
 }
 
-export async function approveProjectBlueprint(input: { projectId: string; blueprintId: string; userId: string; roles: BlueprintRole[]; milestones:Array<{title:string;description?:string;phase:"now"|"next"|"later";ownerId?:string|null;dueAt?:string|null}>; visibility: "network" | "connections" | "private" }) {
+export async function approveProjectBlueprint(input: { projectId: string; blueprintId: string; userId: string; roles: BlueprintRole[]; milestones:Array<{title:string;description?:string;phase:"now"|"next"|"later";ownerId?:string|null;dueAt?:string|null}>; visibility: "network" | "connections" | "private"; coOwnerIds?: string[] }) {
   const db = getDb();
   const roles = projectBlueprintSchema.shape.roles.parse(input.roles);
   const [blueprint] = await db.select({ blueprint: projectBlueprints, project: projects }).from(projectBlueprints).innerJoin(projects, eq(projects.id, projectBlueprints.projectId)).where(and(eq(projectBlueprints.id, input.blueprintId), eq(projectBlueprints.projectId, input.projectId))).limit(1);
   if (!blueprint || blueprint.project.ownerId !== input.userId) throw new ApiError(403, "Only the project owner can approve this blueprint");
+  assertProjectMutable(blueprint.project);
   if (blueprint.blueprint.status !== "draft") throw new ApiError(409, "This blueprint has already been reviewed");
+  let coOwnerInvitations: CoOwnerInvitationDelivery[] = [];
   await db.transaction(async tx => {
+    coOwnerInvitations = await createCoOwnerInvitations(tx, { projectId: input.projectId, ownerId: input.userId, coOwnerIds: input.coOwnerIds ?? [] });
     await tx.update(projectBlueprints).set({ status: "superseded" }).where(and(eq(projectBlueprints.projectId, input.projectId), eq(projectBlueprints.status, "approved")));
     await tx.update(projectBlueprints).set({ status: "approved", roles, approvedAt: new Date(), approvedBy: input.userId }).where(eq(projectBlueprints.id, input.blueprintId));
     // Preserve already-filled legacy roles and their membership history; only replace still-open gaps.
@@ -118,6 +123,7 @@ export async function approveProjectBlueprint(input: { projectId: string; bluepr
   });
   await recomputeProjectRecommendations(input.projectId);
   await trackProductEvent({ actorId: input.userId, event: "blueprint_approved", entityType: "project", entityId: input.projectId, properties: { roleCount: roles.length } });
+  return { coOwnerInvitations };
 }
 
 function embeddingTextForRole(role: typeof projectRoles.$inferSelect, project: typeof projects.$inferSelect) {

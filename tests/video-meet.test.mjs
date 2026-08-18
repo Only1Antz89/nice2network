@@ -23,6 +23,23 @@ test("video meets preserve Safari tracks and queue early ICE candidates", async 
   assert.match(room, /createOffer\(\{ iceRestart: true \}\)/);
 });
 
+test("video meets adapt capture, sender bandwidth and measured call quality", async () => {
+  const room = await readFile(roomPath, "utf8");
+
+  assert.match(room, /echoCancellation: \{ ideal: true \}/);
+  assert.match(room, /noiseSuppression: \{ ideal: true \}/);
+  assert.match(room, /high: \{ width: 1920, height: 1080, fps: 30/);
+  assert.match(room, /standard: \{ width: 1280, height: 720, fps: 30/);
+  assert.match(room, /data: \{ width: 640, height: 360, fps: 20/);
+  assert.match(room, /sender\.setParameters\(parameters\)/);
+  assert.match(room, /pc\.getStats\(\)/);
+  assert.match(room, /qualityLimitationReason/);
+  assert.match(room, /availableOutgoingBitrate/);
+  assert.match(room, /signal\("quality", \{ presentation:/);
+  assert.match(room, /Auto \(recommended\)/);
+  assert.match(room, /quality-marker/);
+});
+
 test("participant video feeds use a bottom-centered filmstrip", async () => {
   const styles = await readFile(stylesPath, "utf8");
 

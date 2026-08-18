@@ -12,7 +12,8 @@ test("project owners and members cannot activate vacancy application controls", 
   assert.match(page, /disabled=\{Boolean\(project\.isOwner \|\| project\.isMember\)\}/);
   assert.match(page, /canApplyToProject = !project\.isOwner && !project\.isMember/);
   assert.match(page, /disabled=\{!canApplyToProject && !project\.isOwner\}/);
-  assert.match(page, /if \(project\.isOwner\) \{\s*setSelectedApplicationRoleId\(role\.id\);/);
+  assert.match(page, /if \(project\.isOwner\) \{\s*setSelectedRoleId\(role\.id\);\s*setRoleModalTab\("details"\);/);
+  assert.match(page, /aria-label=\{`Manage \$\{selectedRole\.title\}`\}/);
 });
 
 test("direct role links do not open an application for owners or members", () => {

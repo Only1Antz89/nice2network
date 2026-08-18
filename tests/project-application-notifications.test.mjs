@@ -14,12 +14,16 @@ test("owners receive project applications with their selected position", () => {
 test("project notifications tab highlights pending applications in orange", () => {
   assert.match(page, /item === "notifications" && project\.pendingApplicationCount > 0/);
   assert.match(page, /className="project-application-count"/);
-  assert.match(page, /tab === "notifications" && canRecruit/);
+  assert.match(page, /tab === "notifications" && project\.isMember/);
+  assert.match(page, /canRecruit && \(\s*<div className="project-application-list">/);
 });
 
 test("owners clicking a role see filtered applicant fit and profile context", () => {
-  assert.match(page, /setSelectedApplicationRoleId\(role\.id\);\s*setTab\("notifications"\)/);
+  assert.match(page, /setSelectedRoleId\(role\.id\);\s*setRoleModalTab\("details"\)/);
+  assert.match(page, /roleModalTab === "applicants"/);
+  assert.match(page, /application\.roleId === selectedRole\.id/);
   assert.match(page, /application\.fit\.score/);
+  assert.match(page, /application\.fit\.mismatch/);
   assert.match(page, /application\.profileBrief/);
   assert.match(page, /application\.applicantSkills/);
   assert.match(page, /application\.applicantLocation/);

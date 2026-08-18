@@ -245,7 +245,7 @@ test("ships editable profiles, durable chat controls and adaptive n2 meets", asy
   assert.match(calendar, /mode: z\.enum\(\["video", "audio", "in_person"\]\)/);
   assert.match(signals, /meeting\.maxParticipants/);
   assert.match(room, /RTCPeerConnection/);
-  assert.match(room, /hd-marker/);
+  assert.match(room, /quality-marker/);
   assert.match(room, /Audio & video settings/);
   assert.match(page, /Create group chat/);
 });

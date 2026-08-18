@@ -4,11 +4,11 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { meetingParticipants, meetingSignals, meetings, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
-import { requireMeetingAccess } from "@/lib/meetings";
+import { getMeetingAuthority, requireMeetingAccess } from "@/lib/meetings";
 
 const schema = z.object({
   recipientId: z.uuid().nullable().optional(),
-  type: z.enum(["join", "heartbeat", "offer", "answer", "ice", "media", "leave", "end", "stage"]),
+  type: z.enum(["join", "heartbeat", "offer", "answer", "ice", "media", "quality", "leave", "end", "stage"]),
   payload: z.record(z.string(), z.unknown()).default({}),
 }).refine((value) => JSON.stringify(value.payload).length <= 64_000, "Signal payload is too large");
 
@@ -67,7 +67,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ mee
     const meeting = await requireMeetingAccess(meetingId, member.id);
     if (meeting.mode === "in_person") throw new ApiError(400, "In-person meets do not have an online room");
     if (meeting.endedAt && input.type !== "end") throw new ApiError(410, "This meet has ended");
-    if (input.type === "end" && meeting.createdBy !== member.id) throw new ApiError(403, "Only the meet host can end it");
+    if (input.type === "end") {
+      const authority = await getMeetingAuthority(meetingId, member.id);
+      if (!authority.canManage) throw new ApiError(403, "Only the host or a co-host can end this meet");
+    }
     const active = await db.selectDistinct({ senderId: meetingSignals.senderId }).from(meetingSignals).where(and(eq(meetingSignals.meetingId, meetingId), gt(meetingSignals.createdAt, new Date(Date.now() - 45000))));
     if (input.type === "join" && active.length >= meeting.maxParticipants && !active.some(row => row.senderId === member.id)) throw new ApiError(409, `This room is full (${meeting.maxParticipants} people)`);
 

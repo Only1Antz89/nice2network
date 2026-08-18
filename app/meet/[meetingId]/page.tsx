@@ -5,10 +5,11 @@ import { Camera, Check, Globe2, Headphones, Lock, Maximize2, MessageCircle, Mic,
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from "react";
+import ActionDialog from "@/components/action-dialog";
 
 type PodcastRole = "host" | "cohost" | "speaker" | "listener" | "audience_speaker";
 type Person = { id: string; name?: string | null; image?: string | null; profession?: string | null; professionalHeadline?: string | null; city?: string | null; role?: PodcastRole; speakerStatus?: string; status?: string };
-type Signal = { id: string; senderId: string; recipientId?: string | null; type: "join" | "heartbeat" | "offer" | "answer" | "ice" | "media" | "leave" | "end" | "stage"; payload: Record<string, unknown>; createdAt: string; sender: Person };
+type Signal = { id: string; senderId: string; recipientId?: string | null; type: "join" | "heartbeat" | "offer" | "answer" | "ice" | "media" | "quality" | "leave" | "end" | "stage"; payload: Record<string, unknown>; createdAt: string; sender: Person };
 type RemoteParticipant = { id: string; stream?: MediaStream; person: Person; cameraOn: boolean; audioOn: boolean };
 type VideoParticipant = RemoteParticipant & { local?: boolean };
 type Meeting = { id: string; title: string; mode: "video" | "audio" | "in_person"; visibility: "public" | "project" | "private"; maxParticipants: number; endedAt?: string | null };
@@ -16,9 +17,138 @@ type DeviceChoice = { deviceId: string; label: string };
 type ChatMessage = { id: string; body: string; createdAt: string; author: Person; kind?: "message" | "question" };
 type ConnectionStatus = "awaiting" | "connecting" | "connected" | "disconnected";
 type JoinErrorKind = "room" | "media" | "connection" | null;
+type VideoQualityMode = "auto" | "high" | "standard" | "data";
+type VideoQualityPreset = Exclude<VideoQualityMode, "auto">;
+type PresentationPriority = "focus" | "thumbnail";
+type ConnectionQuality = "checking" | "excellent" | "good" | "fair" | "poor";
+type QualitySnapshot = { level: ConnectionQuality; width?: number; height?: number; fps?: number; roundTripMs?: number; packetLoss?: number; availableKbps?: number; limitation?: string };
 
 const fallbackAvatar = "/brand/nice-2-network-mark.svg";
 const STAGE_ROLES: PodcastRole[] = ["host", "cohost", "speaker", "audience_speaker"];
+const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
+  echoCancellation: { ideal: true },
+  noiseSuppression: { ideal: true },
+  autoGainControl: { ideal: true },
+  channelCount: { ideal: 1 },
+  sampleRate: { ideal: 48_000 },
+};
+
+const VIDEO_PROFILES: Record<VideoQualityPreset, { width: number; height: number; fps: number; focusBitrate: number; thumbnailBitrate: number }> = {
+  high: { width: 1920, height: 1080, fps: 30, focusBitrate: 2_800_000, thumbnailBitrate: 500_000 },
+  standard: { width: 1280, height: 720, fps: 30, focusBitrate: 1_600_000, thumbnailBitrate: 400_000 },
+  data: { width: 640, height: 360, fps: 20, focusBitrate: 700_000, thumbnailBitrate: 220_000 },
+};
+
+function videoConstraints(preset: VideoQualityPreset, deviceId?: string): MediaTrackConstraints {
+  const profile = VIDEO_PROFILES[preset];
+  return {
+    ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: "user" } }),
+    width: { ideal: profile.width, max: profile.width },
+    height: { ideal: profile.height, max: profile.height },
+    frameRate: { ideal: profile.fps, max: profile.fps },
+    aspectRatio: { ideal: 16 / 9 },
+  };
+}
+
+async function tuneVideoSender(sender: RTCRtpSender, preset: VideoQualityPreset, presentation: PresentationPriority) {
+  if (sender.track?.kind !== "video") return;
+  const profile = VIDEO_PROFILES[preset];
+  const parameters = sender.getParameters();
+  if (!parameters.encodings?.length) parameters.encodings = [{}];
+  for (const encoding of parameters.encodings) {
+    encoding.active = true;
+    encoding.maxBitrate = presentation === "focus" ? profile.focusBitrate : profile.thumbnailBitrate;
+    encoding.maxFramerate = presentation === "focus" ? profile.fps : Math.min(profile.fps, 20);
+    encoding.scaleResolutionDownBy = presentation === "focus" ? 1 : preset === "data" ? 2 : 2.5;
+  }
+  parameters.degradationPreference = presentation === "focus" ? "balanced" : "maintain-framerate";
+  await sender.setParameters(parameters);
+}
+
+function nextLowerPreset(preset: VideoQualityPreset): VideoQualityPreset {
+  return preset === "high" ? "standard" : "data";
+}
+
+function nextHigherPreset(preset: VideoQualityPreset): VideoQualityPreset {
+  return preset === "data" ? "standard" : "high";
+}
+
+type WebRtcStat = RTCStats & {
+  type: string;
+  kind?: string;
+  mediaType?: string;
+  frameWidth?: number;
+  frameHeight?: number;
+  framesPerSecond?: number;
+  fractionLost?: number;
+  packetsLost?: number;
+  packetsReceived?: number;
+  roundTripTime?: number;
+  currentRoundTripTime?: number;
+  availableOutgoingBitrate?: number;
+  qualityLimitationReason?: string;
+  state?: string;
+  nominated?: boolean;
+};
+
+async function readWebRtcQuality(peerConnections: Iterable<RTCPeerConnection>, localTrack?: MediaStreamTrack): Promise<QualitySnapshot> {
+  const connections = [...peerConnections];
+  if (!connections.length) {
+    const settings = localTrack?.getSettings();
+    return { level: "checking", width: settings?.width, height: settings?.height, fps: settings?.frameRate };
+  }
+  let width = 0;
+  let height = 0;
+  let fps = Number.POSITIVE_INFINITY;
+  let roundTrip = 0;
+  let packetLoss = 0;
+  let availableBitrate = Number.POSITIVE_INFINITY;
+  let limitation = "none";
+  for (const pc of connections) {
+    const report = await pc.getStats();
+    report.forEach(raw => {
+      const stat = raw as WebRtcStat;
+      const isVideo = stat.kind === "video" || stat.mediaType === "video";
+      if (stat.type === "outbound-rtp" && isVideo) {
+        width = Math.max(width, stat.frameWidth ?? 0);
+        height = Math.max(height, stat.frameHeight ?? 0);
+        if (typeof stat.framesPerSecond === "number") fps = Math.min(fps, stat.framesPerSecond);
+        if (stat.qualityLimitationReason && stat.qualityLimitationReason !== "none") limitation = stat.qualityLimitationReason;
+      }
+      if (stat.type === "inbound-rtp" && isVideo) {
+        width = Math.max(width, stat.frameWidth ?? 0);
+        height = Math.max(height, stat.frameHeight ?? 0);
+        if (typeof stat.framesPerSecond === "number") fps = Math.min(fps, stat.framesPerSecond);
+        if (typeof stat.packetsLost === "number" && typeof stat.packetsReceived === "number") {
+          const total = stat.packetsLost + stat.packetsReceived;
+          if (total > 0) packetLoss = Math.max(packetLoss, stat.packetsLost / total);
+        }
+      }
+      if (stat.type === "remote-inbound-rtp" && isVideo) {
+        if (typeof stat.roundTripTime === "number") roundTrip = Math.max(roundTrip, stat.roundTripTime);
+        if (typeof stat.fractionLost === "number") packetLoss = Math.max(packetLoss, stat.fractionLost);
+        else if (typeof stat.packetsLost === "number" && typeof stat.packetsReceived === "number") {
+          const total = stat.packetsLost + stat.packetsReceived;
+          if (total > 0) packetLoss = Math.max(packetLoss, stat.packetsLost / total);
+        }
+      }
+      if (stat.type === "candidate-pair" && stat.state === "succeeded" && (stat.nominated ?? true) && typeof stat.currentRoundTripTime === "number") {
+        roundTrip = Math.max(roundTrip, stat.currentRoundTripTime);
+      }
+      if (stat.type === "candidate-pair" && stat.state === "succeeded" && typeof stat.availableOutgoingBitrate === "number") {
+        availableBitrate = Math.min(availableBitrate, stat.availableOutgoingBitrate);
+      }
+    });
+  }
+  const actualFps = Number.isFinite(fps) ? fps : undefined;
+  const roundTripMs = roundTrip ? Math.round(roundTrip * 1000) : undefined;
+  const availableKbps = Number.isFinite(availableBitrate) ? Math.round(availableBitrate / 1000) : undefined;
+  let level: ConnectionQuality = "excellent";
+  if (packetLoss >= 0.08 || (roundTripMs ?? 0) >= 500 || (availableKbps !== undefined && availableKbps < 300) || (actualFps !== undefined && actualFps < 12)) level = "poor";
+  else if (packetLoss >= 0.03 || (roundTripMs ?? 0) >= 300 || (availableKbps !== undefined && availableKbps < 700) || (actualFps !== undefined && actualFps < 20) || limitation === "cpu" || limitation === "bandwidth") level = "fair";
+  else if (packetLoss >= 0.01 || (roundTripMs ?? 0) >= 180 || (availableKbps !== undefined && availableKbps < 1500) || (actualFps !== undefined && actualFps < 26)) level = "good";
+  return { level, width: width || undefined, height: height || undefined, fps: actualFps, roundTripMs, packetLoss, availableKbps, limitation };
+}
 
 function PersonImage({ src }: { src?: string | null }) {
   return <Image src={src || fallbackAvatar} alt="" width={160} height={160} sizes="160px" unoptimized />;
@@ -39,9 +169,11 @@ export default function N2MeetRoom() {
   const localStream = useRef<MediaStream | null>(null);
   const peers = useRef(new Map<string, RTCPeerConnection>());
   const pendingIce = useRef(new Map<string, RTCIceCandidateInit[]>());
+  const peerPriorities = useRef(new Map<string, PresentationPriority>());
   const mediaState = useRef({ cameraOn: true, audioOn: true });
+  const qualityPresetRef = useRef<VideoQualityPreset>("standard");
+  const healthyQualitySamples = useRef(0);
   const roomModeRef = useRef<Meeting["mode"]>("video");
-  const isHost = useRef(false);
   const departureSent = useRef(false);
   const joinedRef = useRef(false);
   const lastPoll = useRef(0);
@@ -67,6 +199,8 @@ export default function N2MeetRoom() {
   const [podcastPeople, setPodcastPeople] = useState<Person[]>([]);
   const [currentRole, setCurrentRole] = useState<PodcastRole>("listener");
   const [canModerate, setCanModerate] = useState(false);
+  const [canManageMeet, setCanManageMeet] = useState(false);
+  const [confirmEndMeet, setConfirmEndMeet] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatOpen, setChatOpen] = useState(false);
   const [unreadChat, setUnreadChat] = useState(0);
@@ -79,6 +213,9 @@ export default function N2MeetRoom() {
   const [callDuration, setCallDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [qualityMode, setQualityMode] = useState<VideoQualityMode>("auto");
+  const [adaptivePreset, setAdaptivePreset] = useState<VideoQualityPreset>("standard");
+  const [qualitySnapshot, setQualitySnapshot] = useState<QualitySnapshot>({ level: "checking" });
   const chatOpenRef = useRef(false);
   const messageIdsRef = useRef(new Set<string>());
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,6 +234,8 @@ export default function N2MeetRoom() {
   const focusId = manualFocusId && videoParticipants.some(person => person.id === manualFocusId) ? manualFocusId : automaticFocusId;
   const focusedParticipant = videoParticipants.find(person => person.id === focusId) ?? videoParticipants[0];
   const thumbnailParticipants = videoParticipants.filter(person => person.id !== focusedParticipant?.id).sort((a, b) => Number(Boolean(a.local)) - Number(Boolean(b.local)));
+  const effectiveQuality = qualityMode === "auto" ? adaptivePreset : qualityMode;
+  qualityPresetRef.current = effectiveQuality;
   const roomPeople = useMemo(() => {
     const known = new Map<string, Person>();
     for (const person of invitedPeople) known.set(person.id, person);
@@ -155,7 +294,10 @@ export default function N2MeetRoom() {
     let pc = peers.current.get(id);
     if (pc) return pc;
     pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-    localStream.current?.getTracks().forEach(track => pc!.addTrack(track, localStream.current!));
+    localStream.current?.getTracks().forEach(track => {
+      const sender = pc!.addTrack(track, localStream.current!);
+      if (track.kind === "video") tuneVideoSender(sender, qualityPresetRef.current, peerPriorities.current.get(id) ?? "focus").catch(() => undefined);
+    });
     if (roomModeRef.current === "audio" && !localStream.current?.getAudioTracks().length) pc.addTransceiver("audio", { direction: "recvonly" });
     pc.onicecandidate = event => event.candidate && signal("ice", { candidate: event.candidate.toJSON() }, id).catch(() => undefined);
     pc.ontrack = event => {
@@ -189,8 +331,14 @@ export default function N2MeetRoom() {
     upsertRemote(item.senderId, { person: item.sender, cameraOn: typeof item.payload.cameraOn === "boolean" ? item.payload.cameraOn : undefined, audioOn: typeof item.payload.audioOn === "boolean" ? item.payload.audioOn : undefined });
     setConnectionStates(current => ({ ...current, [item.senderId]: item.type === "leave" ? "disconnected" : item.type === "join" ? "connecting" : "connected" }));
     if (item.type === "media" || item.type === "heartbeat") return;
-    if (item.type === "leave") { const existing = peers.current.get(item.senderId); existing?.close(); peers.current.delete(item.senderId); pendingIce.current.delete(item.senderId); setRemote(rows => rows.filter(row => row.id !== item.senderId)); return; }
+    if (item.type === "leave") { const existing = peers.current.get(item.senderId); existing?.close(); peers.current.delete(item.senderId); pendingIce.current.delete(item.senderId); peerPriorities.current.delete(item.senderId); setRemote(rows => rows.filter(row => row.id !== item.senderId)); return; }
     const pc = peer(item.senderId, item.sender);
+    if (item.type === "quality") {
+      const presentation: PresentationPriority = item.payload.presentation === "thumbnail" ? "thumbnail" : "focus";
+      peerPriorities.current.set(item.senderId, presentation);
+      await Promise.all(pc.getSenders().map(sender => tuneVideoSender(sender, qualityPresetRef.current, presentation).catch(() => undefined)));
+      return;
+    }
     const flushIce = async () => {
       const queued = pendingIce.current.get(item.senderId) ?? [];
       pendingIce.current.delete(item.senderId);
@@ -223,7 +371,7 @@ export default function N2MeetRoom() {
 
   async function acquireMicrophone() {
     if (localStream.current?.getAudioTracks().length) return;
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: microphoneId ? { deviceId: { exact: microphoneId } } : true, video: false });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { ...AUDIO_CONSTRAINTS, ...(microphoneId ? { deviceId: { exact: microphoneId } } : {}) }, video: false });
     localStream.current = stream;
     setLocalMedia(stream);
     for (const [id, pc] of peers.current) {
@@ -242,7 +390,7 @@ export default function N2MeetRoom() {
         const data = await meetingResponse.json();
         const currentMeeting = data.meeting as Meeting;
         if (currentMeeting.mode === "in_person") throw new Error("This is an in-person meet. Open its details for the location.");
-        if (currentMeeting.endedAt) throw new Error("This meet has ended because the host left.");
+        if (currentMeeting.endedAt) throw new Error("This meet has been ended by a host or co-host.");
         if (!active) return;
         const role = (data.currentRole ?? "listener") as PodcastRole;
         const participants = (data.participants ?? []) as Person[];
@@ -251,7 +399,7 @@ export default function N2MeetRoom() {
           ? [{ ...creator, role: "host" as PodcastRole }, ...participants]
           : participants.map(person => person.id === creator?.id ? { ...person, role: "host" as PodcastRole } : person);
         roomModeRef.current = currentMeeting.mode;
-        isHost.current = role === "host";
+        setCanManageMeet(Boolean(data.canManage));
         setMeeting(currentMeeting); setMe(data.currentMember as Person); setCurrentRole(role); setInvitedPeople(people);
         if (currentMeeting.mode === "audio") { await loadPodcast(); setJoinAttempt(value => value + 1); }
       } catch (cause) {
@@ -285,19 +433,20 @@ export default function N2MeetRoom() {
         if ((wantsAudio || wantsVideo) && !navigator.mediaDevices?.getUserMedia) throw new DOMException("Media devices are unavailable", "NotSupportedError");
         if (wantsVideo && wantsAudio) {
           try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } });
+            stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: videoConstraints(qualityPresetRef.current) });
           } catch (combinedFailure) {
             const fallback = new MediaStream();
-            try { (await navigator.mediaDevices.getUserMedia({ audio: true, video: false })).getTracks().forEach(track => fallback.addTrack(track)); } catch {}
-            try { (await navigator.mediaDevices.getUserMedia({ audio: false, video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } })).getTracks().forEach(track => fallback.addTrack(track)); } catch {}
+            try { (await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: false })).getTracks().forEach(track => fallback.addTrack(track)); } catch {}
+            try { (await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints(qualityPresetRef.current) })).getTracks().forEach(track => fallback.addTrack(track)); } catch {}
             if (!fallback.getTracks().length) throw combinedFailure;
             stream = fallback;
             setMediaWarning(fallback.getVideoTracks().length ? "Joined without microphone access." : "Joined without camera access.");
           }
         } else if (wantsAudio) {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS, video: false });
         }
         if (!active) { stream?.getTracks().forEach(track => track.stop()); return; }
+        stream?.getVideoTracks().forEach(track => { track.contentHint = "motion"; });
         localStream.current = stream; setLocalMedia(stream ?? undefined);
         if (localVideo.current && stream) localVideo.current.srcObject = stream;
         if (stream) await listDevices().catch(() => undefined);
@@ -332,13 +481,60 @@ export default function N2MeetRoom() {
     return () => {
       active = false;
       if (timer) clearInterval(timer); if (heartbeat) clearInterval(heartbeat); if (podcastTimer) clearInterval(podcastTimer); if (chatTimer) clearInterval(chatTimer);
-      if (joinedThisRun && !departureSent.current) signal(isHost.current ? "end" : "leave", {}).catch(() => undefined);
-      activePeers.forEach(pc => pc.close()); activePeers.clear();
+      if (joinedThisRun && !departureSent.current) signal("leave", {}).catch(() => undefined);
+      activePeers.forEach(pc => pc.close()); activePeers.clear(); peerPriorities.current.clear();
       localStream.current?.getTracks().forEach(track => track.stop()); localStream.current = null;
     };
   // The join attempt is deliberately the single restart trigger; live callbacks use refs for media state.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [joinAttempt]);
+
+  useEffect(() => {
+    if (!ready || isPodcast) return;
+    const track = localStream.current?.getVideoTracks()[0];
+    if (!track) return;
+    track.contentHint = "motion";
+    track.applyConstraints(videoConstraints(effectiveQuality)).catch(() => undefined);
+    for (const [id, pc] of peers.current) {
+      const presentation = peerPriorities.current.get(id) ?? "focus";
+      pc.getSenders().forEach(sender => tuneVideoSender(sender, effectiveQuality, presentation).catch(() => undefined));
+    }
+  }, [effectiveQuality, isPodcast, ready]);
+
+  const remoteParticipantIds = remote.map(person => person.id).sort().join(",");
+  useEffect(() => {
+    if (!ready || isPodcast) return;
+    for (const id of remoteParticipantIds.split(",").filter(Boolean)) {
+      signal("quality", { presentation: focusedParticipant?.id === id ? "focus" : "thumbnail" }, id).catch(() => undefined);
+    }
+  }, [focusedParticipant?.id, isPodcast, ready, remoteParticipantIds, signal]);
+
+  useEffect(() => {
+    if (!ready || isPodcast) return;
+    let active = true;
+    const inspect = async () => {
+      const hasPeers = peers.current.size > 0;
+      const snapshot = await readWebRtcQuality(peers.current.values(), localStream.current?.getVideoTracks()[0]).catch(() => ({ level: "checking" as const }));
+      if (!active) return;
+      setQualitySnapshot(snapshot);
+      if (qualityMode !== "auto" || !hasPeers) return;
+      if (snapshot.level === "poor" || snapshot.level === "fair") {
+        healthyQualitySamples.current = 0;
+        setAdaptivePreset(current => nextLowerPreset(current));
+      } else if (snapshot.level === "excellent") {
+        healthyQualitySamples.current += 1;
+        if (healthyQualitySamples.current >= 4) {
+          healthyQualitySamples.current = 0;
+          setAdaptivePreset(current => nextHigherPreset(current));
+        }
+      } else {
+        healthyQualitySamples.current = 0;
+      }
+    };
+    inspect();
+    const timer = window.setInterval(inspect, 4000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [isPodcast, qualityMode, ready]);
 
   useEffect(() => {
     if (!ready) return;
@@ -403,15 +599,17 @@ export default function N2MeetRoom() {
     const currentlyOff = kind === "audio" ? muted : cameraOff;
     if (!track && currentlyOff) {
       try {
-        const next = await navigator.mediaDevices.getUserMedia(kind === "audio" ? { audio: true, video: false } : { audio: false, video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } });
+        const next = await navigator.mediaDevices.getUserMedia(kind === "audio" ? { audio: AUDIO_CONSTRAINTS, video: false } : { audio: false, video: videoConstraints(qualityPresetRef.current) });
         track = kind === "audio" ? next.getAudioTracks()[0] : next.getVideoTracks()[0];
         if (!track) throw new DOMException(`${kind} is unavailable`, "NotFoundError");
+        if (kind === "video") track.contentHint = "motion";
         if (!localStream.current) localStream.current = new MediaStream();
         localStream.current.addTrack(track);
         setLocalMedia(localStream.current);
         if (localVideo.current) localVideo.current.srcObject = localStream.current;
         for (const [id, pc] of peers.current) {
-          pc.addTrack(track, localStream.current);
+          const sender = pc.addTrack(track, localStream.current);
+          if (kind === "video") await tuneVideoSender(sender, qualityPresetRef.current, peerPriorities.current.get(id) ?? "focus").catch(() => undefined);
           const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await signal("offer", { sdp: offer, cameraOn: kind === "video" ? true : !cameraOff, audioOn: kind === "audio" ? true : !muted }, id);
         }
         if (kind === "audio") setMuted(false); else setCameraOff(false);
@@ -431,15 +629,20 @@ export default function N2MeetRoom() {
   }
 
   async function switchInput(kind: "audio" | "video", deviceId: string) {
-    const next = await navigator.mediaDevices.getUserMedia(kind === "audio" ? { audio: { deviceId: { exact: deviceId } }, video: false } : { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    const next = await navigator.mediaDevices.getUserMedia(kind === "audio" ? { audio: { ...AUDIO_CONSTRAINTS, deviceId: { exact: deviceId } }, video: false } : { video: videoConstraints(qualityPresetRef.current, deviceId), audio: false });
     const nextTrack = kind === "audio" ? next.getAudioTracks()[0] : next.getVideoTracks()[0];
     const oldTrack = kind === "audio" ? localStream.current?.getAudioTracks()[0] : localStream.current?.getVideoTracks()[0];
     if (!nextTrack) return;
+    if (kind === "video") nextTrack.contentHint = "motion";
     if (!localStream.current) localStream.current = new MediaStream();
     if (oldTrack) { localStream.current.removeTrack(oldTrack); oldTrack.stop(); }
     localStream.current.addTrack(nextTrack);
     setLocalMedia(localStream.current);
-    for (const pc of peers.current.values()) { const sender = pc.getSenders().find(item => item.track?.kind === kind); if (sender) await sender.replaceTrack(nextTrack); else pc.addTrack(nextTrack, localStream.current); }
+    for (const [id, pc] of peers.current) {
+      let sender = pc.getSenders().find(item => item.track?.kind === kind);
+      if (sender) await sender.replaceTrack(nextTrack); else sender = pc.addTrack(nextTrack, localStream.current);
+      if (kind === "video") await tuneVideoSender(sender, qualityPresetRef.current, peerPriorities.current.get(id) ?? "focus").catch(() => undefined);
+    }
     if (localVideo.current) localVideo.current.srcObject = localStream.current;
     if (kind === "audio") { setMicrophoneId(deviceId); setMuted(false); mediaState.current.audioOn = true; } else { setCameraId(deviceId); setCameraOff(false); mediaState.current.cameraOn = true; }
     await signal("media", mediaState.current).catch(() => undefined);
@@ -465,8 +668,20 @@ export default function N2MeetRoom() {
 
   async function leave() {
     departureSent.current = true;
-    if (joinedRef.current) await signal(isHost.current ? "end" : "leave", {}).catch(() => undefined);
+    if (joinedRef.current) await signal("leave", {}).catch(() => undefined);
     window.location.href = "/?view=meet";
+  }
+  async function endMeet() {
+    departureSent.current = true;
+    try {
+      await signal("end", {});
+      window.location.href = "/?view=meet&ended=host";
+      return true;
+    } catch (cause) {
+      departureSent.current = false;
+      setError(cause instanceof Error ? cause.message : "Could not end this meet.");
+      return false;
+    }
   }
   async function toggleFullscreen() {
     if (!roomRef.current) return;
@@ -480,11 +695,20 @@ export default function N2MeetRoom() {
     return hours ? `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${remaining.toString().padStart(2, "0")}` : `${minutes.toString().padStart(2, "0")}:${remaining.toString().padStart(2, "0")}`;
   };
   const VisibilityIcon = meeting?.visibility === "public" ? Globe2 : meeting?.visibility === "project" ? Users : Lock;
+  const qualityLabel = qualitySnapshot.level === "checking" ? `${VIDEO_PROFILES[effectiveQuality].height}p target` : qualitySnapshot.level;
+  const qualityDetails = [
+    qualitySnapshot.width && qualitySnapshot.height ? `${qualitySnapshot.width}×${qualitySnapshot.height}` : undefined,
+    qualitySnapshot.fps ? `${Math.round(qualitySnapshot.fps)} fps` : undefined,
+    qualitySnapshot.roundTripMs ? `${qualitySnapshot.roundTripMs} ms` : undefined,
+    qualitySnapshot.availableKbps ? `${qualitySnapshot.availableKbps} kbps available` : undefined,
+    qualitySnapshot.packetLoss ? `${Math.round(qualitySnapshot.packetLoss * 100)}% loss` : undefined,
+  ].filter(Boolean).join(" · ");
 
   if (isPodcast) return <>
-    <PodcastRoom meeting={meeting} me={me} localMedia={localMedia} remote={remote} people={roomPeople} currentRole={currentRole} canModerate={canModerate} muted={muted} participantCount={participantCount} messages={messages} chatOpen={chatOpen} unreadChat={unreadChat} connectionStates={connectionStates} activeSpeaker={activeSpeaker} controlsVisible={controlsVisible} outputDeviceId={speakerId} setActiveSpeaker={setActiveSpeaker} setChatOpen={open => { setChatOpen(open); if (open) setUnreadChat(0); }} toggleMute={() => toggle("audio")} stageAction={stageAction} sendChat={sendChat} leave={leave} openSettings={() => setShowSettings(true)} onProfile={setProfilePreview} error={error}/>
+    <PodcastRoom meeting={meeting} me={me} localMedia={localMedia} remote={remote} people={roomPeople} currentRole={currentRole} canModerate={canModerate} canManageMeet={canManageMeet} muted={muted} participantCount={participantCount} messages={messages} chatOpen={chatOpen} unreadChat={unreadChat} connectionStates={connectionStates} activeSpeaker={activeSpeaker} controlsVisible={controlsVisible} outputDeviceId={speakerId} setActiveSpeaker={setActiveSpeaker} setChatOpen={open => { setChatOpen(open); if (open) setUnreadChat(0); }} toggleMute={() => toggle("audio")} stageAction={stageAction} sendChat={sendChat} leave={leave} requestEndMeet={() => setConfirmEndMeet(true)} openSettings={() => setShowSettings(true)} onProfile={setProfilePreview} error={error}/>
     {showSettings && <DeviceSettings devices={devices} microphoneId={microphoneId} cameraId={cameraId} speakerId={speakerId} video={false} onClose={() => setShowSettings(false)} onInput={switchInput} onSpeaker={setSpeakerId}/>}
-    {profilePreview && <MeetProfilePreview person={profilePreview} onClose={() => setProfilePreview(null)}/>}</>;
+    {profilePreview && <MeetProfilePreview person={profilePreview} onClose={() => setProfilePreview(null)}/>}
+    {confirmEndMeet && <ActionDialog eyebrow="END MEET" title="End this meet for everyone?" description="Everyone in the room will be disconnected. If you only want to leave, use the Leave control instead." confirmLabel="End meet for everyone" cancelLabel="Keep meet running" danger onClose={() => setConfirmEndMeet(false)} onConfirm={endMeet}/>}</>;
 
   return <main className={`video-room ${controlsVisible ? "controls-visible" : ""}`} ref={roomRef}>
     <header className="room-header"><a href="/" className="room-brand"><span>n2</span><b>nice 2 network</b></a><div className="room-heading"><strong>{meeting?.title ?? "n2 meet"}</strong><small><VisibilityIcon size={13}/>Video meet <i aria-hidden="true"/> <time>{formatDuration(callDuration)}</time></small></div><button className="room-count room-count-button" aria-label={`Show ${participantCount} of ${meeting?.maxParticipants ?? 8} participants`} onClick={() => setParticipantPanelOpen(true)}><Users size={18}/><strong>{participantCount}</strong><span>/ {meeting?.maxParticipants ?? 8}</span></button></header>
@@ -500,17 +724,27 @@ export default function N2MeetRoom() {
         {mediaWarning && <div className="media-warning">{mediaWarning}</div>}
       </div>
       {thumbnailParticipants.length > 0 && <div className="participant-filmstrip" aria-label="Other participants">{thumbnailParticipants.map(person => <ParticipantTile key={person.id} person={person.person} stream={person.stream} cameraOn={person.cameraOn} muted={!person.audioOn} local={person.local} videoRef={person.local ? localVideo : undefined} outputDeviceId={speakerId} compact active={activeSpeaker === person.id} onClick={() => setManualFocusId(person.id)} onSpeaking={speaking => setActiveSpeaker(current => speaking ? person.id : current === person.id ? null : current)}/>)}</div>}
-      {participantCount <= 4 && <div className="hd-marker">HD</div>}
+      <div className={`quality-marker quality-${qualitySnapshot.level}`} title={qualityDetails || `${VIDEO_PROFILES[effectiveQuality].height}p target`}><i aria-hidden="true"/><span>{qualityLabel}</span>{qualityDetails && <small>{qualityDetails}</small>}</div>
       <footer className="room-controls" aria-label="Call controls"><button aria-label={muted ? "Unmute microphone" : "Mute microphone"} className={muted ? "off" : ""} onClick={() => toggle("audio")}>{muted ? <MicOff/> : <Mic/>}</button><button aria-label={cameraOff ? "Turn camera on" : "Turn camera off"} className={cameraOff ? "off" : ""} onClick={() => toggle("video")}>{cameraOff ? <VideoOff/> : <Video/>}</button><button aria-label="Device settings" onClick={() => setShowSettings(true)}><Settings2/></button><button aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"} onClick={toggleFullscreen}>{isFullscreen ? <Minimize2/> : <Maximize2/>}</button><button aria-label="Leave call" className="hangup" onClick={leave}><PhoneOff/></button></footer>
     </section>}
-    {showSettings && <DeviceSettings devices={devices} microphoneId={microphoneId} cameraId={cameraId} speakerId={speakerId} video onClose={() => setShowSettings(false)} onInput={switchInput} onSpeaker={setSpeakerId}/>}
-    {participantPanelOpen && <ParticipantPanel people={roomPeople} currentUserId={me?.id} connectedIds={new Set(remote.map(person => person.id).concat(me?.id ? [me.id] : []))} connectionStates={connectionStates} onClose={() => setParticipantPanelOpen(false)} onProfile={person => { setParticipantPanelOpen(false); setProfilePreview(person); }}/>}
+    {showSettings && <DeviceSettings devices={devices} microphoneId={microphoneId} cameraId={cameraId} speakerId={speakerId} video qualityMode={qualityMode} effectiveQuality={effectiveQuality} qualitySnapshot={qualitySnapshot} onQuality={setQualityMode} onClose={() => setShowSettings(false)} onInput={switchInput} onSpeaker={setSpeakerId}/>}
+    {participantPanelOpen && <ParticipantPanel
+      people={roomPeople}
+      currentUserId={me?.id}
+      connectedIds={new Set(remote.map(person => person.id).concat(me?.id ? [me.id] : []))}
+      connectionStates={connectionStates}
+      canEnd={canManageMeet}
+      onEnd={() => { setParticipantPanelOpen(false); setConfirmEndMeet(true); }}
+      onClose={() => setParticipantPanelOpen(false)}
+      onProfile={person => { setParticipantPanelOpen(false); setProfilePreview(person); }}
+    />}
     {profilePreview && <MeetProfilePreview person={profilePreview} onClose={() => setProfilePreview(null)}/>}
+    {confirmEndMeet && <ActionDialog eyebrow="END MEET" title="End this meet for everyone?" description="Everyone in the room will be disconnected. If you only want to leave, use the Leave control instead." confirmLabel="End meet for everyone" cancelLabel="Keep meet running" danger onClose={() => setConfirmEndMeet(false)} onConfirm={endMeet}/>}
   </main>;
 }
 
-function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, canModerate, muted, participantCount, messages, chatOpen, unreadChat, connectionStates, activeSpeaker, controlsVisible, outputDeviceId, setActiveSpeaker, setChatOpen, toggleMute, stageAction, sendChat, leave, openSettings, onProfile, error }: {
-  meeting: Meeting | null; me: Person | null; localMedia?: MediaStream; remote: RemoteParticipant[]; people: Person[]; currentRole: PodcastRole; canModerate: boolean; muted: boolean; participantCount: number; messages: ChatMessage[]; chatOpen: boolean; unreadChat: number; connectionStates: Record<string, ConnectionStatus>; activeSpeaker: string | null; controlsVisible: boolean; outputDeviceId: string; setActiveSpeaker: (id: string | null) => void; setChatOpen: (open: boolean) => void; toggleMute: () => void; stageAction: (action: "request_speak" | "cancel_request" | "approve" | "dismiss" | "mute", userId?: string) => void; sendChat: (event: FormEvent<HTMLFormElement>) => void; leave: () => void; openSettings: () => void; onProfile: (person: Person) => void; error: string;
+function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, canModerate, canManageMeet, muted, participantCount, messages, chatOpen, unreadChat, connectionStates, activeSpeaker, controlsVisible, outputDeviceId, setActiveSpeaker, setChatOpen, toggleMute, stageAction, sendChat, leave, requestEndMeet, openSettings, onProfile, error }: {
+  meeting: Meeting | null; me: Person | null; localMedia?: MediaStream; remote: RemoteParticipant[]; people: Person[]; currentRole: PodcastRole; canModerate: boolean; canManageMeet: boolean; muted: boolean; participantCount: number; messages: ChatMessage[]; chatOpen: boolean; unreadChat: number; connectionStates: Record<string, ConnectionStatus>; activeSpeaker: string | null; controlsVisible: boolean; outputDeviceId: string; setActiveSpeaker: (id: string | null) => void; setChatOpen: (open: boolean) => void; toggleMute: () => void; stageAction: (action: "request_speak" | "cancel_request" | "approve" | "dismiss" | "mute", userId?: string) => void; sendChat: (event: FormEvent<HTMLFormElement>) => void; leave: () => void; requestEndMeet: () => void; openSettings: () => void; onProfile: (person: Person) => void; error: string;
 }) {
   const [participantPanelOpen, setParticipantPanelOpen] = useState(false);
   const remoteById = new Map(remote.map(person => [person.id, person]));
@@ -561,7 +795,16 @@ function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, can
       <button className="chat-toggle" onClick={() => setChatOpen(!chatOpen)}><MessageCircle/><span>{canModerate ? "Host console" : "Chat & questions"}</span>{!chatOpen && unreadChat > 0 && <b>{unreadChat > 99 ? "99+" : unreadChat}</b>}</button>
       <button className="hangup" onClick={leave}><PhoneOff/><span>Leave</span></button>
     </footer>
-    {participantPanelOpen && <ParticipantPanel people={people} currentUserId={me?.id} connectedIds={connectedIds} connectionStates={connectionStates} onClose={() => setParticipantPanelOpen(false)} onProfile={person => { setParticipantPanelOpen(false); onProfile(person); }}/>}
+    {participantPanelOpen && <ParticipantPanel
+      people={people}
+      currentUserId={me?.id}
+      connectedIds={connectedIds}
+      connectionStates={connectionStates}
+      canEnd={canManageMeet}
+      onEnd={() => { setParticipantPanelOpen(false); requestEndMeet(); }}
+      onClose={() => setParticipantPanelOpen(false)}
+      onProfile={person => { setParticipantPanelOpen(false); onProfile(person); }}
+    />}
   </main>;
 }
 
@@ -606,10 +849,10 @@ function RemoteAudio({ stream, outputDeviceId }: { stream: MediaStream; outputDe
   return <audio ref={ref} autoPlay/>;
 }
 
-function ParticipantPanel({ people, currentUserId, connectedIds, connectionStates, onClose, onProfile }: { people: Person[]; currentUserId?: string; connectedIds: Set<string>; connectionStates: Record<string, ConnectionStatus>; onClose: () => void; onProfile: (person: Person) => void }) {
+function ParticipantPanel({ people, currentUserId, connectedIds, connectionStates, canEnd = false, onEnd, onClose, onProfile }: { people: Person[]; currentUserId?: string; connectedIds: Set<string>; connectionStates: Record<string, ConnectionStatus>; canEnd?: boolean; onEnd?: () => void; onClose: () => void; onProfile: (person: Person) => void }) {
   const unique = [...new Map(people.map(person => [person.id, person])).values()];
   const statusFor = (person: Person): ConnectionStatus => person.id === currentUserId || connectedIds.has(person.id) ? (connectionStates[person.id] ?? "connected") : connectionStates[person.id] ?? (person.status === "left" ? "disconnected" : "awaiting");
-  return <div className="meet-panel-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && onClose()}><aside className="meeting-participant-panel"><header><div><span>IN THIS ROOM</span><h2>{unique.length} people</h2></div><button onClick={onClose}><X/></button></header><div>{unique.map(person => { const status = statusFor(person); return <button key={person.id} onClick={() => onProfile(person)}><span className={`panel-avatar status-${status}`}>{status === "connected" ? <PersonImage src={person.image}/> : <small>{status === "awaiting" ? "Awaiting to join" : status === "connecting" ? "Connecting" : "Disconnected"}</small>}</span><span><strong>{person.name ?? "n2 member"}{person.id === currentUserId ? " (you)" : ""}</strong><small>{person.role ? person.role.replace("_", " ") : person.profession || "participant"}</small></span><em className={`status-dot ${status}`}>{status === "connected" ? "Connected" : status === "awaiting" ? "Awaiting" : status}</em></button>; })}</div></aside></div>;
+  return <div className="meet-panel-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && onClose()}><aside className="meeting-participant-panel"><header><div><span>IN THIS ROOM</span><h2>{unique.length} people</h2></div><button onClick={onClose}><X/></button></header><div>{unique.map(person => { const status = statusFor(person); return <button key={person.id} onClick={() => onProfile(person)}><span className={`panel-avatar status-${status}`}>{status === "connected" ? <PersonImage src={person.image}/> : <small>{status === "awaiting" ? "Awaiting to join" : status === "connecting" ? "Connecting" : "Disconnected"}</small>}</span><span><strong>{person.name ?? "n2 member"}{person.id === currentUserId ? " (you)" : ""}</strong><small>{person.role ? person.role.replace("_", " ") : person.profession || "participant"}</small></span><em className={`status-dot ${status}`}>{status === "connected" ? "Connected" : status === "awaiting" ? "Awaiting" : status}</em></button>; })}</div>{canEnd && onEnd && <footer><button className="end-meet-button" onClick={onEnd}><PhoneOff size={16}/>End meet for everyone</button><small>Leaving the room will keep it running for everyone else.</small></footer>}</aside></div>;
 }
 
 function MeetProfilePreview({ person, onClose }: { person: Person; onClose: () => void }) {
@@ -626,8 +869,8 @@ function useSpeaking(stream: MediaStream | undefined, enabled: boolean, onSpeaki
   }, [stream, enabled]);
 }
 
-function DeviceSettings({ devices, microphoneId, cameraId, speakerId, video, onClose, onInput, onSpeaker }: { devices: { microphones: DeviceChoice[]; cameras: DeviceChoice[]; speakers: DeviceChoice[] }; microphoneId: string; cameraId: string; speakerId: string; video: boolean; onClose: () => void; onInput: (kind: "audio" | "video", id: string) => void; onSpeaker: (id: string) => void }) {
-  return <div className="room-settings-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="room-settings"><header><div><span>YOUR DEVICES</span><h2>Audio & video settings</h2></div><button onClick={onClose}><X/></button></header><label><Mic/>Microphone<select value={microphoneId} onChange={event => onInput("audio", event.target.value)}>{devices.microphones.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label>{video && <label><Camera/>Camera<select value={cameraId} onChange={event => onInput("video", event.target.value)}>{devices.cameras.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label>}<label><Volume2/>Speakers<select value={speakerId} onChange={event => onSpeaker(event.target.value)} disabled={!devices.speakers.length}>{devices.speakers.length ? devices.speakers.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>) : <option>System default</option>}</select></label><button className="primary-action" onClick={onClose}><Check/>Done</button></section></div>;
+function DeviceSettings({ devices, microphoneId, cameraId, speakerId, video, qualityMode, effectiveQuality, qualitySnapshot, onQuality, onClose, onInput, onSpeaker }: { devices: { microphones: DeviceChoice[]; cameras: DeviceChoice[]; speakers: DeviceChoice[] }; microphoneId: string; cameraId: string; speakerId: string; video: boolean; qualityMode?: VideoQualityMode; effectiveQuality?: VideoQualityPreset; qualitySnapshot?: QualitySnapshot; onQuality?: (quality: VideoQualityMode) => void; onClose: () => void; onInput: (kind: "audio" | "video", id: string) => void; onSpeaker: (id: string) => void }) {
+  return <div className="room-settings-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="room-settings"><header><div><span>YOUR DEVICES</span><h2>Audio & video settings</h2></div><button onClick={onClose}><X/></button></header><label><Mic/>Microphone<select value={microphoneId} onChange={event => onInput("audio", event.target.value)}>{devices.microphones.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label>{video && <><label><Camera/>Camera<select value={cameraId} onChange={event => onInput("video", event.target.value)}>{devices.cameras.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}</select></label><label><Video/>Video quality<select value={qualityMode} onChange={event => onQuality?.(event.target.value as VideoQualityMode)}><option value="auto">Auto (recommended)</option><option value="high">High · up to 1080p</option><option value="standard">Standard · up to 720p</option><option value="data">Data saver · up to 360p</option></select></label><div className="quality-settings-summary"><span className={`quality-dot quality-${qualitySnapshot?.level ?? "checking"}`}/><div><strong>{qualityMode === "auto" ? `Auto is using ${effectiveQuality}` : `${effectiveQuality} quality`}</strong><small>{qualitySnapshot?.width && qualitySnapshot?.height ? `${qualitySnapshot.width}×${qualitySnapshot.height}` : "Measuring video"}{qualitySnapshot?.fps ? ` · ${Math.round(qualitySnapshot.fps)} fps` : ""}{qualitySnapshot?.roundTripMs ? ` · ${qualitySnapshot.roundTripMs} ms` : ""}{qualitySnapshot?.availableKbps ? ` · ${qualitySnapshot.availableKbps} kbps` : ""}</small></div></div></>}<label><Volume2/>Speakers<select value={speakerId} onChange={event => onSpeaker(event.target.value)} disabled={!devices.speakers.length}>{devices.speakers.length ? devices.speakers.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>) : <option>System default</option>}</select></label><button className="primary-action" onClick={onClose}><Check/>Done</button></section></div>;
 }
 
 function ParticipantTile({ person, stream, cameraOn, muted, local = false, compact = false, active = false, videoRef, outputDeviceId, onClick, onSpeaking }: { person: Person; stream?: MediaStream; cameraOn: boolean; muted: boolean; local?: boolean; compact?: boolean; active?: boolean; videoRef?: RefObject<HTMLVideoElement | null>; outputDeviceId: string; onClick?: () => void; onSpeaking?: (speaking: boolean) => void }) {

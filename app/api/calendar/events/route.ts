@@ -6,7 +6,7 @@ import { meetingParticipants, meetings, projectMembers, safetyRisks, savedItems,
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
-import { MEETING_CAPACITY, type MeetingMode } from "@/lib/meetings";
+import { MEETING_CAPACITY, meetingCohostIds, validateMeetingCohostCandidates, type MeetingMode } from "@/lib/meetings";
 import { createNotifications } from "@/lib/notifications";
 
 const schema = z.object({
@@ -88,7 +88,9 @@ export async function GET() {
       isPinned: row.isPinned,
       isBookmarked: row.isBookmarked,
       participantProfiles: byMeeting.get(row.meeting.id) ?? [],
-      canEdit: row.meeting.createdBy === member.id,
+      canManage: row.meeting.createdBy === member.id || (byMeeting.get(row.meeting.id) ?? []).some(person => person.id === member.id && person.role === "cohost"),
+      canDelete: row.meeting.createdBy === member.id,
+      canEdit: row.meeting.createdBy === member.id || (byMeeting.get(row.meeting.id) ?? []).some(person => person.id === member.id && person.role === "cohost"),
     })) });
   } catch (error) {
     return apiError(error);
@@ -102,7 +104,11 @@ export async function POST(request: Request) {
     const db = getDb();
     const mode = modeFor(input);
     const maxParticipants = MEETING_CAPACITY[mode];
+    if (new Set(input.attendeeIds).size !== input.attendeeIds.length) throw new ApiError(400, "Choose each attendee only once");
+    if (input.attendeeIds.includes(member.id)) throw new ApiError(400, "The primary host cannot also be selected as an attendee");
     if (input.attendeeIds.length > maxParticipants - 1) throw new ApiError(400, `Choose up to ${maxParticipants - 1} guests for this ${mode === "in_person" ? "in-person" : mode} meet`);
+    const cohostIds = meetingCohostIds(input.attendeeIds, input.attendeeRoles);
+    await validateMeetingCohostCandidates(member.id, cohostIds);
     if (input.visibility === "project" && input.projectId) {
       const [membership] = await db.select({ id: projectMembers.userId }).from(projectMembers).where(and(eq(projectMembers.projectId, input.projectId), eq(projectMembers.userId, member.id))).limit(1);
       if (!membership) throw new ApiError(403, "Join this project before creating its meet");
@@ -139,7 +145,7 @@ export async function POST(request: Request) {
     if (selectedMembers.length) await db.insert(meetingParticipants).values(selectedMembers.map(person => ({
       meetingId: meeting.id,
       userId: person.id,
-      role: mode === "audio" ? (input.attendeeRoles[person.id] ?? "listener") : "speaker",
+      role: input.attendeeRoles[person.id] === "cohost" ? "cohost" : mode === "audio" ? (input.attendeeRoles[person.id] ?? "listener") : "speaker",
       speakerStatus: mode === "audio" && input.attendeeRoles[person.id] !== "listener" ? "approved" : "none",
     })));
     if (mode !== "in_person") {
@@ -151,13 +157,13 @@ export async function POST(request: Request) {
       userId: person.id,
       actorId: member.id,
       type: "meet" as const,
-      title: `${member.name ?? "An n2 member"} invited you to a meet`,
-      body: `${input.title} · ${new Date(input.startsAt).toLocaleString("en-GB")}`,
+      title: cohostIds.includes(person.id) ? `${member.name ?? "An n2 member"} made you a co-host` : `${member.name ?? "An n2 member"} invited you to a meet`,
+      body: `${input.title} · ${cohostIds.includes(person.id) ? "Co-host" : "Attendee"} · ${new Date(input.startsAt).toLocaleString("en-GB")}`,
       entityType: "meeting",
       entityId: meeting.id,
       href: "/?view=meet",
     })));
-    await audit(member.id, "meeting.created", "meeting", meeting.id, { provider, mode, projectId: input.projectId, visibility: input.visibility, attendeeCount: attendees.length });
+    await audit(member.id, "meeting.created", "meeting", meeting.id, { provider, mode, projectId: input.projectId, visibility: input.visibility, attendeeCount: attendees.length, cohostIds });
     await trackProductEvent({ actorId: member.id, ageBand: creator?.ageBand, event: "meeting_created", entityType: "meeting", entityId: meeting.id, properties: { provider, mode, visibility: input.visibility } });
     return NextResponse.json(meeting, { status: 201 });
   } catch (error) {

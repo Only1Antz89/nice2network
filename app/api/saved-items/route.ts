@@ -2,7 +2,7 @@ import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { meetings, projectComments, projects, savedItems, timelinePosts, users } from "@/db/schema";
+import { follows, meetings, privacySettings, projectComments, projects, savedItems, timelinePosts, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { trackProductEvent } from "@/lib/analytics";
 import { requirePostView, requireProjectView } from "@/lib/content-access";
@@ -29,20 +29,30 @@ async function assertVisible(userId:string,entityType:"project"|"comment"|"meeti
   await requireMeetingAccess(entityId,userId);
 }
 
-export async function GET(){
+export async function GET(request:Request){
   try{
-    const member=await requireMember(),db=getDb();
-    const saved=await db.select().from(savedItems).where(and(eq(savedItems.userId,member.id),or(eq(savedItems.bookmarked,true),eq(savedItems.pinned,true)))).orderBy(desc(savedItems.pinned),desc(savedItems.updatedAt)).limit(200);
+    const member=await requireMember(),db=getDb(),targetId=new URL(request.url).searchParams.get("profile")??member.id,isPublicPins=targetId!==member.id;
+    if(isPublicPins){
+      const [target]=await db.select({id:users.id,visibility:privacySettings.profileVisibility}).from(users).leftJoin(privacySettings,eq(privacySettings.userId,users.id)).where(and(eq(users.id,targetId),eq(users.status,"active"))).limit(1);
+      if(!target)throw new ApiError(404,"Profile not found");
+      if(target.visibility==="private")throw new ApiError(403,"This profile is private");
+      if(target.visibility==="connections"){
+        const directions=await db.select({followerId:follows.followerId,followingId:follows.followingId}).from(follows).where(or(and(eq(follows.followerId,member.id),eq(follows.followingId,targetId)),and(eq(follows.followerId,targetId),eq(follows.followingId,member.id))));
+        const mutual=directions.some(row=>row.followerId===member.id)&&directions.some(row=>row.followerId===targetId);
+        if(!mutual)throw new ApiError(403,"This profile is visible to mutual connections");
+      }
+    }
+    const saved=await db.select().from(savedItems).where(and(eq(savedItems.userId,targetId),isPublicPins?eq(savedItems.pinned,true):or(eq(savedItems.bookmarked,true),eq(savedItems.pinned,true)))).orderBy(desc(savedItems.pinned),desc(savedItems.updatedAt)).limit(isPublicPins?3:200);
     const visibleSaved=(await Promise.all(saved.map(async item=>{try{await assertVisible(member.id,item.entityType as "project"|"comment"|"meeting"|"post",item.entityId);return item}catch{return null}}))).filter((item):item is typeof saved[number]=>Boolean(item));
     const projectIds=visibleSaved.filter(item=>item.entityType==="project").map(item=>item.entityId),commentIds=visibleSaved.filter(item=>item.entityType==="comment").map(item=>item.entityId),meetingIds=visibleSaved.filter(item=>item.entityType==="meeting").map(item=>item.entityId),postIds=visibleSaved.filter(item=>item.entityType==="post").map(item=>item.entityId);
     const [projectRows,commentRows,meetingRows,postRows]=await Promise.all([
-      projectIds.length?db.select({id:projects.id,title:projects.title,summary:projects.summary,accent:projects.accent}).from(projects).where(inArray(projects.id,projectIds)):[],
-      commentIds.length?db.select({id:projectComments.id,body:projectComments.body,projectTitle:projects.title,authorName:users.name}).from(projectComments).innerJoin(projects,eq(projects.id,projectComments.projectId)).innerJoin(users,eq(users.id,projectComments.authorId)).where(inArray(projectComments.id,commentIds)):[],
-      meetingIds.length?db.select({id:meetings.id,title:meetings.title,startsAt:meetings.startsAt,provider:meetings.provider}).from(meetings).where(inArray(meetings.id,meetingIds)):[],
-      postIds.length?db.select({id:timelinePosts.id,body:timelinePosts.body,attachmentType:timelinePosts.attachmentType,attachmentUrl:timelinePosts.attachmentUrl}).from(timelinePosts).where(and(inArray(timelinePosts.id,postIds),eq(timelinePosts.status,"visible"))):[],
+      projectIds.length?db.select({id:projects.id,title:projects.title,summary:projects.summary,accent:projects.accent,industry:projects.industry,stage:projects.stage,ownerName:users.name,ownerImage:users.image,createdAt:projects.createdAt}).from(projects).innerJoin(users,eq(users.id,projects.ownerId)).where(inArray(projects.id,projectIds)):[],
+      commentIds.length?db.select({id:projectComments.id,body:projectComments.body,projectId:projects.id,projectTitle:projects.title,authorName:users.name,authorImage:users.image,createdAt:projectComments.createdAt}).from(projectComments).innerJoin(projects,eq(projects.id,projectComments.projectId)).innerJoin(users,eq(users.id,projectComments.authorId)).where(inArray(projectComments.id,commentIds)):[],
+      meetingIds.length?db.select({id:meetings.id,title:meetings.title,description:meetings.description,startsAt:meetings.startsAt,endsAt:meetings.endsAt,provider:meetings.provider,mode:meetings.mode,location:meetings.location,thumbnailUrl:meetings.thumbnailUrl,hostName:users.name,hostImage:users.image}).from(meetings).innerJoin(users,eq(users.id,meetings.createdBy)).where(inArray(meetings.id,meetingIds)):[],
+      postIds.length?db.select({id:timelinePosts.id,body:timelinePosts.body,attachmentType:timelinePosts.attachmentType,attachmentUrl:timelinePosts.attachmentUrl,videoUrl:timelinePosts.videoUrl,createdAt:timelinePosts.createdAt,authorName:users.name,authorImage:users.image}).from(timelinePosts).innerJoin(users,eq(users.id,timelinePosts.authorId)).where(and(inArray(timelinePosts.id,postIds),eq(timelinePosts.status,"visible"))):[],
     ]);
     const details=new Map<string,Record<string,unknown>>([...projectRows.map(row=>[`project:${row.id}`,row] as const),...commentRows.map(row=>[`comment:${row.id}`,row] as const),...meetingRows.map(row=>[`meeting:${row.id}`,row] as const),...postRows.map(row=>[`post:${row.id}`,row] as const)]);
-    return NextResponse.json({items:visibleSaved.map(item=>({...item,details:details.get(`${item.entityType}:${item.entityId}`)??null})).filter(item=>item.details),pinCount:visibleSaved.filter(item=>item.pinned).length});
+    return NextResponse.json({items:visibleSaved.map(item=>{const detail=details.get(`${item.entityType}:${item.entityId}`)??null;return {...item,details:detail,href:item.entityType==="project"?`/?view=projects&project=${item.entityId}`:item.entityType==="comment"&&detail?.projectId?`/?view=projects&project=${detail.projectId}`:item.entityType==="meeting"?`/?view=meet&meeting=${item.entityId}`:`/?post=${item.entityId}`}}).filter(item=>item.details),pinCount:visibleSaved.filter(item=>item.pinned).length});
   }catch(error){return apiError(error)}
 }
 

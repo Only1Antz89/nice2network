@@ -4,17 +4,16 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("project recruitment is owner-only on both the client and server", async () => {
+test("project recruitment is restricted to owners and co-owners", async () => {
   const [page, roles] = await Promise.all([
     read("app/page.tsx"),
     read("app/api/projects/[projectId]/roles/route.ts"),
   ]);
 
-  assert.match(page, /canRecruit = project\.ownerId === project\.currentUserId/);
+  assert.match(page, /canRecruit = project\.isOwner/);
   assert.match(page, /professionRequestOpen && canRecruit/);
   assert.match(page, /aiAssistOpen && canRecruit/);
-  assert.match(roles, /eq\(projects\.ownerId, member\.id\)/);
-  assert.match(roles, /Only a project owner can add roles/);
+  assert.match(roles, /requireProjectOwner\(member\.id, projectId\)/);
 });
 
 test("profession requests and AI project reviews use separate dialogs", async () => {

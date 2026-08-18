@@ -12,6 +12,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
     const member = await requireMember(), { projectId } = await params, { summary } = z.object({ summary: z.string().trim().min(20).max(3000) }).parse(await request.json()), db = getDb();
     const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.ownerId, member.id))).limit(1);
     if (!project) throw new ApiError(403, "Only the project owner can complete it");
+    if (project.status === "pending_deletion") throw new ApiError(409, "This project is pending deletion and is read-only");
+    if (project.status === "deleted") throw new ApiError(404, "Project not found");
     await db.transaction(async tx => {
       await tx.update(projects).set({ status: "completed", completedAt: new Date(), updatedAt: new Date() }).where(eq(projects.id, projectId));
       await tx.insert(projectUpdates).values({ projectId, authorId: member.id, type: "completion", body: summary });

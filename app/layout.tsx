@@ -8,6 +8,8 @@ import "./dark-theme.css";
 import SiteAnalytics from "./site-analytics";
 import AccessibilityController from "@/components/accessibility-controller";
 import CookieBanner from "@/components/cookie-banner";
+import DeploymentRefresh from "@/components/deployment-refresh";
+import { getDeploymentVersion } from "@/lib/deployment-version";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -33,5 +35,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable} ${notoColorEmoji.variable}`}><AccessibilityController/>{children}<CookieBanner/><SiteAnalytics/></body></html>;
+  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable} ${notoColorEmoji.variable}`}><AccessibilityController/><DeploymentRefresh initialVersion={getDeploymentVersion()}/>{children}<CookieBanner/><SiteAnalytics/></body></html>;
 }

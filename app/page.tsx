@@ -58,8 +58,9 @@ import {
   Accessibility,
   X,
 } from "lucide-react";
-import { FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
+import Link from "next/link";
 import EmojiPicker from "@/components/emoji-picker";
 import GuestAuthPrompt from "@/components/guest-auth-prompt";
 import HelpPanel from "@/components/help-panel";
@@ -119,12 +120,22 @@ type ProjectRoleRecord = {
   professions?: string[];
   requiredSkills?: string[];
   usefulSkills?: string[];
+  workMode?: "remote" | "hybrid" | "in_person" | null;
+  applicationCount?: number;
+  pendingApplicationCount?: number;
 };
 type ContributionTarget = {
   projectId: string;
   projectTitle: string;
   roles: ProjectRoleRecord[];
   initialRoleId?: string;
+};
+type CoOwnerCandidate = {
+  id: string;
+  username: string | null;
+  name: string | null;
+  image: string | null;
+  profession: string | null;
 };
 type ProjectRecord = {
   id: string;
@@ -146,6 +157,7 @@ type ProjectRecord = {
   ownerIsAdmin?: boolean;
   isDemo?: boolean;
   isOwner?: boolean;
+  isPrimaryOwner?: boolean;
   isMember?: boolean;
   isFollowingProject?: boolean;
   isPinned?: boolean;
@@ -158,6 +170,10 @@ type ProjectRecord = {
   recommendationReasons?: string[];
   matchedRole?: string;
   eyeMomentum?: number;
+  deletionRequestedAt?: string | null;
+  deletionScheduledAt?: string | null;
+  deletionRequestedBy?: string | null;
+  isReadOnly?: boolean;
   roles?: ProjectRoleRecord[];
   team?: Array<{
     userId: string;
@@ -167,6 +183,15 @@ type ProjectRecord = {
     profession: string | null;
     department: string | null;
     membershipRole: string;
+  }>;
+  pendingCoOwners?: Array<{
+    invitationId: string;
+    userId: string;
+    name: string | null;
+    username: string | null;
+    image: string | null;
+    profession: string | null;
+    expiresAt: string;
   }>;
   createdAt: string;
 };
@@ -296,6 +321,16 @@ type ProfileRecord = {
     description: string | null;
   }>;
 };
+type SavedContentItem = {
+  id: string;
+  entityType: "project" | "comment" | "meeting" | "post";
+  entityId: string;
+  pinned: boolean;
+  bookmarked: boolean;
+  updatedAt: string;
+  href: string;
+  details: Record<string, unknown>;
+};
 type PeopleSuggestionRecord = {
   recommendationId: string;
   id: string;
@@ -305,6 +340,9 @@ type PeopleSuggestionRecord = {
   location: string | null;
   score: number;
   reasons: string[];
+  components: Record<string, number>;
+  headline?: string;
+  description?: string;
   isFollowing: boolean;
   isMutual: boolean;
 };
@@ -365,6 +403,10 @@ type ProjectDetailRecord = ProjectRecord & {
   membershipRole?: string | null;
   isFollowingProject: boolean;
   involvementStatus?: string | null;
+  fundingGoal: number | null;
+  shareLimit: number | null;
+  openToInvestment: boolean;
+  openToContributions: boolean;
   team: Array<{
     userId: string;
     name: string | null;
@@ -414,12 +456,39 @@ type ProjectDetailRecord = ProjectRecord & {
     applicantLocation: string | null;
     applicantSkills: string[];
     applicantInterests: string[];
-    fit: { score: number; professionMatch: boolean; requiredMatches: string[]; usefulMatches: string[] };
+    fit: { score: number; professionMatch: boolean; requiredMatches: string[]; usefulMatches: string[]; mismatch: boolean };
     roleId: string;
     roleTitle: string;
     roleDepartment: string;
   }>;
   pendingApplicationCount: number;
+  involvementRequests: Array<{
+    id: string;
+    status: string;
+    message: string;
+    services: string[];
+    createdAt: string;
+    userId: string;
+    userName: string | null;
+    userImage: string | null;
+    userProfession: string | null;
+    userLocation: string | null;
+    userSkills: string[];
+    userInterests: string[];
+    profileBrief: string;
+  }>;
+  pendingInvolvementCount: number;
+  fundingInterests: Array<{
+    id: string;
+    type: "invest" | "donate" | "contribute" | "share_request";
+    amount: number | null;
+    message: string | null;
+    status: string;
+    createdAt: string;
+    userId: string;
+    userName: string | null;
+    userImage: string | null;
+  }>;
 };
 
 function formatNetworkDate(
@@ -508,47 +577,52 @@ function activeMentionAtCursor(
 
 function MentionSuggestions({
   value,
-  input,
+  inputRef,
   setValue,
   allowedIds,
   placement,
 }: {
   value: string;
-  input: HTMLInputElement | HTMLTextAreaElement | null;
+  inputRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   setValue: (value: string) => void;
   allowedIds?: string[];
   placement: "post" | "reply" | "message";
 }) {
-  const activeMention = activeMentionAtCursor(value, input);
+  const [activeMention, setActiveMention] = useState<ReturnType<typeof activeMentionAtCursor>>(null);
   const query = activeMention?.query ?? "";
+  const mentionStart = activeMention?.start ?? -1;
   const [results, setResults] = useState<MentionPerson[]>([]),
     [loading, setLoading] = useState(false);
   const allowedKey = allowedIds?.join(",") ?? "";
   useEffect(() => {
-    if (!activeMention) {
+    setActiveMention(activeMentionAtCursor(value, inputRef.current));
+  }, [inputRef, value]);
+  useEffect(() => {
+    if (mentionStart < 0) {
       setResults([]);
       setLoading(false);
       return;
     }
+    const allowed = allowedKey ? new Set(allowedKey.split(",")) : null;
     const controller = new AbortController(), timer = setTimeout(() => {
       setLoading(true);
       fetch(`/api/search?q=${encodeURIComponent(query.trim())}&scope=connections`, { signal: controller.signal })
         .then((response) => response.ok ? response.json() : { people: [] })
         .then((data) => setResults((data.people ?? []).filter((person: MentionPerson) =>
-          person.username && (!allowedIds || allowedIds.includes(person.id)),
+          person.username && (!allowed || allowed.has(person.id)),
         )))
         .catch(() => undefined)
         .finally(() => setLoading(false));
     }, 180);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [Boolean(activeMention), query, allowedKey]);
+  }, [mentionStart, query, allowedKey]);
   if (!activeMention) return null;
   return (
     <div className={`mention-suggestions-anchor mention-${placement}`}>
       <div className="mention-popover" role="listbox" aria-label="Connected profiles">
         <div className="mention-query"><Search size={14}/><span>{query ? `Connected profiles matching @${query}` : "Choose a connected profile"}</span></div>
         <div className="mention-results">
-          {results.slice(0, 8).map((person) => <button type="button" role="option" aria-selected="false" key={person.id} onClick={() => replaceActiveMention(value, person.username, input, setValue)}>
+          {results.slice(0, 8).map((person) => <button type="button" role="option" aria-selected="false" key={person.id} onClick={() => replaceActiveMention(value, person.username, inputRef.current, setValue)}>
             <Avatar person={{ name: person.name ?? person.username, role: person.profession ?? `@${person.username}`, img: person.image }} size="sm"/>
             <span><strong>{person.name ?? person.username}</strong><small>@{person.username}</small></span>
           </button>)}
@@ -1185,7 +1259,27 @@ function ProjectMenu({
       "edit" | "involve" | "leave" | "delete" | null
     >(null),
     [pinned, setPinned] = useState(Boolean(project.isPinned)),
-    [bookmarked, setBookmarked] = useState(Boolean(project.isBookmarked));
+    [bookmarked, setBookmarked] = useState(Boolean(project.isBookmarked)),
+    [deletionPlan, setDeletionPlan] = useState<{
+      deadline: string;
+      immediate: boolean;
+      explanation: string[];
+    } | null>(null);
+  async function openDeletionDialog() {
+    const response = await fetch(`/api/projects/${project.id}/deletion`), result = await response.json();
+    if (!response.ok) return onToast?.(result.error ?? "Could not calculate the deletion window.");
+    setDeletionPlan(result);
+    setDialog("delete");
+    setOpen(false);
+  }
+  async function cancelDeletion() {
+    const response = await fetch(`/api/projects/${project.id}/deletion/cancel`, { method: "POST" }), result = await response.json();
+    if (response.ok) {
+      onChanged?.({ ...project, status: result.status, deletionRequestedAt: null, deletionScheduledAt: null, deletionRequestedBy: null, isReadOnly: false });
+      onToast?.("Project deletion cancelled.");
+    } else onToast?.(result.error ?? "Could not cancel deletion.");
+    setOpen(false);
+  }
   async function followProject() {
     const response = await fetch(`/api/projects/${project.id}/follow`, {
         method: project.isFollowingProject ? "DELETE" : "POST",
@@ -1291,12 +1385,17 @@ function ProjectMenu({
     if (dialog === "delete") {
       const response = await fetch(`/api/projects/${project.id}`, {
         method: "DELETE",
-      });
+      }), result = await response.json();
       if (response.ok) {
-        onChanged?.(null);
-        onToast?.("Project deleted.");
+        if (result.immediate) {
+          onChanged?.(null);
+          onToast?.("Project deleted.");
+        } else {
+          onChanged?.({ ...project, status: "pending_deletion", deletionScheduledAt: result.deadline, isReadOnly: true });
+          onToast?.("Project deletion scheduled.");
+        }
         setDialog(null);
-      }
+      } else onToast?.(result.error ?? "Could not delete this project.");
     }
   }
   return (
@@ -1320,13 +1419,13 @@ function ProjectMenu({
               <Bookmark size={15} fill={bookmarked ? "currentColor" : "none"} />
               {bookmarked ? "Remove bookmark" : "Bookmark"}
             </button>
-            <button onClick={followProject}>
+            {!project.isPrimaryOwner && project.status !== "pending_deletion" && <button onClick={followProject}>
               <Eye size={15} />
               {project.isFollowingProject
                 ? "Stop following project"
                 : "Follow project"}
-            </button>
-            {!project.isOwner && !project.isMember && (
+            </button>}
+            {project.status !== "pending_deletion" && !project.isOwner && !project.isMember && (
               <button
                 onClick={() => {
                   setDialog("involve");
@@ -1337,7 +1436,7 @@ function ProjectMenu({
                 Get involved
               </button>
             )}
-            {project.isMember && !project.isOwner && (
+            {project.status !== "pending_deletion" && project.isMember && !project.isOwner && (
               <button
                 className="danger"
                 onClick={() => {
@@ -1349,7 +1448,7 @@ function ProjectMenu({
                 Leave project
               </button>
             )}
-            {project.isOwner && (
+            {project.isOwner && project.status !== "pending_deletion" && (
               <>
                 <hr />
                 <button
@@ -1371,15 +1470,15 @@ function ProjectMenu({
                 </button>
                 <button
                   className="danger"
-                  onClick={() => {
-                    setDialog("delete");
-                    setOpen(false);
-                  }}
+                  onClick={openDeletionDialog}
                 >
                   <Trash2 size={15} />
                   Delete project
                 </button>
               </>
+            )}
+            {project.status === "pending_deletion" && project.isPrimaryOwner && (
+              <button className="danger" onClick={cancelDeletion}><X size={15} />Cancel deletion</button>
             )}
           </div>
         )}
@@ -1499,10 +1598,17 @@ function ProjectMenu({
               </p>
             )}
             {dialog === "delete" && (
-              <p className="n2-confirm-copy">
-                This removes the project from the network. This action cannot be
-                undone.
-              </p>
+              <div className="n2-confirm-copy">
+                <p>This deletion is irreversible once finalized.</p>
+                {deletionPlan?.explanation?.length ? (
+                  <ul>
+                    {deletionPlan.explanation.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                <strong>{deletionPlan?.immediate ? "Deletion will be immediate." : `Deletion is scheduled for ${deletionPlan ? new Date(deletionPlan.deadline).toLocaleString() : "the calculated deadline"}.`}</strong>
+              </div>
             )}
             <footer>
               <button
@@ -1748,6 +1854,18 @@ function ProjectCard({
           ) : null}
         </div>
         <p className="project-copy">{summary}</p>
+        {project?.status === "pending_deletion" && (
+          <div className="project-deletion-notice" role="status">
+            <strong>Project is being disbanded</strong>
+            <span>
+              This project is read-only and is scheduled for deletion
+              {project.deletionScheduledAt
+                ? ` on ${new Date(project.deletionScheduledAt).toLocaleString()}`
+                : ""}
+              .
+            </span>
+          </div>
+        )}
         {project?.imageUrl && (
           <button
             className="project-card-image"
@@ -1883,7 +2001,30 @@ function CreateProject({
     >([]);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [similarProjects, setSimilarProjects] = useState<SimilarProjectSuggestion[]>([]);
+    [similarProjects, setSimilarProjects] = useState<SimilarProjectSuggestion[]>([]),
+    [coOwnerQuery, setCoOwnerQuery] = useState(""),
+    [coOwnerResults, setCoOwnerResults] = useState<CoOwnerCandidate[]>([]),
+    [selectedCoOwners, setSelectedCoOwners] = useState<CoOwnerCandidate[]>([]),
+    [coOwnerSearchBusy, setCoOwnerSearchBusy] = useState(false);
+  useEffect(() => {
+    if (step !== 2 || coOwnerQuery.trim().length < 2) {
+      setCoOwnerResults([]);
+      setCoOwnerSearchBusy(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setCoOwnerSearchBusy(true);
+      fetch(`/api/search?q=${encodeURIComponent(coOwnerQuery.trim())}&scope=connections`, { signal: controller.signal })
+        .then((response) => response.ok ? response.json() : { people: [] })
+        .then((data) => setCoOwnerResults((data.people ?? []).filter((person: CoOwnerCandidate) =>
+          person.id !== currentMember.id && !selectedCoOwners.some((selected) => selected.id === person.id),
+        )))
+        .catch(() => undefined)
+        .finally(() => setCoOwnerSearchBusy(false));
+    }, 180);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [step, coOwnerQuery, currentMember.id, selectedCoOwners]);
   async function mapTeam() {
     const titleLength = form.title.trim().length;
     const summaryLength = form.summary.trim().length;
@@ -1963,6 +2104,7 @@ function CreateProject({
           roles,
           milestones: roadmap,
           visibility: "network",
+          coOwnerIds: selectedCoOwners.map((person) => person.id),
         }),
       },
     );
@@ -2546,6 +2688,61 @@ function CreateProject({
               Review and edit each suggested role before it affects matching.
               n2 never sends automatic invitations.
             </p>
+            <section className="project-ownership-section" aria-labelledby="project-ownership-heading">
+              <header>
+                <div>
+                  <span className="eyebrow">OWNERSHIP</span>
+                  <h3 id="project-ownership-heading">Choose who can help lead</h3>
+                </div>
+                <span>{selectedCoOwners.length}/2 co-owners</span>
+              </header>
+              <p>Your selections receive seven-day invitations. They only receive co-owner permissions after accepting.</p>
+              <div className="project-owner-slots">
+                <article className="project-owner-slot fixed">
+                  <Avatar person={{ name: currentMember.name, role: currentMember.role, img: currentMember.img }} size="sm" />
+                  <span><strong>{currentMember.name}</strong><small>Primary owner · fixed</small></span>
+                </article>
+                {[0, 1].map((index) => {
+                  const person = selectedCoOwners[index];
+                  return person ? (
+                    <article className="project-owner-slot" key={person.id}>
+                      <Avatar person={{ name: person.name ?? person.username ?? "n2 member", role: person.profession ?? "Co-owner invitation", img: person.image }} size="sm" />
+                      <span><strong>{person.name ?? `@${person.username}`}</strong><small>{person.profession ?? "Invitation pending"}</small></span>
+                      <button type="button" aria-label={`Remove ${person.name ?? person.username}`} onClick={() => setSelectedCoOwners((people) => people.filter((item) => item.id !== person.id))}><X size={14}/></button>
+                    </article>
+                  ) : (
+                    <article className="project-owner-slot empty" key={`empty-${index}`}>
+                      <span className="co-owner-slot-number">{index + 1}</span>
+                      <span><strong>Optional co-owner</strong><small>Mutual connections only</small></span>
+                    </article>
+                  );
+                })}
+              </div>
+              {selectedCoOwners.length < 2 && (
+                <div className="co-owner-search">
+                  <label htmlFor="co-owner-search">Search mutual connections</label>
+                  <div><Search size={16}/><input id="co-owner-search" value={coOwnerQuery} onChange={(event) => setCoOwnerQuery(event.target.value)} placeholder="Name, @username or profession" autoComplete="off" /></div>
+                  {(coOwnerQuery.trim().length >= 2 || coOwnerSearchBusy) && (
+                    <div className="co-owner-results" role="listbox" aria-label="Eligible co-owners">
+                      {coOwnerResults.map((person) => (
+                        <button type="button" role="option" aria-selected="false" key={person.id} onClick={() => {
+                          if (selectedCoOwners.length >= 2 || selectedCoOwners.some((selected) => selected.id === person.id)) return;
+                          setSelectedCoOwners((people) => [...people, person]);
+                          setCoOwnerQuery("");
+                          setCoOwnerResults([]);
+                        }}>
+                          <Avatar person={{ name: person.name ?? person.username ?? "n2 member", role: person.profession ?? `@${person.username}`, img: person.image }} size="sm" />
+                          <span><strong>{person.name ?? person.username}</strong><small>{person.username ? `@${person.username}` : "No username"}{person.profession ? ` · ${person.profession}` : ""}</small></span>
+                          <Plus size={15}/>
+                        </button>
+                      ))}
+                      {coOwnerSearchBusy && <p>Searching mutual connections…</p>}
+                      {!coOwnerSearchBusy && !coOwnerResults.length && <p>No eligible mutual connections found.</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
             <div className="blueprint-roles">
               {roles.map((role, index) => (
                 <article key={`${index}-${role.title}`}>
@@ -3272,7 +3469,7 @@ function PostComposer({
         />
         <MentionSuggestions
           value={body}
-          input={bodyRef.current}
+          inputRef={bodyRef}
           setValue={setBody}
           placement="post"
         />
@@ -3681,6 +3878,7 @@ function Feed({
       createdAt: string;
     }>
   >([]);
+  const [worthMeeting, setWorthMeeting] = useState<PeopleSuggestionRecord | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null),
     [loadingMore, setLoadingMore] = useState(false),
     [algorithmMode, setAlgorithmMode] = useState("shadow");
@@ -3723,6 +3921,20 @@ function Feed({
         .then((r) => (r.ok ? r.json() : { joiners: [] }))
         .then((data) => setNewJoiners(data.joiners ?? []))
         .catch(() => undefined);
+  }, [authenticated, filter]);
+  useEffect(() => {
+    if (!authenticated || filter !== "Following") {
+      setWorthMeeting(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch("/api/people/worth-meeting", { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.ok ? response.json() : { worthMeeting: null })
+      .then((data) => setWorthMeeting(data.worthMeeting ?? null))
+      .catch((error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setWorthMeeting(null);
+      });
+    return () => controller.abort();
   }, [authenticated, filter]);
   useEffect(() => {
     if (newPost)
@@ -3794,9 +4006,9 @@ function Feed({
         <Logo />
         {!authenticated && (
           <div className="public-mobile-actions">
-            <a className="public-mobile-signin" href="/signin?mode=register">
+            <Link className="public-mobile-signin" href="/signin?mode=register">
               Join n2
-            </a>
+            </Link>
           </div>
         )}
       </div>
@@ -4006,30 +4218,6 @@ function Feed({
           {loadingMore ? "Loading useful projects…" : "Load more projects"}
         </button>
       )}
-      <article className="connection-card">
-        <div className="connection-copy">
-          <span className="eyebrow">WORTH MEETING</span>
-          <h3>
-            {authenticated
-              ? "You and Lena both care about purposeful brands."
-              : "Useful projects start with people you would not usually meet."}
-          </h3>
-          <p>
-            {authenticated
-              ? "She’s looking to meet product designers working on climate and public good."
-              : "Join n2 to discover relevant collaborators across industries and skills."}
-          </p>
-          <button
-            onClick={
-              authenticated ? () => onProfile("demo-lena") : onRequireAuth
-            }
-          >
-            {authenticated ? "View Lena’s profile" : "Join the network"}{" "}
-            <ArrowUpRight size={16} />
-          </button>
-        </div>
-        <Avatar person={people.lena} size="xl" ring />
-      </article>
       {!liveProjects.length && (
         <ProjectCard
           second
@@ -4038,6 +4226,19 @@ function Feed({
           authenticated={authenticated}
           onRequireAuth={onRequireAuth}
         />
+      )}
+      {authenticated && filter === "Following" && worthMeeting && (
+        <article className="connection-card">
+          <div className="connection-copy">
+            <span className="eyebrow">WORTH MEETING</span>
+            <h3>{worthMeeting.headline}</h3>
+            <p>{worthMeeting.description}</p>
+            <button onClick={() => onProfile(worthMeeting.id)}>
+              View {worthMeeting.name?.split(" ")[0] ?? "their"} profile <ArrowUpRight size={16} />
+            </button>
+          </div>
+          <Avatar person={{ name: worthMeeting.name ?? "n2 member", role: worthMeeting.profession ?? "Member", img: worthMeeting.image }} size="xl" ring />
+        </article>
       )}
       <div className="end-note">
         <span>n2</span>
@@ -5369,8 +5570,50 @@ function ProjectDetailView({
     [professionRequestOpen, setProfessionRequestOpen] = useState(false),
     [aiAssistOpen, setAiAssistOpen] = useState(false),
     [selectedApplicationRoleId, setSelectedApplicationRoleId] = useState<string | null>(null),
+    [selectedRoleId, setSelectedRoleId] = useState<string | null>(null),
+    [roleModalTab, setRoleModalTab] = useState<"details" | "applicants">("details"),
+    [removeRoleRequested, setRemoveRoleRequested] = useState(false),
+    [selectedInvolvementId, setSelectedInvolvementId] = useState<string | null>(null),
+    [expandedApplicationId, setExpandedApplicationId] = useState<string | null>(null),
     [professionDraft, setProfessionDraft] = useState<RecruitmentDraft>(emptyRecruitmentDraft),
     [busy, setBusy] = useState(false);
+  async function reloadProject() {
+    const response = await fetch(`/api/projects/${projectId}`), data = await response.json();
+    if (response.ok) setProject(data.project);
+    else onToast(data.error ?? "Could not refresh this project.");
+  }
+  async function joinProjectChat() {
+    setBusy(true);
+    const response = await fetch(`/api/projects/${projectId}/chat`, { method: "POST" }), data = await response.json();
+    setBusy(false);
+    if (!response.ok) {
+      onToast(data.error ?? "Could not open the project chat.");
+      return;
+    }
+    window.location.assign(`/?view=messages&conversation=${encodeURIComponent(data.conversationId)}`);
+  }
+  async function saveFundingSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget), goal = Number(form.get("fundingGoal") || 0), share = Number(form.get("shareLimit") || 0);
+    setBusy(true);
+    const response = await fetch(`/api/projects/${projectId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        fundingGoal: goal || null,
+        shareLimit: share || null,
+        openToInvestment: form.get("openToInvestment") === "on",
+        openToContributions: form.get("openToContributions") === "on",
+      }),
+    }), data = await response.json();
+    setBusy(false);
+    if (!response.ok) {
+      onToast(data.error ?? "Could not save funding settings.");
+      return;
+    }
+    setProject((current) => current ? { ...current, ...data.project } : current);
+    onToast("Funding settings saved.");
+  }
   async function decideApplication(applicationId: string, decision: "accepted" | "declined") {
     const response = await fetch(`/api/applications/${applicationId}/decision`, {
       method: "POST",
@@ -5387,7 +5630,43 @@ function ProjectDetailView({
       applications: current.applications.map(item => item.id === applicationId ? { ...item, status: decision } : item),
       pendingApplicationCount: Math.max(0, current.pendingApplicationCount - 1),
     } : current);
+    await reloadProject();
     onToast(`Application ${decision}.`);
+  }
+  async function saveRole(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedRoleId) return;
+    const form = new FormData(event.currentTarget);
+    setBusy(true);
+    const response = await fetch(`/api/projects/${projectId}/roles/${selectedRoleId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({
+      title: String(form.get("title") || ""), department: String(form.get("department") || ""), description: String(form.get("description") || ""),
+      professions: String(form.get("professions") || "").split(",").map(value => value.trim()).filter(Boolean),
+      requiredSkills: String(form.get("requiredSkills") || "").split(",").map(value => value.trim()).filter(Boolean),
+      usefulSkills: String(form.get("usefulSkills") || "").split(",").map(value => value.trim()).filter(Boolean),
+      phase: String(form.get("phase")), criticality: String(form.get("criticality")), workMode: String(form.get("workMode")), capacity: Number(form.get("capacity") || 1),
+    }) });
+    const data = await response.json(); setBusy(false);
+    if (!response.ok) return onToast(data.error ?? "Could not update this role.");
+    setProject(current => current ? { ...current, roles: current.roles.map(role => role.id === selectedRoleId ? { ...role, ...data.role } : role) } : current);
+    onToast("Role updated.");
+  }
+  async function removeRole() {
+    if (!selectedRoleId) return false;
+    setBusy(true); const response = await fetch(`/api/projects/${projectId}/roles/${selectedRoleId}`, { method: "DELETE" }), data = await response.json(); setBusy(false);
+    if (!response.ok) {
+      onToast(data.error ?? "Could not remove this role.");
+      return false;
+    }
+    setProject(current => current ? { ...current, roles: current.roles.map(role => role.id === selectedRoleId ? { ...role, status: "removed" } : role) } : current);
+    setRemoveRoleRequested(false); setSelectedRoleId(null); onToast("Role removed.");
+    return true;
+  }
+  async function decideInvolvement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!selectedInvolvementId) return;
+    const form = new FormData(event.currentTarget), existingRoleId = String(form.get("roleId") || "");
+    setBusy(true); const response = await fetch(`/api/projects/${projectId}/involvement/${selectedInvolvementId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "onboard", roleId: existingRoleId || undefined, roleTitle: existingRoleId ? undefined : String(form.get("roleTitle") || ""), department: existingRoleId ? undefined : String(form.get("department") || ""), roadmapTitle: String(form.get("roadmapTitle") || "") || undefined }) }), data = await response.json(); setBusy(false);
+    if (!response.ok) return onToast(data.error ?? "Could not onboard this contributor.");
+    setSelectedInvolvementId(null); await reloadProject(); onToast(`${data.roleTitle} joined the project team.`);
   }
   useEffect(() => {
     fetch(`/api/projects/${projectId}`)
@@ -5419,6 +5698,7 @@ function ProjectDetailView({
     setBusy(false);
     if (response.ok) {
       setFundingOpen(false);
+      setProject((current) => current && current.isMember ? { ...current, fundingInterests: [data.interest, ...current.fundingInterests] } : current);
       onToast(data.message);
     } else onToast(data.error ?? "Could not register interest.");
   }
@@ -5444,8 +5724,11 @@ function ProjectDetailView({
     progress = project.milestones.length
       ? Math.round((completed / project.milestones.length) * 100)
       : 0,
-    canRecruit = project.ownerId === project.currentUserId,
-    canApplyToProject = !project.isOwner && !project.isMember;
+    canRecruit = project.isOwner,
+    canApplyToProject = !project.isOwner && !project.isMember,
+    selectedRole = project.roles.find(role => role.id === selectedRoleId) ?? null,
+    selectedInvolvement = project.involvementRequests.find(offer => offer.id === selectedInvolvementId) ?? null,
+    fundingTotal = project.fundingInterests.reduce((sum, interest) => sum + (interest.amount ?? 0), 0);
   return (
     <div className="project-detail">
       <button className="project-detail-back" onClick={onBack}>
@@ -5487,7 +5770,8 @@ function ProjectDetailView({
       </header>
       <nav className="project-detail-tabs">
         {(["overview", "team", "notifications", "ai_assist", "roadmap", "updates", "funding"] as const)
-          .filter((item) => (item !== "ai_assist" && item !== "notifications") || canRecruit)
+          .filter((item) => item !== "notifications" || project.isMember)
+          .filter((item) => item !== "ai_assist" || canRecruit)
           .map(
           (item) => (
             <button
@@ -5575,20 +5859,22 @@ function ProjectDetailView({
                     disabled={!canApplyToProject && !project.isOwner}
                     onClick={() => {
                       if (project.isOwner) {
-                        setSelectedApplicationRoleId(role.id);
-                        setTab("notifications");
+                        setSelectedRoleId(role.id);
+                        setRoleModalTab("details");
                         return;
                       }
-                      canApplyToProject && window.dispatchEvent(
-                        new CustomEvent("n2:apply-role", {
-                          detail: {
-                            projectId: project.id,
-                            projectTitle: project.title,
-                            roles: project.roles,
-                            initialRoleId: role.id,
-                          },
-                        }),
-                      );
+                      if (canApplyToProject) {
+                        window.dispatchEvent(
+                          new CustomEvent("n2:apply-role", {
+                            detail: {
+                              projectId: project.id,
+                              projectTitle: project.title,
+                              roles: project.roles,
+                              initialRoleId: role.id,
+                            },
+                          }),
+                        );
+                      }
                     }}
                   >
                     <span>
@@ -5598,6 +5884,15 @@ function ProjectDetailView({
                       </small>
                     </span>
                     <b>
+                      {canRecruit && (
+                        <em
+                          className="role-application-badge"
+                          aria-label={`${role.applicationCount ?? 0} applications`}
+                          title={`${role.applicationCount ?? 0} applications`}
+                        >
+                          {role.applicationCount ?? 0}
+                        </em>
+                      )}
                       {Math.max(0, role.capacity - role.filled)} open{" "}
                       {(canApplyToProject || project.isOwner) && <ArrowUpRight size={13} />}
                     </b>
@@ -5612,6 +5907,20 @@ function ProjectDetailView({
                 </p>
               )}
             </div>
+            {canRecruit && (
+              <section className="involvement-offers">
+                <header><div><span className="eyebrow">OTHER WAYS TO GET INVOLVED</span><h3>Offers beyond the listed roles</h3><p>Review people who have offered their skills without applying for a specific position.</p></div>{project.pendingInvolvementCount > 0 && <b>{project.pendingInvolvementCount}</b>}</header>
+                {project.involvementRequests.filter(offer => offer.status === "pending").map(offer => (
+                  <article key={offer.id}>
+                    <button type="button" className="application-person" onClick={() => onProfile(offer.userId)}><Avatar person={{ name: offer.userName ?? "n2 member", role: offer.userProfession ?? "Contributor", img: offer.userImage }} size="md" /><span><strong>{offer.userName ?? "n2 member"}</strong><small>{offer.userProfession ?? "Open contributor"} · {offer.userLocation || "Location not shared"}</small></span></button>
+                    <p>{offer.message}</p>
+                    <div className="application-tags">{offer.services.map(service => <span key={service}>{service}</span>)}</div>
+                    <footer><button type="button" className="secondary-button" onClick={() => onProfile(offer.userId)}>View profile</button><button type="button" className="primary-button" onClick={() => setSelectedInvolvementId(offer.id)}>Onboard early</button></footer>
+                  </article>
+                ))}
+                {!project.involvementRequests.some(offer => offer.status === "pending") && <p className="profile-empty">No general offers are waiting for review.</p>}
+              </section>
+            )}
           </article>
         </section>
       )}
@@ -5623,11 +5932,18 @@ function ProjectDetailView({
               <h2>The people making it happen</h2>
               <p>{canRecruit ? "Add the expertise needed to reach the next milestone." : `${project.team.length} people are contributing to this project.`}</p>
             </div>
-            {canRecruit && (
-              <button className="primary-button" onClick={() => { setProfessionDraft(emptyRecruitmentDraft); setProfessionRequestOpen(true); }}>
-                <UserPlus size={15} /> Add member
-              </button>
-            )}
+            <div className="project-team-actions">
+              {project.isMember && (
+                <button className="secondary-button" disabled={busy} onClick={joinProjectChat}>
+                  <MessageCircle size={15} /> {busy ? "Opening…" : "Join chat"}
+                </button>
+              )}
+              {canRecruit && (
+                <button className="primary-button" onClick={() => { setProfessionDraft(emptyRecruitmentDraft); setProfessionRequestOpen(true); }}>
+                  <UserPlus size={15} /> Add member
+                </button>
+              )}
+            </div>
           </header>
           <div className="project-team-grid">
             {project.team.map((person) => (
@@ -5651,6 +5967,17 @@ function ProjectDetailView({
                 <ArrowUpRight size={15} />
               </button>
             ))}
+            {(project.pendingCoOwners ?? []).map((person) => (
+              <article className="project-team-pending" key={person.invitationId}>
+                <Avatar person={{ name: person.name ?? person.username ?? "n2 member", role: person.profession ?? "Invited co-owner", img: person.image }} size="lg" />
+                <span>
+                  <strong>{person.name ?? `@${person.username}`}</strong>
+                  <small>Co-owner</small>
+                  <i>Invitation pending</i>
+                </span>
+                <b>Pending</b>
+              </article>
+            ))}
             {canRecruit && (
               <button className="project-team-recruit" onClick={() => { setProfessionDraft(emptyRecruitmentDraft); setProfessionRequestOpen(true); }}>
                 <span><Plus size={18} /></span>
@@ -5661,49 +5988,66 @@ function ProjectDetailView({
           </div>
         </section>
       )}
-      {tab === "notifications" && canRecruit && (
-        <section className="project-application-section">
+      {tab === "notifications" && project.isMember && (
+        <section className="project-notifications-section">
           <header>
             <div>
               <span className="eyebrow">PROJECT NOTIFICATIONS</span>
-              <h2>{selectedApplicationRoleId ? `Applications for ${project.roles.find(role => role.id === selectedApplicationRoleId)?.title ?? "this role"}` : "Applications"}</h2>
-              <p>Review profile fit, skills and context before making a decision.</p>
+              <h2>{canRecruit && selectedApplicationRoleId ? `Applications for ${project.roles.find(role => role.id === selectedApplicationRoleId)?.title ?? "this role"}` : "Team activity"}</h2>
+              <p>{canRecruit ? "Expand role applications or review changes to the project team." : "See when members join or leave this project."}</p>
             </div>
             <div className="application-section-tools">
-              {selectedApplicationRoleId && <button type="button" className="secondary-button" onClick={() => setSelectedApplicationRoleId(null)}>All applications</button>}
-              {project.pendingApplicationCount > 0 && <b>{project.pendingApplicationCount} pending</b>}
+              {canRecruit && selectedApplicationRoleId && <button type="button" className="secondary-button" onClick={() => setSelectedApplicationRoleId(null)}>All applications</button>}
+              {canRecruit && project.pendingApplicationCount > 0 && <b>{project.pendingApplicationCount} pending</b>}
             </div>
           </header>
-          <div className="project-application-list">
-            {project.applications.filter(application => !selectedApplicationRoleId || application.roleId === selectedApplicationRoleId).map(application => (
-              <article key={application.id} className={application.status === "pending" ? "pending" : ""}>
-                <div className="application-summary">
-                  <button type="button" className="application-person" onClick={() => onProfile(application.applicantId)}>
-                    <Avatar person={{ name: application.applicantName ?? "n2 member", role: application.applicantProfession ?? "n2 member", img: application.applicantImage }} size="md" />
-                    <span><strong>{application.applicantName ?? "n2 member"}</strong><small>{application.applicantProfession ?? "n2 member"}</small></span>
-                  </button>
-                  <div className="application-fit" aria-label={`${application.fit.score}% profile fit`}><strong>{application.fit.score}%</strong><small>profile fit</small></div>
-                </div>
-                <p className="application-profile-brief">{application.profileBrief}</p>
-                <dl className="application-profile-details">
-                  <div><dt>Applied for</dt><dd><strong>{application.roleTitle}</strong> · {application.roleDepartment}</dd></div>
-                  <div><dt>Location</dt><dd>{application.applicantLocation || "Not shared"}</dd></div>
-                  <div><dt>Skills</dt><dd className="application-tags">{application.applicantSkills.length ? application.applicantSkills.map(skill => <span key={skill}>{skill}</span>) : "Not added"}</dd></div>
-                  <div><dt>Interests</dt><dd className="application-tags">{application.applicantInterests.length ? application.applicantInterests.map(interest => <span key={interest}>{interest}</span>) : "Not added"}</dd></div>
-                </dl>
-                {application.message && <div className="application-note"><small>APPLICATION NOTE</small><p>{application.message}</p></div>}
-                <div className="application-review-actions">
-                  <span className={`application-status ${application.status}`}>{application.status}</span>
-                  {application.status === "pending" && (
-                    <>
-                      <button type="button" className="secondary-button" onClick={() => decideApplication(application.id, "declined")}>Decline</button>
-                      <button type="button" className="primary-button" onClick={() => decideApplication(application.id, "accepted")}>Accept</button>
-                    </>
-                  )}
-                </div>
+          {canRecruit && (
+            <div className="project-application-list">
+              {project.applications.filter(application => !selectedApplicationRoleId || application.roleId === selectedApplicationRoleId).map(application => {
+                const expanded = expandedApplicationId === application.id;
+                return (
+                  <article key={application.id} className={`${application.status === "pending" ? "pending" : ""} ${expanded ? "expanded" : ""}`}>
+                    <div className="application-summary-row">
+                      <button type="button" className="application-person" onClick={() => onProfile(application.applicantId)}>
+                        <Avatar person={{ name: application.applicantName ?? "n2 member", role: application.applicantProfession ?? "n2 member", img: application.applicantImage }} size="md" />
+                        <span><strong>{application.applicantName ?? "n2 member"}</strong><small>{application.roleTitle} · {application.applicantProfession ?? "n2 member"}</small></span>
+                      </button>
+                      <div className="application-fit" aria-label={`${application.fit.score}% profile fit`}><strong>{application.fit.score}%</strong><small>profile fit</small></div>
+                      <button type="button" className="application-expand" aria-expanded={expanded} onClick={() => setExpandedApplicationId(expanded ? null : application.id)}>
+                        {expanded ? "Hide details" : "Review details"} <ChevronRight size={15} />
+                      </button>
+                    </div>
+                    {expanded && (
+                      <div className="application-expanded-details">
+                        <p className="application-profile-brief">{application.profileBrief}</p>
+                        <dl className="application-profile-details">
+                          <div><dt>Applied for</dt><dd><strong>{application.roleTitle}</strong> · {application.roleDepartment}</dd></div>
+                          <div><dt>Location</dt><dd>{application.applicantLocation || "Not shared"}</dd></div>
+                          <div><dt>Skills</dt><dd className="application-tags">{application.applicantSkills.length ? application.applicantSkills.map(skill => <span key={skill}>{skill}</span>) : "Not added"}</dd></div>
+                          <div><dt>Interests</dt><dd className="application-tags">{application.applicantInterests.length ? application.applicantInterests.map(interest => <span key={interest}>{interest}</span>) : "Not added"}</dd></div>
+                        </dl>
+                        {application.message && <div className="application-note"><small>APPLICATION NOTE</small><p>{application.message}</p></div>}
+                        <div className="application-review-actions">
+                          <span className={`application-status ${application.status}`}>{application.status}</span>
+                          {application.status === "pending" && (<><button type="button" className="secondary-button" onClick={() => decideApplication(application.id, "declined")}>Decline</button><button type="button" className="primary-button" onClick={() => decideApplication(application.id, "accepted")}>Accept</button></>)}
+                        </div>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+              {!project.applications.some(application => !selectedApplicationRoleId || application.roleId === selectedApplicationRoleId) && <p className="profile-empty">No applications for this role yet.</p>}
+            </div>
+          )}
+          <div className="project-membership-activity">
+            <h3>Member activity</h3>
+            {project.updates.filter(update => update.type === "member_joined" || update.type === "member_left").map(update => (
+              <article key={update.id}>
+                <Avatar person={{ name: update.authorName ?? "n2 member", role: update.type === "member_joined" ? "Joined project" : "Left project", img: update.authorImage }} size="sm" />
+                <div><strong>{update.body}</strong><time>{formatNetworkDate(update.createdAt, { day: "numeric", month: "short", year: "numeric" })}</time></div>
               </article>
             ))}
-            {!project.applications.some(application => !selectedApplicationRoleId || application.roleId === selectedApplicationRoleId) && <p className="profile-empty">No applications for this role yet.</p>}
+            {!project.updates.some(update => update.type === "member_joined" || update.type === "member_left") && <p className="profile-empty">No team changes yet.</p>}
           </div>
         </section>
       )}
@@ -5755,32 +6099,48 @@ function ProjectDetailView({
               of interest.
             </p>
           </div>
-          <div className="funding-options">
-            {[
-              ["contribute", "Contribute", "Offer practical financial support"],
-              ["donate", "Donate", "Offer funding without ownership"],
-              ["invest", "Invest", "Start an investment conversation"],
-              [
-                "share_request",
-                "Request a share",
-                "Ask the owner to discuss ownership terms",
-              ],
-            ].map(([id, title, copy]) => (
-              <button
-                key={id}
-                onClick={() => {
-                  setFundingType(id as typeof fundingType);
-                  setFundingOpen(true);
-                }}
-              >
-                <span>
-                  <strong>{title}</strong>
-                  <small>{copy}</small>
-                </span>
-                <ArrowUpRight size={16} />
-              </button>
-            ))}
-          </div>
+          {!project.isOwner && (
+            <div className="funding-options">
+              {([
+                ...(project.openToContributions ? [["contribute", "Contribute", "Offer practical financial support"], ["donate", "Donate", "Offer funding without ownership"]] : []),
+                ...(project.openToInvestment ? [["invest", "Invest", "Start an investment conversation"], ["share_request", "Request a share", "Ask the owner to discuss ownership terms"]] : []),
+              ] as string[][]).map(([id, title, copy]) => (
+                <button key={id} onClick={() => { setFundingType(id as typeof fundingType); setFundingOpen(true); }}>
+                  <span><strong>{title}</strong><small>{copy}</small></span><ArrowUpRight size={16} />
+                </button>
+              ))}
+              {!project.openToContributions && !project.openToInvestment && <p className="profile-empty">This project is not accepting funding interest right now.</p>}
+            </div>
+          )}
+          {project.isOwner && (
+            <form className="funding-owner-settings" onSubmit={saveFundingSettings}>
+              <div><span className="eyebrow">OWNER CONTROLS</span><h3>Funding and ownership settings</h3><p>Only owners and co-owners can change these settings.</p></div>
+              <label>Funding goal (£)<input name="fundingGoal" type="number" min="1" max="100000000" defaultValue={project.fundingGoal ?? ""} placeholder="Optional" /></label>
+              <label>Maximum shares available (%)<input name="shareLimit" type="number" min="0" max="100" defaultValue={project.shareLimit ?? ""} placeholder="Optional" /></label>
+              <label className="funding-toggle"><input aria-label="Open to contributions" name="openToContributions" type="checkbox" defaultChecked={project.openToContributions} /><span><strong>Open to contributions</strong><small>Allow contribution and donation interest.</small></span></label>
+              <label className="funding-toggle"><input aria-label="Open to investment" name="openToInvestment" type="checkbox" defaultChecked={project.openToInvestment} /><span><strong>Open to investment</strong><small>Allow investment and share discussions.</small></span></label>
+              <button className="primary-button" disabled={busy}>{busy ? "Saving…" : "Save funding settings"}</button>
+            </form>
+          )}
+          {project.isMember && (
+            <div className="funding-ledger">
+              <header>
+                <div><span className="eyebrow">MEMBER VIEW</span><h3>Funding activity</h3><p>Verified expressions of interest from members.</p></div>
+                <div className="funding-progress"><strong>£{fundingTotal.toLocaleString("en-GB")}</strong><small>{project.fundingGoal ? `of £${project.fundingGoal.toLocaleString("en-GB")} goal` : "registered interest"}</small>{project.fundingGoal && <i><b style={{ width: `${Math.min(100, Math.round(fundingTotal / project.fundingGoal * 100))}%` }} /></i>}</div>
+              </header>
+              <div>
+                {project.fundingInterests.map(interest => (
+                  <article key={interest.id}>
+                    <Avatar person={{ name: interest.userName ?? "n2 member", role: interest.type.replaceAll("_", " "), img: interest.userImage }} size="sm" />
+                    <span><strong>{interest.userName ?? "n2 member"}</strong><small>{interest.type.replaceAll("_", " ")} · {formatNetworkDate(interest.createdAt, { day: "numeric", month: "short", year: "numeric" })}</small></span>
+                    <b>{interest.amount ? `£${interest.amount.toLocaleString("en-GB")}` : "Discussion"}</b>
+                  </article>
+                ))}
+                {!project.fundingInterests.length && <p className="profile-empty">No funding interest has been registered yet.</p>}
+              </div>
+              {project.shareLimit !== null && <small className="funding-share-limit">Up to {project.shareLimit}% of project shares are available for discussion.</small>}
+            </div>
+          )}
           <div className="funding-caveat">
             <ShieldCheck size={18} />
             <p>
@@ -5836,6 +6196,64 @@ function ProjectDetailView({
             <button className="primary-button wide" disabled={busy}>
               {busy ? "Sending…" : "Send verified interest"}
             </button>
+          </form>
+        </div>
+      )}
+      {selectedRole && canRecruit && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && setSelectedRoleId(null)}>
+          <section className="role-management-modal" role="dialog" aria-modal="true" aria-label={`Manage ${selectedRole.title}`}>
+            <header><div><span className="eyebrow">OPEN CONTRIBUTION</span><h2>{selectedRole.title}</h2><p>{selectedRole.department} · {Math.max(0, selectedRole.capacity - selectedRole.filled)} places open</p></div><button type="button" className="icon-button" onClick={() => setSelectedRoleId(null)}><X /></button></header>
+            <nav><button type="button" className={roleModalTab === "details" ? "active" : ""} onClick={() => setRoleModalTab("details")}>Role details</button><button type="button" className={roleModalTab === "applicants" ? "active" : ""} onClick={() => setRoleModalTab("applicants")}>Applicants <b>{selectedRole.applicationCount ?? 0}</b></button></nav>
+            {roleModalTab === "details" ? (
+              <form onSubmit={saveRole}>
+                <div className="field-row"><label>Role title<input name="title" defaultValue={selectedRole.title} /></label><label>Department<input name="department" defaultValue={selectedRole.department} /></label></div>
+                <label>Description<textarea name="description" defaultValue={selectedRole.description ?? ""} maxLength={500} /></label>
+                <div className="field-row"><label>Professions<input name="professions" defaultValue={(selectedRole.professions ?? []).join(", ")} placeholder="Product designer, UX researcher" /></label><label>Capacity<input name="capacity" type="number" min={Math.max(1, selectedRole.filled)} max={10} defaultValue={selectedRole.capacity} /></label></div>
+                <label>Required skills<input name="requiredSkills" defaultValue={(selectedRole.requiredSkills ?? []).join(", ")} /></label>
+                <label>Useful skills<input name="usefulSkills" defaultValue={(selectedRole.usefulSkills ?? []).join(", ")} /></label>
+                <div className="field-row"><label>Timing<select name="phase" defaultValue={selectedRole.phase}><option value="now">Now</option><option value="next">Next</option><option value="later">Later</option></select></label><label>Priority<select name="criticality" defaultValue={selectedRole.criticality}><option value="critical">Critical</option><option value="important">Important</option><option value="useful">Useful</option></select></label></div>
+                <label>Working style<select name="workMode" defaultValue={selectedRole.workMode ?? "remote"}><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="in_person">In person</option></select></label>
+                <footer><button type="button" className="danger-button" disabled={busy} onClick={() => setRemoveRoleRequested(true)}>Remove role</button><button type="submit" className="primary-button" disabled={busy}>{busy ? "Saving…" : "Save role"}</button></footer>
+              </form>
+            ) : (
+              <div className="role-applicant-list">
+                {project.applications.filter(application => application.roleId === selectedRole.id).map(application => (
+                  <article key={application.id}>
+                    <header><button type="button" className="application-person" onClick={() => onProfile(application.applicantId)}><Avatar person={{ name: application.applicantName ?? "n2 member", role: application.applicantProfession ?? "n2 member", img: application.applicantImage }} size="md" /><span><strong>{application.applicantName ?? "n2 member"}</strong><small>{application.applicantProfession ?? "Profession not shared"} · {application.applicantLocation || "Location not shared"}</small></span></button><div className="application-fit"><strong>{application.fit.score}%</strong><small>role fit</small></div></header>
+                    {application.fit.mismatch && <span className="application-mismatch">Applied outside role match</span>}
+                    <p>{application.profileBrief}</p>
+                    <dl><div><dt>Skills</dt><dd className="application-tags">{application.applicantSkills.length ? application.applicantSkills.map(skill => <span key={skill}>{skill}</span>) : "Not added"}</dd></div><div><dt>Interests</dt><dd className="application-tags">{application.applicantInterests.length ? application.applicantInterests.map(interest => <span key={interest}>{interest}</span>) : "Not added"}</dd></div></dl>
+                    <div className="application-note"><small>REASON FOR JOINING</small><p>{application.message || "No application note was provided."}</p></div>
+                    <footer><button type="button" className="secondary-button" onClick={() => onProfile(application.applicantId)}>View full profile</button><span className={`application-status ${application.status}`}>{application.status}</span>{application.status === "pending" && <><button type="button" className="secondary-button" onClick={() => decideApplication(application.id, "declined")}>Decline</button><button type="button" className="primary-button" onClick={() => decideApplication(application.id, "accepted")}>Add to team</button></>}</footer>
+                  </article>
+                ))}
+                {!project.applications.some(application => application.roleId === selectedRole.id) && <p className="profile-empty">No one has applied for this role yet.</p>}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+      {removeRoleRequested && selectedRole && (
+        <ActionDialog
+          eyebrow="REMOVE ROLE"
+          title={`Remove ${selectedRole.title}?`}
+          description="The role will stop accepting applications. Existing application records will remain available to the project owners."
+          confirmLabel="Remove role"
+          cancelLabel="Keep role"
+          danger
+          onClose={() => setRemoveRoleRequested(false)}
+          onConfirm={removeRole}
+        />
+      )}
+      {selectedInvolvement && canRecruit && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && setSelectedInvolvementId(null)}>
+          <form className="involvement-onboard-modal" onSubmit={decideInvolvement}>
+            <header><div><span className="eyebrow">EARLY ONBOARDING</span><h2>Add {selectedInvolvement.userName ?? "this contributor"} to the team</h2><p>Assign a role now and optionally give them a first roadmap responsibility.</p></div><button type="button" className="icon-button" onClick={() => setSelectedInvolvementId(null)}><X /></button></header>
+            <div className="onboard-profile"><Avatar person={{ name: selectedInvolvement.userName ?? "n2 member", role: selectedInvolvement.userProfession ?? "Contributor", img: selectedInvolvement.userImage }} size="lg" /><span><strong>{selectedInvolvement.userName}</strong><small>{selectedInvolvement.profileBrief}</small></span></div>
+            <label>Assign an existing open role<select name="roleId" defaultValue=""><option value="">Create a role for this person</option>{project.roles.filter(role => role.status === "open" && role.filled < role.capacity).map(role => <option key={role.id} value={role.id}>{role.title}</option>)}</select></label>
+            <div className="field-row"><label>New role title<input name="roleTitle" placeholder="Community partnerships lead" /></label><label>Department<input name="department" placeholder="Community" /></label></div>
+            <label>Optional first roadmap step<input name="roadmapTitle" placeholder="e.g. Map the first ten community partners" /><small>This creates a planned roadmap item owned by the new member.</small></label>
+            <footer><button type="button" className="secondary-button" onClick={() => onProfile(selectedInvolvement.userId)}>View full profile</button><button type="submit" className="primary-button" disabled={busy}>{busy ? "Adding…" : "Add to team"}</button></footer>
           </form>
         </div>
       )}
@@ -7444,7 +7862,7 @@ function MessagesView({
             </div>
             {selected.members.length > 2 && <MentionSuggestions
               value={draft}
-              input={messageDraftRef.current}
+              inputRef={messageDraftRef}
               setValue={setDraft}
               allowedIds={selected.members.filter((member) => member.userId !== currentMember.id).map((member) => member.userId)}
               placement="message"
@@ -7717,7 +8135,9 @@ type MeetingRecord = {
   maxParticipants?: number;
   reminderMinutes?: number;
   attendees?: Array<{ email: string; name?: string }>;
-  participantProfiles?: Array<MeetInvitee & { status?: string; role?: PodcastInviteRole }>;
+  participantProfiles?: Array<MeetInvitee & { status?: string; role?: MeetInviteRole }>;
+  canManage?: boolean;
+  canDelete?: boolean;
   canEdit?: boolean;
   isPinned?: boolean;
   isBookmarked?: boolean;
@@ -7729,9 +8149,10 @@ type MeetInvitee = {
   profession: string;
   group: "connections" | "followers" | "public";
   relationship: string;
-  podcastRole?: PodcastInviteRole;
+  cohostEligible?: boolean;
+  meetRole?: MeetInviteRole;
 };
-type PodcastInviteRole = "cohost" | "speaker" | "listener";
+type MeetInviteRole = "cohost" | "speaker" | "listener";
 type MeetVenue = { latitude: number; longitude: number; displayName: string };
 type MeetRoute = { durationSeconds: number; distanceMeters: number };
 
@@ -7766,8 +8187,7 @@ function MeetCardActions({
       >
         <Bookmark size={14} fill={meet.isBookmarked ? "currentColor" : "none"} />
       </button>
-      {meet.canEdit && (
-        <>
+      {meet.canManage && (
           <button
             type="button"
             aria-label={`Edit ${meet.title}`}
@@ -7776,6 +8196,8 @@ function MeetCardActions({
           >
             <Pencil size={14} />
           </button>
+      )}
+      {meet.canDelete && (
           <button
             type="button"
             className="danger"
@@ -7785,7 +8207,6 @@ function MeetCardActions({
           >
             <Trash2 size={14} />
           </button>
-        </>
       )}
     </div>
   );
@@ -7899,16 +8320,28 @@ function InPersonMeetMap({ location }: { location: string }) {
   );
 }
 
+function defaultMeetInviteRole(mode: "video" | "audio" | "in_person"): MeetInviteRole {
+  return mode === "audio" ? "listener" : "speaker";
+}
+
+function meetRoleLabel(mode: "video" | "audio" | "in_person", role: MeetInviteRole) {
+  if (role === "cohost") return "Co-host";
+  if (mode === "audio") return role === "speaker" ? "Guest speaker" : "Listener";
+  return mode === "in_person" ? "Attendee" : "Participant";
+}
+
 function MeetAttendeePicker({
   selected,
   onChange,
   max,
-  podcast,
+  mode,
+  canAssignCohosts,
 }: {
   selected: MeetInvitee[];
   onChange: (people: MeetInvitee[]) => void;
   max: number;
-  podcast?: boolean;
+  mode: "video" | "audio" | "in_person";
+  canAssignCohosts: boolean;
 }) {
   const [people, setPeople] = useState<MeetInvitee[]>([]),
     [query, setQuery] = useState(""),
@@ -7935,11 +8368,16 @@ function MeetAttendeePicker({
   const visible = people.filter(
       (person) => group === "all" || person.group === group,
     ),
-    chosen = new Set(selected.map((person) => person.id));
+    chosen = new Set(selected.map((person) => person.id)),
+    cohostCount = selected.filter(person => person.meetRole === "cohost").length;
   function toggle(person: MeetInvitee) {
     if (chosen.has(person.id))
       onChange(selected.filter((item) => item.id !== person.id));
-    else if (selected.length < max) onChange([...selected, { ...person, podcastRole: podcast ? "listener" : undefined }]);
+    else if (selected.length < max) onChange([...selected, { ...person, meetRole: defaultMeetInviteRole(mode) }]);
+  }
+  function setRole(person: MeetInvitee, role: MeetInviteRole) {
+    if (role === "cohost" && (person.group !== "connections" || person.cohostEligible === false || (person.meetRole !== "cohost" && cohostCount >= 2))) return;
+    onChange(selected.map(item => item.id === person.id ? { ...item, meetRole: role } : item));
   }
   return (
     <fieldset className="meet-attendee-picker">
@@ -7949,19 +8387,23 @@ function MeetAttendeePicker({
       </p>
       {selected.length > 0 && (
         <div className="meet-selected-people">
-          {selected.map((person) => (
-            <div className="meet-selected-person" key={person.id}>
-              <button type="button" onClick={() => toggle(person)} aria-label={`Remove ${person.name}`}>
+          {selected.map((person) => {
+            const role = person.meetRole ?? defaultMeetInviteRole(mode);
+            const canChooseOrdinaryRole = mode === "audio";
+            const showRoleSelect = canChooseOrdinaryRole || canAssignCohosts || role === "cohost";
+            return <div className="meet-selected-person" key={person.id}>
+              <button type="button" onClick={() => toggle(person)} disabled={role === "cohost" && !canAssignCohosts} aria-label={role === "cohost" && !canAssignCohosts ? `${person.name} is a co-host; only the primary host can remove them` : `Remove ${person.name}`}>
                 <Avatar person={{ name: person.name, role: person.profession, img: person.image }} size="sm" />
-                <span>{person.name}</span><X size={13} />
+                <span>{person.name}</span>{(role !== "cohost" || canAssignCohosts) && <X size={13} />}
               </button>
-              {podcast && <select aria-label={`${person.name} podcast role`} value={person.podcastRole ?? "listener"} onChange={event => onChange(selected.map(item => item.id === person.id ? { ...item, podcastRole: event.target.value as PodcastInviteRole } : item))}>
-                <option value="cohost">Co-host</option>
-                <option value="speaker">Guest speaker</option>
-                <option value="listener">Listener</option>
-              </select>}
-            </div>
-          ))}
+              {showRoleSelect ? <select aria-label={`${person.name} meet role`} value={role} disabled={role === "cohost" && !canAssignCohosts} onChange={event => setRole(person, event.target.value as MeetInviteRole)}>
+                {canAssignCohosts && <option value="cohost" disabled={person.group !== "connections" || person.cohostEligible === false || (role !== "cohost" && cohostCount >= 2)}>Co-host{person.group !== "connections" ? " · mutual connections only" : person.cohostEligible === false ? " · unavailable" : ""}</option>}
+                {mode === "audio" && <option value="speaker">Guest speaker</option>}
+                <option value={mode === "audio" ? "listener" : "speaker"}>{meetRoleLabel(mode, defaultMeetInviteRole(mode))}</option>
+                {!canAssignCohosts && role === "cohost" && <option value="cohost">Co-host</option>}
+              </select> : <span className="meet-role-label">{meetRoleLabel(mode, role)}</span>}
+            </div>;
+          })}
         </div>
       )}
       <div className="meet-people-search">
@@ -8023,13 +8465,13 @@ function MeetAttendeePicker({
         )}
       </div>
       <small>
-        {selected.length}/{max} guests selected
+        {selected.length}/{max} guests selected · {cohostCount}/2 co-hosts
         {max === 7 ? " · up to eight people on video" : max === 15 ? " · up to sixteen people on audio" : ""}
       </small>
     </fieldset>
   );
 }
-function MeetView() {
+function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | null }) {
   const meetFormRef = useRef<HTMLFormElement>(null);
   const [clockNow, setClockNow] = useState(0);
   const [calendarView, setCalendarView] = useState<"agenda" | "month">(
@@ -8050,20 +8492,23 @@ function MeetView() {
     [meetStep, setMeetStep] = useState<1 | 2>(1),
     [meetTitle, setMeetTitle] = useState(""),
     [meetLocation, setMeetLocation] = useState(""),
-    [meetThumbnail, setMeetThumbnail] = useState<string | null>(null);
+    [meetThumbnail, setMeetThumbnail] = useState<string | null>(null),
+    [confirmEmptyMeet, setConfirmEmptyMeet] = useState(false);
   const [showAllPastMeets, setShowAllPastMeets] = useState(false);
   const [pastMeetsCollapsed, setPastMeetsCollapsed] = useState(true);
   const [deleteMeetTarget, setDeleteMeetTarget] = useState<MeetingRecord | null>(null);
   async function load() {
     const response = await fetch("/api/calendar/events");
     const data = response.ok ? await response.json() : { meetings: [] };
-    setMeets(data.meetings ?? []);
+    const loaded = (data.meetings ?? []) as MeetingRecord[];
+    setMeets(loaded);
+    if (initialMeetingId) setDetail(loaded.find((meeting) => meeting.id === initialMeetingId) ?? null);
   }
   useEffect(() => {
     setClockNow(Date.now());
     const timer = window.setInterval(() => setClockNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [initialMeetingId]);
   useEffect(() => {
     load();
   }, []);
@@ -8090,6 +8535,7 @@ function MeetView() {
     setMeetTitle("");
     setMeetLocation("");
     setMeetThumbnail(null);
+    setConfirmEmptyMeet(false);
     setError("");
     setCreate(true);
   }
@@ -8103,6 +8549,8 @@ function MeetView() {
           ...meet,
           ...result.meeting,
           participantProfiles: result.participants ?? [],
+          canManage: result.canManage ?? result.canEdit,
+          canDelete: result.canDelete,
           canEdit: result.canEdit,
         };
       }
@@ -8118,7 +8566,8 @@ function MeetView() {
       profession: person.profession || "n2 member",
       group: person.group ?? "public",
       relationship: person.relationship ?? "Invited",
-      podcastRole: person.role ?? "listener",
+      cohostEligible: person.cohostEligible,
+      meetRole: person.role ?? defaultMeetInviteRole(currentMeet.mode ?? "video"),
     })));
     setMeetMode(currentMeet.mode ?? (currentMeet.provider === "in_person" ? "in_person" : "video"));
     setMeetVisibility(currentMeet.visibility ?? "public");
@@ -8127,6 +8576,7 @@ function MeetView() {
     setMeetTitle(currentMeet.title);
     setMeetLocation(currentMeet.location ?? "");
     setMeetThumbnail(currentMeet.thumbnailUrl ?? null);
+    setConfirmEmptyMeet(false);
     setDetail(null);
     setError("");
   }
@@ -8138,6 +8588,7 @@ function MeetView() {
     setMeetTitle("");
     setMeetLocation("");
     setMeetThumbnail(null);
+    setConfirmEmptyMeet(false);
     setError("");
   }
   function selectMeetThumbnail(file?: File) {
@@ -8167,19 +8618,14 @@ function MeetView() {
     setError("");
     setMeetStep(2);
   }
-  async function addMeet(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (meetStep === 1) {
-      continueMeetSetup();
-      return;
-    }
+  async function persistMeet(form: HTMLFormElement) {
     setError("");
-    const data = new FormData(event.currentTarget),
+    const data = new FormData(form),
       start = new Date(String(data.get("startsAt"))),
       duration = Number(data.get("duration"));
     if (meetVisibility === "project" && !meetProjectId) {
       setError("Choose the project this meet belongs to.");
-      return;
+      return false;
     }
     const target = editing ? `/api/meetings/${editing.id}` : "/api/calendar/events";
     const response = await fetch(target, {
@@ -8199,7 +8645,7 @@ function MeetView() {
         location: data.get("location") || undefined,
         thumbnailUrl: meetThumbnail,
         attendeeIds: invitees.map((person) => person.id),
-        attendeeRoles: Object.fromEntries(invitees.map(person => [person.id, person.podcastRole ?? "listener"])),
+        attendeeRoles: Object.fromEntries(invitees.map(person => [person.id, person.meetRole ?? defaultMeetInviteRole(meetMode)])),
         reminderMinutes: Number(data.get("reminderMinutes") ?? 30),
         online: meetMode !== "in_person",
       }),
@@ -8207,7 +8653,7 @@ function MeetView() {
     const result = await response.json();
     if (!response.ok) {
       setError(result.error ?? "Could not create the meet");
-      return;
+      return false;
     }
     setCreate(false);
     setEditing(null);
@@ -8217,8 +8663,28 @@ function MeetView() {
     setMeetThumbnail(null);
     setMeetVisibility("public");
     setMeetProjectId("");
-    setDetail({ ...result, participantProfiles: invitees, canEdit: true });
+    setConfirmEmptyMeet(false);
+    setDetail({
+      ...result,
+      participantProfiles: invitees.map(person => ({ ...person, role: person.meetRole })),
+      canManage: true,
+      canDelete: editing ? Boolean(editing.canDelete) : true,
+      canEdit: true,
+    });
     load();
+    return true;
+  }
+  async function addMeet(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (meetStep === 1) {
+      continueMeetSetup();
+      return;
+    }
+    if (!invitees.length) {
+      setConfirmEmptyMeet(true);
+      return;
+    }
+    await persistMeet(event.currentTarget);
   }
   async function saveMeet(meet: MeetingRecord, action: "pin" | "bookmark") {
     setError("");
@@ -8574,8 +9040,11 @@ function MeetView() {
                 ] as const).map(([value, label, description, Icon]) => (
                   <button type="button" key={value} className={meetMode === value ? "active" : ""} onClick={() => {
                     setMeetMode(value);
-                    const cap = value === "video" ? 7 : value === "audio" ? 15 : 100;
-                    setInvitees(people => people.slice(0, cap));
+                    const cap = value === "video" ? 7 : value === "audio" ? 15 : 99;
+                    setInvitees(people => people.slice(0, cap).map(person => ({
+                      ...person,
+                      meetRole: person.meetRole === "cohost" ? "cohost" : defaultMeetInviteRole(value),
+                    })));
                   }}>
                     <Icon size={18}/><span>{label}</span><small>{description}</small>
                   </button>
@@ -8590,7 +9059,13 @@ function MeetView() {
               </section>
               <section className="meet-editor-step meet-invite-step" hidden={meetStep !== 2}>
                 <div className="meet-step-summary">{meetThumbnail ? <img src={meetThumbnail} alt="" /> : <span>{meetMode === "audio" ? <Mic size={20}/> : meetMode === "in_person" ? <MapPin size={20}/> : <Video size={20}/>}</span>}<div><span className="eyebrow">{meetMode === "audio" ? "PODCAST" : meetMode === "in_person" ? "IN PERSON" : "VIDEO MEET"}</span><strong>{meetTitle || "Untitled meet"}</strong><small>{meetVisibility === "project" ? "Project visibility" : `${meetVisibility[0].toUpperCase()}${meetVisibility.slice(1)} visibility`}{meetLocation ? ` · ${meetLocation}` : ""}</small></div><button type="button" onClick={() => setMeetStep(1)}>Edit details</button></div>
-                <MeetAttendeePicker selected={invitees} onChange={setInvitees} max={meetMode === "video" ? 7 : meetMode === "audio" ? 15 : 100} podcast={meetMode === "audio"} />
+                <MeetAttendeePicker
+                  selected={invitees}
+                  onChange={setInvitees}
+                  max={meetMode === "video" ? 7 : meetMode === "audio" ? 15 : 99}
+                  mode={meetMode}
+                  canAssignCohosts={!editing || Boolean(editing.canDelete)}
+                />
                 {error && <p className="form-error">{error}</p>}
               </section>
             </div>
@@ -8598,7 +9073,7 @@ function MeetView() {
               <p>{meetStep === 1 ? "Add the essentials now. Invitees come next." : `${invitees.length} ${invitees.length === 1 ? "person" : "people"} selected`}</p>
               <div>
                 {meetStep === 2 && <button type="button" className="secondary-button" onClick={() => setMeetStep(1)}><ArrowLeft size={16}/> Back</button>}
-                {meetStep === 1 ? <button type="button" className="primary-button" onClick={continueMeetSetup}>Continue to invites <ChevronRight size={16}/></button> : <button type="submit" className="primary-button">{editing ? "Save changes" : "Create meet"}</button>}
+                {meetStep === 1 ? <button type="button" className="primary-button" onClick={continueMeetSetup}>Continue to invites <ChevronRight size={16}/></button> : <button type="submit" className="primary-button">{invitees.length ? (editing ? "Save changes" : "Create meet") : (editing ? "Save without invitees" : "Create without invitees")}</button>}
               </div>
             </footer>
           </form>
@@ -8628,7 +9103,7 @@ function MeetView() {
                 <Bookmark size={15} />
                 {detail.isBookmarked ? "Remove bookmark" : "Bookmark"}
               </button>
-              {detail.canEdit && <button onClick={() => openEdit(detail)}><Pencil size={15}/>Edit meet</button>}
+              {detail.canManage && <button onClick={() => openEdit(detail)}><Pencil size={15}/>Edit meet</button>}
             </div>
             {error && <p className="form-error">{error}</p>}
             <dl>
@@ -8667,6 +9142,20 @@ function MeetView() {
                 <dd>{detail.reminderMinutes === 0 ? "At start time" : `${detail.reminderMinutes ?? 30} minutes before`}</dd>
               </div>
             </dl>
+            {!!detail.participantProfiles?.length && (
+              <section className="meet-detail-people" aria-label="Meet attendees and roles">
+                <span className="eyebrow">ATTENDEES</span>
+                <div>
+                  {detail.participantProfiles.map(person => {
+                    const role = person.role ?? person.meetRole ?? defaultMeetInviteRole(detail.mode ?? "video");
+                    return <div className="meet-detail-person" key={person.id}>
+                      <Avatar person={{ name: person.name, role: person.profession, img: person.image }} size="sm" />
+                      <span><strong>{person.name}</strong><small>{meetRoleLabel(detail.mode ?? "video", role)}</small></span>
+                    </div>;
+                  })}
+                </div>
+              </section>
+            )}
             {detail.joinUrl && detail.provider !== "in_person" && clockNow >= new Date(detail.startsAt).getTime() - 15 * 60_000 && clockNow <= new Date(detail.endsAt).getTime() && (
               <button
                 className="primary-button wide"
@@ -8694,7 +9183,51 @@ function MeetView() {
           onConfirm={deleteMeet}
         />
       )}
+      {confirmEmptyMeet && (
+        <ActionDialog
+          eyebrow={editing ? "SAVE WITHOUT INVITEES" : "CREATE WITHOUT INVITEES"}
+          title={`${editing ? "Save" : "Create"} this meet without invitees?`}
+          description="Only you will be attending initially. You can invite people later by editing the meet."
+          confirmLabel={editing ? "Save without invitees" : "Create without invitees"}
+          cancelLabel="Go back to invites"
+          onClose={() => setConfirmEmptyMeet(false)}
+          onConfirm={() => meetFormRef.current ? persistMeet(meetFormRef.current) : false}
+        />
+      )}
     </div>
+  );
+}
+
+function SavedContentCard({ item, onOpen, compact = false }: { item: SavedContentItem; onOpen: (item: SavedContentItem) => void; compact?: boolean }) {
+  const details = item.details,
+    kindLabel = item.entityType === "meeting" ? "Meet" : item.entityType[0].toUpperCase() + item.entityType.slice(1),
+    title = item.entityType === "post"
+      ? `Post by ${String(details.authorName ?? "an n2 member")}`
+      : item.entityType === "comment"
+        ? `Comment on ${String(details.projectTitle ?? "a project")}`
+        : String(details.title ?? "Saved item"),
+    excerpt = String(details.summary ?? details.description ?? details.body ?? "Open this saved item to see the full details."),
+    person = String(details.authorName ?? details.ownerName ?? details.hostName ?? ""),
+    dateValue = details.startsAt ?? details.createdAt ?? item.updatedAt,
+    meta = item.entityType === "project"
+      ? [details.industry, details.stage].filter(Boolean).join(" · ")
+      : item.entityType === "meeting"
+        ? [details.mode, details.location].filter(Boolean).join(" · ")
+        : person,
+    image = String(details.attachmentType === "image" ? details.attachmentUrl ?? "" : details.thumbnailUrl ?? ""),
+    Icon = item.entityType === "project" ? BriefcaseBusiness : item.entityType === "meeting" ? CalendarDays : MessageCircle;
+  return (
+    <article className={`saved-content-card saved-${item.entityType} ${compact ? "compact" : ""}`} style={item.entityType === "project" ? { "--saved-accent": String(details.accent ?? "var(--orange)") } as React.CSSProperties : undefined}>
+      {image && <img src={image} alt="" />}
+      <button type="button" onClick={() => onOpen(item)} aria-label={`Open ${kindLabel.toLowerCase()} ${title}`}>
+        <span className="saved-content-kind"><Icon size={14} /> {kindLabel}</span>
+        <strong>{title}</strong>
+        <p>{excerpt}</p>
+        <small>{meta}{meta && dateValue ? " · " : ""}{dateValue ? new Date(String(dateValue)).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : ""}</small>
+      </button>
+      <span className="saved-content-link">View {kindLabel.toLowerCase()} <ArrowUpRight size={14} /></span>
+      {item.pinned && <span className="saved-content-pin"><Pin size={13} fill="currentColor" /> Pinned</span>}
+    </article>
   );
 }
 
@@ -8703,11 +9236,15 @@ function ProfileView({
   userId,
   onEdit,
   onProject,
+  onPost,
+  onMeet,
 }: {
   member: MemberPerson;
   userId?: string | null;
   onEdit: () => void;
   onProject: (projectId: string) => void;
+  onPost: (postId: string) => void;
+  onMeet: (meetingId: string) => void;
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
@@ -8730,14 +9267,9 @@ function ProfileView({
         videoUrl: string | null;
       }>
     >([]),
-    [saved, setSaved] = useState<
-      Array<{
-        id: string;
-        entityType: string;
-        pinned: boolean;
-        details: Record<string, unknown>;
-      }>
-    >([]),
+    [saved, setSaved] = useState<SavedContentItem[]>([]),
+    [profilePins, setProfilePins] = useState<SavedContentItem[]>([]),
+    [savedCategory, setSavedCategory] = useState<"all" | SavedContentItem["entityType"]>("all"),
     [busy, setBusy] = useState(false),
     [unfollowOpen, setUnfollowOpen] = useState(false);
   useEffect(() => {
@@ -8746,6 +9278,13 @@ function ProfileView({
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => setProfile(data?.profile ?? null));
   }, [userId]);
+  useEffect(() => {
+    if (!userId || !profile) return;
+    fetch(`/api/saved-items?profile=${encodeURIComponent(userId)}`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : { items: [] }))
+      .then((data) => setProfilePins((data.items ?? []).filter((item: SavedContentItem) => item.pinned).slice(0, 3)))
+      .catch(() => setProfilePins([]));
+  }, [userId, profile]);
   useEffect(() => {
     if (!userId) return;
     if (section === "followers" || section === "following")
@@ -8793,6 +9332,12 @@ function ProfileView({
     }
     setBusy(false);
     return response.ok;
+  }
+  function openSaved(item: SavedContentItem) {
+    if (item.entityType === "project") onProject(item.entityId);
+    else if (item.entityType === "comment" && item.details.projectId) onProject(String(item.details.projectId));
+    else if (item.entityType === "post") onPost(item.entityId);
+    else if (item.entityType === "meeting") onMeet(item.entityId);
   }
   const person: MemberPerson = profile
       ? {
@@ -9009,18 +9554,29 @@ function ProfileView({
           </section>
         ) : section === "bookmarks" ? (
           <section className="profile-library">
-            <div className="saved-list">
-              {saved.map((item) => (
-                <article key={item.id}>
-                  <span className="saved-kind">{item.entityType}</span>
-                  <strong>{String(item.details.title ?? "Saved item")}</strong>
-                  {item.pinned && <Pin size={15} />}
-                </article>
-              ))}
+            <div className="profile-section-head saved-library-head">
+              <div><span className="eyebrow">SAVED LIBRARY</span><h2>Your bookmarks, with their original context.</h2></div>
+              <small>{saved.filter(item => item.bookmarked).length} bookmarks</small>
+            </div>
+            <div className="saved-category-tabs" role="tablist" aria-label="Bookmark categories">
+              {(["all", "post", "project", "meeting", "comment"] as const).map(category => {
+                const count = saved.filter(item => item.bookmarked && (category === "all" || item.entityType === category)).length;
+                return <button type="button" role="tab" aria-selected={savedCategory === category} className={savedCategory === category ? "active" : ""} key={category} onClick={() => setSavedCategory(category)}>{category === "all" ? "All" : category === "meeting" ? "Meets" : `${category[0].toUpperCase()}${category.slice(1)}s`} <b>{count}</b></button>;
+              })}
+            </div>
+            <div className="saved-content-grid">
+              {saved.filter(item => item.bookmarked && (savedCategory === "all" || item.entityType === savedCategory)).map(item => <SavedContentCard key={item.id} item={item} onOpen={openSaved} />)}
+              {!saved.some(item => item.bookmarked && (savedCategory === "all" || item.entityType === savedCategory)) && <p className="profile-empty">No bookmarks in this category yet.</p>}
             </div>
           </section>
         ) : (
           <>
+            {profilePins.length > 0 && (
+              <section className="profile-pins">
+                <div className="profile-section-head"><div><span className="eyebrow">PINNED</span><h2>{profile?.isCurrent ? "Your profile highlights" : `${person.name}'s profile highlights`}</h2></div><small>Up to three pins</small></div>
+                <div className="profile-pin-grid">{profilePins.map(item => <SavedContentCard key={item.id} item={item} onOpen={openSaved} compact />)}</div>
+              </section>
+            )}
             <section className="profile-section bio-section">
               <span className="eyebrow">ABOUT</span>
               <p className="profile-bio">
@@ -9068,6 +9624,7 @@ type PostReply = {
   id: string;
   body: string;
   createdAt: string;
+  editedAt?: string | null;
   authorId: string;
   authorName: string | null;
   authorImage: string | null;
@@ -9077,11 +9634,13 @@ type PostReply = {
 };
 function PostThread({
   initialPost,
+  currentUserId,
   onClose,
   onProfile,
   onUpdated,
 }: {
   initialPost: TimelinePost;
+  currentUserId?: string;
   onClose: () => void;
   onProfile: (userId: string) => void;
   onUpdated: (post: TimelinePost) => void;
@@ -9091,6 +9650,8 @@ function PostThread({
     [draft, setDraft] = useState(""),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
+    [editReplyTarget, setEditReplyTarget] = useState<PostReply | null>(null),
+    [deleteReplyTarget, setDeleteReplyTarget] = useState<PostReply | null>(null),
     [error, setError] = useState("");
   const replyRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -9153,12 +9714,38 @@ function PostThread({
     } else setError(result.error ?? "Could not add your reply.");
     setBusy(false);
   }
+  async function editReply(values: Record<string, string>) {
+    if (!editReplyTarget) return false;
+    setError("");
+    const response = await fetch(`/api/posts/${post.id}/thread/${editReplyTarget.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body: values.body }),
+      }),
+      result = await response.json();
+    if (!response.ok) {
+      setError(result.error ?? "Could not edit your reply.");
+      return false;
+    }
+    setReplies((rows) => rows.map((reply) => reply.id === editReplyTarget.id ? { ...reply, ...result.reply } : reply));
+    setEditReplyTarget(null);
+  }
+  async function deleteReply() {
+    if (!deleteReplyTarget) return false;
+    setError("");
+    const response = await fetch(`/api/posts/${post.id}/thread/${deleteReplyTarget.id}`, { method: "DELETE" }),
+      result = await response.json();
+    if (!response.ok) {
+      setError(result.error ?? "Could not delete your reply.");
+      return false;
+    }
+    setReplies((rows) => rows.filter((reply) => reply.id !== deleteReplyTarget.id));
+    update({ ...post, replyCount: Math.max(0, (post.replyCount ?? replies.length) - 1) });
+    setDeleteReplyTarget(null);
+  }
   return (
-    <div
-      className="modal-backdrop"
-      role="presentation"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
-    >
+    <>
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section
         className="comment-thread post-thread"
         role="dialog"
@@ -9166,13 +9753,7 @@ function PostThread({
         aria-label={`Replies to ${post.authorName ?? "this post"}`}
       >
         <header>
-          <div>
-            <span className="eyebrow">POST CONVERSATION</span>
-            <h2>
-              {post.replyCount ?? replies.length}{" "}
-              {(post.replyCount ?? replies.length) === 1 ? "reply" : "replies"}
-            </h2>
-          </div>
+          <span className="eyebrow">POST CONVERSATION</span>
           <button className="icon-button" onClick={onClose}>
             <X size={19} />
           </button>
@@ -9244,18 +9825,23 @@ function PostThread({
                   size="sm"
                 />
                 <div>
-                  <button
-                    className="profile-name"
-                    onClick={() => {
-                      onProfile(reply.authorId);
-                      onClose();
-                    }}
-                  >
-                    {reply.authorName ?? "n2 member"}{" "}
-                    {reply.authorIsAdmin && <N2AdminBadge />}{" "}
-                    {reply.isDemo && <DemoBadge />}
-                  </button>
-                  <time>{new Date(reply.createdAt).toLocaleString()}</time>
+                  <div className="post-reply-heading">
+                    <button className="profile-name" onClick={() => { onProfile(reply.authorId); onClose(); }}>
+                      {reply.authorName ?? "n2 member"}{" "}
+                      {reply.authorIsAdmin && <N2AdminBadge />}{" "}
+                      {reply.isDemo && <DemoBadge />}
+                    </button>
+                    <span className="post-reply-meta">
+                      <time>{new Date(reply.createdAt).toLocaleString()}</time>
+                      {reply.editedAt && <small>Edited</small>}
+                    </span>
+                    {reply.authorId === currentUserId && (
+                      <span className="post-reply-actions">
+                        <button type="button" aria-label="Edit reply" title="Edit reply" onClick={() => setEditReplyTarget(reply)}><Pencil size={13} /></button>
+                        <button type="button" className="danger" aria-label="Delete reply" title="Delete reply" onClick={() => setDeleteReplyTarget(reply)}><Trash2 size={13} /></button>
+                      </span>
+                    )}
+                  </div>
                   <p><LinkifiedText text={reply.body} /></p>
                   <RichLinkPreview text={reply.body} />
                 </div>
@@ -9278,7 +9864,7 @@ function PostThread({
           />
           <MentionSuggestions
             value={draft}
-            input={replyRef.current}
+            inputRef={replyRef}
             setValue={setDraft}
             placement="reply"
           />
@@ -9302,6 +9888,13 @@ function PostThread({
         </form>
       </section>
     </div>
+    {editReplyTarget && (
+      <ActionDialog eyebrow="EDIT REPLY" title="Edit your reply." confirmLabel="Save reply" fields={[{ name: "body", label: "Reply", defaultValue: editReplyTarget.body, required: true, maxLength: 2000 }]} onClose={() => setEditReplyTarget(null)} onConfirm={editReply} />
+    )}
+    {deleteReplyTarget && (
+      <ActionDialog eyebrow="DELETE REPLY" title="Delete this reply?" description="This removes the reply from the post conversation." confirmLabel="Delete reply" cancelLabel="Keep reply" danger onClose={() => setDeleteReplyTarget(null)} onConfirm={deleteReply} />
+    )}
+    </>
   );
 }
 
@@ -9483,7 +10076,7 @@ function ProjectComments({
           />
           <MentionSuggestions
             value={draft}
-            input={commentRef.current}
+            inputRef={commentRef}
             setValue={setDraft}
             placement="reply"
           />
@@ -10932,6 +11525,8 @@ function SettingsView({
                 <strong>Google Calendar & Meet</strong>
                 <small>Not connected</small>
               </span>
+              {/* OAuth must use a document navigation so the provider redirect is not handled as an RSC response. */}
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
               <a href="/api/integrations/google/connect">Connect</a>
             </div>
             <div className="connection-setting">
@@ -10940,6 +11535,7 @@ function SettingsView({
                 <strong>Microsoft Outlook & Teams</strong>
                 <small>Not connected</small>
               </span>
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
               <a href="/api/integrations/microsoft/connect">Connect</a>
             </div>
             <label className="select-setting spaced">
@@ -11430,6 +12026,7 @@ export default function HomePage() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [messageConversationId, setMessageConversationId] = useState<string | null>(null);
+  const [initialMeetingId, setInitialMeetingId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   const [peopleSuggestions, setPeopleSuggestions] = useState<
       PeopleSuggestionRecord[]
@@ -11546,7 +12143,7 @@ export default function HomePage() {
   }, [authenticated, sessionChecked]);
   useEffect(() => {
     if (!authenticated || deepLinkHandled.current) return;
-    const params = new URLSearchParams(window.location.search), profileId = params.get("profile"), projectId = params.get("project"), roleId = params.get("role"), requestedView = params.get("view"), conversationId = params.get("conversation");
+    const params = new URLSearchParams(window.location.search), profileId = params.get("profile"), projectId = params.get("project"), postId = params.get("post"), meetingId = params.get("meeting"), roleId = params.get("role"), requestedView = params.get("view"), conversationId = params.get("conversation");
     if (profileId) {
       deepLinkHandled.current = true;
       setSelectedProfileId(profileId);
@@ -11557,6 +12154,17 @@ export default function HomePage() {
       deepLinkHandled.current = true;
       setMessageConversationId(conversationId);
       setView("messages");
+      return;
+    }
+    if (postId) {
+      deepLinkHandled.current = true;
+      void openSavedPost(postId);
+      return;
+    }
+    if (meetingId) {
+      deepLinkHandled.current = true;
+      setInitialMeetingId(meetingId);
+      setView("meet");
       return;
     }
     if (!projectId) return;
@@ -11773,6 +12381,28 @@ export default function HomePage() {
     setMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+  async function openSavedPost(postId: string) {
+    if (!authenticated) {
+      requireSignIn();
+      return;
+    }
+    const response = await fetch(`/api/posts/${encodeURIComponent(postId)}/thread`, { cache: "no-store" });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.post) {
+      setToast(result?.error ?? "This saved post is no longer available.");
+      return;
+    }
+    setThreadPost({ ...result.post, linkedProjects: result.post.linkedProjects ?? [] });
+  }
+  function openSavedMeet(meetingId: string) {
+    if (!authenticated) {
+      requireSignIn();
+      return;
+    }
+    setInitialMeetingId(meetingId);
+    setView("meet");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   return (
     <div
       className={`app-shell ${view === "network" && !selectedProjectId ? "network-shell" : ""}`}
@@ -11832,20 +12462,20 @@ export default function HomePage() {
                 <span>Log out</span>
               </button>
               {currentMember.isN2Admin && (
-                <a className="admin-nav-link admin-profile-slot" href="/admin">
+                <Link className="admin-nav-link admin-profile-slot" href="/admin">
                   <ShieldCheck size={20} />
                   <span>Admin console</span>
                   <N2AdminBadge />
-                </a>
+                </Link>
               )}
             </>
           ) : (
             <div className="public-sidebar-auth">
               <p>Have a skill, idea or useful introduction?</p>
-              <a href="/signin">Sign in</a>
-              <a className="join" href="/signin?mode=register">
+              <Link href="/signin">Sign in</Link>
+              <Link className="join" href="/signin?mode=register">
                 Join n2
-              </a>
+              </Link>
             </div>
           )}
         </div>
@@ -11915,7 +12545,7 @@ export default function HomePage() {
               {authenticated && view === "notifications" && (
                 <NotificationsPage onUnreadCounts={updateUnreadCounts} />
               )}
-              {authenticated && view === "meet" && <MeetView />}
+              {authenticated && view === "meet" && <MeetView key={initialMeetingId ?? "meet"} initialMeetingId={initialMeetingId} />}
               {authenticated && view === "profile" && (
                 <ProfileView
                   key={selectedProfileId ?? currentMember.id ?? "self"}
@@ -11926,6 +12556,8 @@ export default function HomePage() {
                     go("settings");
                   }}
                   onProject={openProject}
+                  onPost={openSavedPost}
+                  onMeet={openSavedMeet}
                 />
               )}
               {authenticated && view === "settings" && (
@@ -11963,8 +12595,8 @@ export default function HomePage() {
           </div>
           {!authenticated && (
             <div className="public-rail-auth">
-              <a href="/signin">Sign in</a>
-              <a href="/signin?mode=register">Join n2</a>
+              <Link href="/signin">Sign in</Link>
+              <Link href="/signin?mode=register">Join n2</Link>
             </div>
           )}
           {authenticated && (
@@ -12036,10 +12668,10 @@ export default function HomePage() {
             <Logo />
             <p>Useful people, brought together.</p>
             <div>
-              <a href="/about">About</a>
-              <a href="/privacy">Privacy</a>
-              <a href="/terms">Terms</a>
-              <a href="/community">Community</a>
+              <Link href="/about">About</Link>
+              <Link href="/privacy">Privacy</Link>
+              <Link href="/terms">Terms</Link>
+              <Link href="/community">Community</Link>
               <button className="rail-help-link" onClick={() => setHelpOpen(true)}>
                 <CircleHelp size={10} />
                 <span>Help</span>
@@ -12139,6 +12771,7 @@ export default function HomePage() {
       {threadPost && (
         <PostThread
           initialPost={threadPost}
+          currentUserId={currentMember.id}
           onClose={() => setThreadPost(null)}
           onProfile={openProfile}
           onUpdated={setThreadPost}

@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, or } from "drizzle-orm";
 import { getDb } from "@/db";
-import { follows, projectMembers, projects, timelinePosts } from "@/db/schema";
+import { follows, projectFollows, projectFundingInterests, projectMembers, projects, timelinePosts } from "@/db/schema";
 import { ApiError } from "@/lib/api";
 
 async function areMutualConnections(firstUserId: string, secondUserId: string) {
@@ -16,9 +16,18 @@ export async function requireProjectView(userId: string, projectId: string) {
   const db = getDb();
   const [project] = await db.select({ id: projects.id, ownerId: projects.ownerId, status: projects.status, visibility: projects.visibility }).from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!project || project.status === "deleted") throw new ApiError(404, "Project not found");
-  if (project.ownerId === userId || project.visibility === "network") return project;
+  if (project.ownerId === userId) return project;
   const [membership] = await db.select({ userId: projectMembers.userId }).from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).limit(1);
   if (membership) return project;
+  if (project.status === "pending_deletion") {
+    const [[following], [funding]] = await Promise.all([
+      db.select({ userId: projectFollows.userId }).from(projectFollows).where(and(eq(projectFollows.projectId, projectId), eq(projectFollows.userId, userId))).limit(1),
+      db.select({ userId: projectFundingInterests.userId }).from(projectFundingInterests).where(and(eq(projectFundingInterests.projectId, projectId), eq(projectFundingInterests.userId, userId))).limit(1),
+    ]);
+    if (following || funding) return project;
+    throw new ApiError(404, "Project not found");
+  }
+  if (project.visibility === "network") return project;
   if (project.visibility === "connections" && await areMutualConnections(userId, project.ownerId)) return project;
   throw new ApiError(404, "Project not found");
 }

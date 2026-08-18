@@ -44,7 +44,11 @@ export async function GET(request: Request) {
       .where(and(eq(timelinePosts.status, "visible"), eq(timelinePosts.visibility, "network"), eq(users.status, "active")))
       .orderBy(desc(timelinePosts.createdAt)).limit(60);
     if(scope==="following") rows=rows.filter(row=>followedIds.includes(row.authorId));
-    else if(scope==="for_you"&&followedIds.length) rows.sort((a,b)=>Number(followedIds.includes(b.authorId))-Number(followedIds.includes(a.authorId))||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+    const announcementCutoff=Date.now()-24*60*60*1000;
+    rows.sort((a,b)=>{
+      const freshAdminA=Boolean(a.authorIsAdmin&&new Date(a.createdAt).getTime()>=announcementCutoff),freshAdminB=Boolean(b.authorIsAdmin&&new Date(b.createdAt).getTime()>=announcementCutoff);
+      return Number(freshAdminB)-Number(freshAdminA)||(scope==="for_you"?Number(followedIds.includes(b.authorId))-Number(followedIds.includes(a.authorId)):0)||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime();
+    });
     const ids = [...new Set(rows.flatMap(row => row.linkedProjectIds))];
     const linked = ids.length ? await db.select({ id: projects.id, title: projects.title, status: projects.status }).from(projects).where(inArray(projects.id, ids)) : [];
     const byId = new Map(linked.map(project => [project.id, project]));
