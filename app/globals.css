@@ -381,7 +381,7 @@ body{font-family:var(--font-geist-sans),var(--font-noto-color-emoji),Arial,sans-
 /* Focused two-step meet editor: fixed shell, scrollable content, persistent actions. */
 .modal-backdrop:has(.meet-creation-flow){padding:10px}
 .meet-creation-flow{
-  width:min(1120px,calc(100vw - 20px));
+  width:min(920px,calc(100vw - 20px));
   height:min(940px,calc(100dvh - 20px));
   max-height:calc(100dvh - 20px);
   display:grid;
@@ -1288,3 +1288,8 @@ input::selection,textarea::selection,[contenteditable]::selection{
 .saved-meeting .saved-content-kind{color:var(--green)}
 .shared-content-page>article{border-top-width:1px}
 .shared-content-page>article.shared-project{border-top:8px solid var(--orange)}
+
+/* Keep the build credit legible if gradient text clipping is unavailable in dark mode. */
+.intaillium-credit.intaillium-credit{position:relative;background:none;color:#65d9ff!important;-webkit-text-fill-color:#65d9ff}
+.intaillium-credit:after{content:attr(data-wordmark);position:absolute;inset:0;background:linear-gradient(100deg,#00a6ff 0%,#65d9ff 28%,#3975ff 58%,#5867ff 100%);background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent;pointer-events:none}
+.intaillium-credit:hover{text-decoration-color:#65d9ff}

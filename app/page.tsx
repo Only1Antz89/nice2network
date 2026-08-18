@@ -12795,7 +12795,7 @@ export default function HomePage() {
             </div>
             <small>
               © 2026 nice 2 network · built by{" "}
-              <a className="intaillium-credit" href="https://intaillium.com" target="_blank" rel="noreferrer">
+              <a className="intaillium-credit" data-wordmark="IntAillium" href="https://intaillium.com" target="_blank" rel="noreferrer">
                 IntAillium
               </a>
             </small>

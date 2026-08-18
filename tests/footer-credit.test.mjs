@@ -10,8 +10,9 @@ test("footer credits link the blue-gradient IntAillium build credit", () => {
   for (const source of [app, publicShell]) {
     assert.match(source, /built by/);
     assert.match(source, /href="https:\/\/intaillium\.com"/);
-    assert.match(source, /className="intaillium-credit"/);
+    assert.match(source, /className="intaillium-credit" data-wordmark="IntAillium"/);
     assert.doesNotMatch(source, /Built in partnership with IntAillium/);
   }
-  assert.match(css, /\.intaillium-credit\{[^}]*linear-gradient\([^)]*#00a6ff[^)]*#3975ff/);
+  assert.match(css, /\.intaillium-credit\.intaillium-credit\{[^}]*color:#65d9ff!important[^}]*-webkit-text-fill-color:#65d9ff/);
+  assert.match(css, /\.intaillium-credit:after\{[^}]*linear-gradient\([^)]*#00a6ff[^)]*#3975ff/);
 });

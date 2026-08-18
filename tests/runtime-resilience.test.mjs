@@ -215,10 +215,10 @@ test("dark conversations, contributor marks and calendar controls retain contras
   assert.match(theme, /\.view-toggle button\.active\s*\{\s*background: var\(--solid\) !important;\s*color: var\(--solid-ink\) !important/);
 });
 
-test("meet editor fills roomy viewports and only scrolls as a fallback", () => {
+test("meet editor uses a focused desktop width and only scrolls as a fallback", () => {
   const styles = read("app/globals.css");
   assert.match(styles, /\.modal-backdrop:has\(\.meet-creation-flow\)\{padding:10px\}/);
-  assert.match(styles, /width:min\(1120px,calc\(100vw - 20px\)\)/);
+  assert.match(styles, /width:min\(920px,calc\(100vw - 20px\)\)/);
   assert.match(styles, /height:min\(940px,calc\(100dvh - 20px\)\)/);
   assert.match(styles, /\.meet-flow-body\{[^}]*overflow-y:auto/);
   assert.match(styles, /grid-template-columns:140px minmax\(0,1fr\)/);
