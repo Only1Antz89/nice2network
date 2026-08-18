@@ -519,14 +519,18 @@ test("ships a role-aware branded podcast stage with private questions and playab
   assert.match(migration, /CREATE TABLE "meeting_messages"/);
 });
 
-test("uses the brand orange for project highlights and server-owned founder identity", async () => {
-  const [brand, profile, styles] = await Promise.all([
+test("keeps project labels neutral and preserves server-owned founder identity", async () => {
+  const [brand, profile, styles, darkStyles] = await Promise.all([
     read("components/network-brand.tsx"),
     read("app/api/profiles/[userId]/route.ts"),
     read("app/globals.css"),
+    read("app/dark-theme.css"),
   ]);
   assert.match(styles, /--orange:#ff6b35/);
-  assert.match(styles, /project-kicker span:first-child\{background:var\(--orange\)!important/);
+  assert.match(styles, /project-kicker span:first-child\{background:transparent!important;color:var\(--ink\)!important;border-radius:0;padding-inline:0\}/);
+  assert.doesNotMatch(styles, /project-kicker span:first-child\{background:var\(--orange\)!important/);
+  assert.match(darkStyles, /\.project-kicker span:first-child,\s*\.project-blue \.project-kicker span:first-child \{\s*background: transparent;\s*color: var\(--ink\);\s*\}/);
+  assert.doesNotMatch(darkStyles, /\.project-kicker span:first-child[\s\S]{0,160}background: var\(--accent-soft\)/);
   assert.match(profile, /isFounder: sql<boolean>`\$\{users\.role\} = 'founder'`/);
   assert.match(brand, /function N2FounderLabel/);
   assert.match(brand, /className="n2-founder-label">n2 Founder/);

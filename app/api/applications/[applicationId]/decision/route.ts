@@ -9,6 +9,13 @@ import { createNotification, createNotifications } from "@/lib/notifications";
 import { recomputeProjectRecommendations } from "@/lib/recommendations/service";
 
 const schema = z.object({ decision: z.enum(["accepted", "declined"]) });
+
+function logSideEffectFailures(applicationId: string, results: PromiseSettledResult<unknown>[]) {
+  for (const result of results) {
+    if (result.status === "rejected") console.error("Application decision side effect failed", { applicationId, error: result.reason });
+  }
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ applicationId: string }> }) {
   try {
     const member = await requireMember(), { applicationId } = await params, { decision } = schema.parse(await request.json()), db = getDb();
@@ -18,26 +25,43 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
     if (row.projectStatus === "deleted") throw new ApiError(404, "Project not found");
     if (row.projectStatus === "pending_deletion") throw new ApiError(409, "This project is pending deletion and is read-only");
     if (row.application.status !== "pending") throw new ApiError(409, "This application has already been decided");
-    await db.transaction(async tx => {
-      await tx.update(applications).set({ status: decision, decidedBy: member.id, decidedAt: new Date() }).where(eq(applications.id, applicationId));
+    const memberWasAdded = await db.transaction(async tx => {
+      const [updated] = await tx.update(applications).set({ status: decision, decidedBy: member.id, decidedAt: new Date() }).where(and(eq(applications.id, applicationId), eq(applications.status, "pending"))).returning({ id: applications.id });
+      if (!updated) throw new ApiError(409, "This application has already been decided");
       if (decision === "accepted") {
-        await tx.insert(projectMembers).values({ projectId: row.application.projectId, userId: row.application.applicantId, roleId: row.application.roleId, department: row.department }).onConflictDoNothing();
-        await tx.insert(projectUpdates).values({ projectId: row.application.projectId, authorId: row.application.applicantId, type: "member_joined", body: `${row.applicantName ?? "A new member"} joined as ${row.roleTitle}.` });
-        await tx.update(projectRoles).set({ filled: sql`least(${projectRoles.capacity}, ${projectRoles.filled} + 1)` }).where(and(eq(projectRoles.id, row.application.roleId), eq(projectRoles.status, "open")));
-        const [recommendation] = await tx.select({ id: projectRecommendations.id }).from(projectRecommendations).where(and(eq(projectRecommendations.userId, row.application.applicantId), eq(projectRecommendations.roleId, row.application.roleId))).orderBy(desc(projectRecommendations.score)).limit(1);
-        if (recommendation) {
-          await tx.update(projectRecommendations).set({ status: "converted" }).where(eq(projectRecommendations.id, recommendation.id));
-          await tx.insert(recommendationEvents).values({ recommendationId: recommendation.id, userId: row.application.applicantId, event: "accepted_role", signalWeight: 60, metadata: { source: "application" } });
+        const added = await tx.insert(projectMembers).values({ projectId: row.application.projectId, userId: row.application.applicantId, roleId: row.application.roleId, department: row.department }).onConflictDoNothing().returning({ userId: projectMembers.userId });
+        if (added.length) {
+          await tx.update(projectRoles).set({ filled: sql`least(${projectRoles.capacity}, ${projectRoles.filled} + 1)` }).where(and(eq(projectRoles.id, row.application.roleId), eq(projectRoles.status, "open")));
+        }
+        return added.length > 0;
+      }
+      return false;
+    });
+    after(async () => {
+      const sideEffects: Promise<unknown>[] = [
+        recomputeProjectRecommendations(row.application.projectId),
+        createNotification({ userId: row.application.applicantId, actorId: member.id, type: "application", title: `Application ${decision}`, body: `${row.roleTitle} · ${row.projectTitle}`, entityType: "project", entityId: row.application.projectId, href: `/?project=${row.application.projectId}` }),
+        audit(member.id, `application.${decision}`, "application", applicationId),
+      ];
+      if (decision === "accepted") {
+        sideEffects.push((async () => {
+          const [recommendation] = await db.select({ id: projectRecommendations.id }).from(projectRecommendations).where(and(eq(projectRecommendations.userId, row.application.applicantId), eq(projectRecommendations.roleId, row.application.roleId))).orderBy(desc(projectRecommendations.score)).limit(1);
+          if (!recommendation) return;
+          await db.transaction(async tx => {
+            await tx.update(projectRecommendations).set({ status: "converted" }).where(eq(projectRecommendations.id, recommendation.id));
+            await tx.insert(recommendationEvents).values({ recommendationId: recommendation.id, userId: row.application.applicantId, event: "accepted_role", signalWeight: 60, metadata: { source: "application" } });
+          });
+        })());
+        if (memberWasAdded) {
+          sideEffects.push(db.insert(projectUpdates).values({ projectId: row.application.projectId, authorId: row.application.applicantId, type: "member_joined", body: `${row.applicantName ?? "A new member"} joined as ${row.roleTitle}.` }));
+          sideEffects.push((async () => {
+            const recipients = await db.select({ userId: projectMembers.userId }).from(projectMembers).where(eq(projectMembers.projectId, row.application.projectId));
+            await createNotifications(recipients.filter(({ userId }) => userId !== row.application.applicantId).map(({ userId }) => ({ userId, actorId: row.application.applicantId, type: "project" as const, title: `${row.applicantName ?? "A new member"} joined ${row.projectTitle}`, body: `${row.roleTitle} joined your project team.`, entityType: "project", entityId: row.application.projectId, href: `/?view=projects&project=${row.application.projectId}` })));
+          })());
         }
       }
+      logSideEffectFailures(applicationId, await Promise.allSettled(sideEffects));
     });
-    after(() => recomputeProjectRecommendations(row.application.projectId));
-    await createNotification({ userId: row.application.applicantId, actorId: member.id, type: "application", title: `Application ${decision}`, body: `${row.roleTitle} · ${row.projectTitle}`, entityType: "project", entityId: row.application.projectId, href: `/?project=${row.application.projectId}` });
-    if (decision === "accepted") {
-      const recipients = await db.select({ userId: projectMembers.userId }).from(projectMembers).where(eq(projectMembers.projectId, row.application.projectId));
-      await createNotifications(recipients.filter(({ userId }) => userId !== row.application.applicantId).map(({ userId }) => ({ userId, actorId: row.application.applicantId, type: "project" as const, title: `${row.applicantName ?? "A new member"} joined ${row.projectTitle}`, body: `${row.roleTitle} joined your project team.`, entityType: "project", entityId: row.application.projectId, href: `/?view=projects&project=${row.application.projectId}` })));
-    }
-    await audit(member.id, `application.${decision}`, "application", applicationId);
     return NextResponse.json({ status: decision });
   } catch (error) { return apiError(error); }
 }

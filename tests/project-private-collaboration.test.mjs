@@ -36,6 +36,13 @@ test("membership changes create project activity and teammate notifications", ()
   assert.match(page, /update\.type === "member_joined" \|\| update\.type === "member_left"/);
 });
 
+test("application decisions isolate optional side effects from the core membership change", () => {
+  assert.match(decisionRoute, /eq\(applications\.status, "pending"\)/);
+  assert.match(decisionRoute, /onConflictDoNothing\(\)\.returning/);
+  assert.match(decisionRoute, /after\(async \(\) =>/);
+  assert.match(decisionRoute, /Promise\.allSettled\(sideEffects\)/);
+});
+
 test("funding settings and contribution ledger are persisted with owner controls", () => {
   assert.match(schema, /projectFundingInterests/);
   assert.match(schema, /fundingGoal: integer\("funding_goal"\)/);

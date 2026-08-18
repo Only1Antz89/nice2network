@@ -542,7 +542,7 @@ html[data-colour-theme="dark"] .open-person:hover > svg {
 
 .project-kicker span:first-child,
 .project-blue .project-kicker span:first-child {
-  background: var(--accent-soft);
+  background: transparent;
   color: var(--ink);
 }
 

@@ -7201,7 +7201,13 @@ function NetworkView({
                   {(whyReasons.length ? whyReasons : selected.reasons).map((reason) => <small key={reason}>{reason}</small>)}
                 </div>
                 {selected.introduction_eligible && <div className="network-brief-actions">
-                  <button className="secondary-button" onClick={() => setIntroTarget(selected)}><UserPlus size={14} /> Ask for an introduction</button>
+                  <button
+                    className="secondary-button network-introduction-button"
+                    onClick={() => setIntroTarget(selected)}
+                  >
+                    <UserPlus size={14} aria-hidden="true" />
+                    <span>Ask for an introduction</span>
+                  </button>
                 </div>}
                 <button className="primary-button wide" onClick={() => { fetch("/api/network/events", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: "profile_opened", targetId: selected.id }), keepalive: true }).catch(() => undefined); onProfile(selected.id); }}>View full profile <ArrowUpRight size={15} /></button>
               </> : <div className={`network-connection-list${connectionPageLoading ? " is-loading" : ""}`} role="tabpanel" aria-busy={connectionPageLoading}>
@@ -7404,6 +7410,13 @@ function MessagesView({
       .map((member) => member.name)
       .join(", ") ||
     "Conversation";
+
+  const conversationTitleClass = (row: ConversationRecord) =>
+    row.projectId
+      ? "conversation-title--project"
+      : row.members.length <= 2
+        ? "conversation-title--direct"
+        : undefined;
   async function load() {
     const response = await fetch("/api/conversations"),
       data = await response
@@ -7775,7 +7788,10 @@ function MessagesView({
           </button>
           <button className="conversation-identity" onClick={() => { setShowChatDetails(true); setMemberSearch(""); }} aria-label="Open chat details">
             <Avatar person={{ name: title(selected), role: "Conversation", img: selected.image }} size="md" />
-            <span><strong>{title(selected)}</strong><small>{status}</small></span>
+            <span>
+              <strong className={conversationTitleClass(selected)}>{title(selected)}</strong>
+              <small>{status}</small>
+            </span>
           </button>
           <button
             className="icon-button border"
@@ -8012,7 +8028,7 @@ function MessagesView({
               size="md"
             />
             <span>
-              <strong>{title(row)}</strong>
+              <strong className={conversationTitleClass(row)}>{title(row)}</strong>
               <small>
                 {row.snoozedUntil ? "Snoozed · " : ""}
                 {row.lastMessage?.body ?? "Start the conversation"}
