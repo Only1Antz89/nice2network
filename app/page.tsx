@@ -291,15 +291,7 @@ type ProfileRecord = {
   following: number;
   isFollowing: boolean;
   isMutual: boolean;
-  posts: Array<{
-    id: string;
-    body: string;
-    attachmentType: string | null;
-    attachmentUrl: string | null;
-    videoUrl: string | null;
-    visibility: "network" | "connections";
-    createdAt: string;
-  }>;
+  posts: TimelinePost[];
   projects: Array<{
     id: string;
     title: string;
@@ -2911,7 +2903,7 @@ function TimelinePostCard({
   post: TimelinePost;
   currentMember: MemberPerson;
   onProfile: (id: string) => void;
-  onProject: () => void;
+  onProject: (projectId?: string) => void;
   onThread: () => void;
   onEngage: () => void;
   canEngage: boolean;
@@ -3173,7 +3165,7 @@ function TimelinePostCard({
       {post.linkedProjects.length > 0 && (
         <div className="post-project-links">
           {post.linkedProjects.map((project) => (
-            <button key={project.id} onClick={onProject}>
+            <button key={project.id} onClick={() => onProject(project.id)}>
               #
               {project.title
                 .toLowerCase()
@@ -9289,17 +9281,21 @@ function ProfileView({
   userId,
   onEdit,
   onProject,
+  onProfile,
   onPost,
   onMeet,
   onShare,
+  onToast,
 }: {
   member: MemberPerson;
   userId?: string | null;
   onEdit: () => void;
   onProject: (projectId: string) => void;
+  onProfile: (userId: string) => void;
   onPost: (postId: string) => void;
   onMeet: (meetingId: string) => void;
-  onShare: (item: { id: string; title: string; summary: string; kind: "profile"; sharePath: string }) => void;
+  onShare: (item: { id: string; title: string; summary: string; kind?: "project" | "post" | "profile"; sharePath?: string }) => void;
+  onToast: (message: string) => void;
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
@@ -9572,22 +9568,24 @@ function ProfileView({
             </div>
             <div className="profile-post-list">
               {profile?.posts?.map((post) => (
-                <article className="profile-post-card" key={post.id}>
-                  <button type="button" onClick={() => onPost(post.id)} aria-label={`Open post by ${person.name}`}>
-                    <header>
-                      <Avatar person={person} size="md" />
-                      <span>
-                        <strong>{person.name}</strong>
-                        <small>{formatNetworkDate(post.createdAt, { day: "numeric", month: "short", year: "numeric" })}</small>
-                      </span>
-                      {profile?.isCurrent && post.visibility === "connections" && <i>CONNECTIONS</i>}
-                    </header>
-                    <p>{post.body}</p>
-                    {post.attachmentType === "image" && post.attachmentUrl && <img src={post.attachmentUrl} alt="" />}
-                    {post.attachmentType === "video" && post.attachmentUrl && <video src={post.attachmentUrl} preload="metadata" muted />}
-                    {post.videoUrl && <span className="profile-post-video-link">Watch linked video <ArrowUpRight size={13} /></span>}
-                  </button>
-                </article>
+                <TimelinePostCard
+                  key={post.id}
+                  post={post}
+                  currentMember={member}
+                  onProfile={onProfile}
+                  onProject={(projectId) => projectId && onProject(projectId)}
+                  onThread={() => onPost(post.id)}
+                  onEngage={() => undefined}
+                  canEngage
+                  onShare={onShare}
+                  onToast={onToast}
+                  onChanged={(next) => setProfile(current => current ? {
+                    ...current,
+                    posts: next
+                      ? current.posts.map(item => item.id === next.id ? next : item)
+                      : current.posts.filter(item => item.id !== post.id),
+                  } : current)}
+                />
               ))}
               {!profile?.posts?.length && <p className="profile-empty">No posts shared yet.</p>}
             </div>
@@ -12707,9 +12705,11 @@ export default function HomePage() {
                     go("settings");
                   }}
                   onProject={openProject}
+                  onProfile={openProfile}
                   onPost={openSavedPost}
                   onMeet={openSavedMeet}
                   onShare={setShareProject}
+                  onToast={setToast}
                 />
               )}
               {authenticated && view === "settings" && (

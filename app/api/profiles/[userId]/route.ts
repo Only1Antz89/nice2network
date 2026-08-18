@@ -1,8 +1,8 @@
-import { and, asc, count, desc, eq, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { adminAssignments, careerHistory, educationHistory, follows, privacySettings, projectMembers, projects, timelinePosts, users } from "@/db/schema";
+import { adminAssignments, careerHistory, educationHistory, follows, postLikes, postReplies, postReposts, privacySettings, projectMembers, projects, timelinePosts, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { after } from "next/server";
@@ -57,7 +57,16 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
       db.select().from(educationHistory).where(eq(educationHistory.userId, userId)).orderBy(asc(educationHistory.sortOrder)),
       db.select({ id:projects.id,title:projects.title,summary:projects.summary,industry:projects.industry,stage:projects.stage,status:projects.status,accent:projects.accent,createdAt:projects.createdAt }).from(projects).where(projectVisibility?and(eq(projects.ownerId,userId),ne(projects.status,"deleted"),projectVisibility):and(eq(projects.ownerId,userId),ne(projects.status,"deleted"))).orderBy(asc(projects.title)),
       db.select({ id:projects.id,title:projects.title,summary:projects.summary,industry:projects.industry,stage:projects.stage,status:projects.status,accent:projects.accent,createdAt:projects.createdAt,membershipRole:projectMembers.membershipRole,department:projectMembers.department }).from(projectMembers).innerJoin(projects,eq(projects.id,projectMembers.projectId)).where(projectVisibility?and(eq(projectMembers.userId,userId),ne(projects.ownerId,userId),ne(projects.status,"deleted"),projectVisibility):and(eq(projectMembers.userId,userId),ne(projects.ownerId,userId),ne(projects.status,"deleted"))).orderBy(asc(projects.title)),
-      db.select({ id: timelinePosts.id, body: timelinePosts.body, attachmentType: timelinePosts.attachmentType, attachmentUrl: timelinePosts.attachmentUrl, videoUrl: timelinePosts.videoUrl, visibility: timelinePosts.visibility, createdAt: timelinePosts.createdAt }).from(timelinePosts).where(and(eq(timelinePosts.authorId, userId), eq(timelinePosts.status, "visible"), postVisibility)).orderBy(desc(timelinePosts.createdAt)).limit(100),
+      db.select({
+        id: timelinePosts.id, body: timelinePosts.body, linkedProjectIds: timelinePosts.linkedProjectIds,
+        attachmentType: timelinePosts.attachmentType, attachmentUrl: timelinePosts.attachmentUrl, videoUrl: timelinePosts.videoUrl,
+        visibility: timelinePosts.visibility, createdAt: timelinePosts.createdAt,
+        replyCount: sql<number>`(select count(*)::int from ${postReplies} where ${postReplies.postId} = ${timelinePosts.id} and ${postReplies.status} = 'visible')`,
+        likeCount: sql<number>`(select count(*)::int from ${postLikes} where ${postLikes.postId} = ${timelinePosts.id})`,
+        repostCount: sql<number>`(select count(*)::int from ${postReposts} where ${postReposts.postId} = ${timelinePosts.id})`,
+        liked: sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId} = ${timelinePosts.id} and ${postLikes.userId} = ${viewer.id})`,
+        reposted: sql<boolean>`exists(select 1 from ${postReposts} where ${postReposts.postId} = ${timelinePosts.id} and ${postReposts.userId} = ${viewer.id})`,
+      }).from(timelinePosts).where(and(eq(timelinePosts.authorId, userId), eq(timelinePosts.status, "visible"), postVisibility)).orderBy(desc(timelinePosts.createdAt)).limit(100),
       db.select({value:count()}).from(follows).where(eq(follows.followingId,userId)),
       db.select({value:count()}).from(follows).where(eq(follows.followerId,userId)),
       db.select({id:follows.followerId}).from(follows).where(and(eq(follows.followerId,viewer.id),eq(follows.followingId,userId))).limit(1),
@@ -66,8 +75,13 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
     const rankedSkills = [row.primarySkill, row.secondarySkill, row.tertiarySkill].filter(Boolean);
     const fallbackSkills = rankedSkills.length ? rankedSkills : row.skills.slice(0, 3);
     const projectHistory=[...ownedProjects.map(project=>({...project,isOwner:true,membershipRole:"owner",department:"Leadership"})),...joinedProjects.map(project=>({...project,isOwner:false}))];
+    const linkedProjectIds = [...new Set(profilePosts.flatMap(post => post.linkedProjectIds))];
+    const linkedProjects = linkedProjectIds.length
+      ? await db.select({ id: projects.id, title: projects.title }).from(projects).where(and(inArray(projects.id, linkedProjectIds), eq(projects.status, "active"), eq(projects.visibility, "network")))
+      : [];
+    const linkedProjectById = new Map(linkedProjects.map(project => [project.id, project]));
     return NextResponse.json(
-      { profile: { ...row, location: isCurrent || row.showLocation ? row.location : null, isN2Admin: Boolean(row.isN2Admin), rankedSkills: fallbackSkills, career, education, projects:projectHistory, posts:profilePosts, projectCount:ownedProjects.length, involvedCount:joinedProjects.length, followers:followerCount[0]?.value??0,following:followingCount[0]?.value??0,isFollowing:Boolean(viewerFollow[0]),isMutual:Boolean(viewerFollow[0]&&targetFollow[0]),isCurrent } },
+      { profile: { ...row, location: isCurrent || row.showLocation ? row.location : null, isN2Admin: Boolean(row.isN2Admin), rankedSkills: fallbackSkills, career, education, projects:projectHistory, posts:profilePosts.map(post => ({ ...post, authorId: row.id, authorName: row.name, authorImage: row.image, authorProfession: row.profession, authorIsAdmin: Boolean(row.isN2Admin), isDemo: row.isDemo, linkedProjects: post.linkedProjectIds.map(id => linkedProjectById.get(id)).filter(Boolean) })), projectCount:ownedProjects.length, involvedCount:joinedProjects.length, followers:followerCount[0]?.value??0,following:followingCount[0]?.value??0,isFollowing:Boolean(viewerFollow[0]),isMutual:Boolean(viewerFollow[0]&&targetFollow[0]),isCurrent } },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) { return apiError(error); }

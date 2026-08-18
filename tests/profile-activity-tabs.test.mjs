@@ -30,9 +30,13 @@ test("signed-in profiles show the member's chronological posts", async () => {
   ]);
   assert.match(page, /section === "posts"/);
   assert.match(page, /profile\?\.posts\?\.map/);
+  assert.match(page, /<TimelinePostCard/);
+  assert.doesNotMatch(page, /className="profile-post-card"/);
   assert.match(route, /eq\(timelinePosts\.authorId, userId\)/);
   assert.match(route, /orderBy\(desc\(timelinePosts\.createdAt\)\)/);
   assert.match(route, /posts:profilePosts/);
+  assert.match(route, /replyCount: sql<number>/);
+  assert.match(route, /linkedProjects: post\.linkedProjectIds/);
 });
 
 test("public profiles expose the same activity tabs and only visible network content", async () => {
