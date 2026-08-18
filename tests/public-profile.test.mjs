@@ -57,3 +57,18 @@ test("username pages expose content only for public profiles", async () => {
   assert.match(page, /<PublicProfileAction/);
   assert.match(migration, /anthony@intaillium\.com/);
 });
+
+test("public profiles separate posts and projects into count-aware tabs", async () => {
+  const [page, styles] = await Promise.all([
+    read("app/[username]/page.tsx"),
+    read("app/[username]/public-profile.module.css"),
+  ]);
+  assert.match(page, /tab === "projects" \? "projects" : "posts"/);
+  assert.match(page, /\?tab=posts/);
+  assert.match(page, /\?tab=projects/);
+  assert.match(page, /Posts <small>\{posts\.length\}<\/small>/);
+  assert.match(page, /Projects <small>\{publicProjects\.length\}<\/small>/);
+  assert.match(page, /No public posts yet\./);
+  assert.match(page, /No public projects yet\./);
+  assert.match(styles, /\.tabs a\.activeTab/);
+});

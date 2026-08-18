@@ -64,11 +64,13 @@ function Replies({ items }: { items: Array<{ id: string; body: string; authorNam
   return <div className={styles.replies}>{items.map(item => <div className={styles.reply} key={item.id}><Image src={item.authorImage || "/brand/nice-2-network-mark.svg"} alt="" width={28} height={28} unoptimized/><div><strong>{item.authorName ?? "n2 member"}</strong><p>{item.body}</p></div></div>)}</div>;
 }
 
-export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
+export default async function PublicProfilePage({ params, searchParams }: { params: Promise<{ username: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { username } = await params;
+  const { tab } = await searchParams;
   const result = await getSharedProfile(username);
   if (!result) notFound();
   const { profile, posts, projects: publicProjects, replies, comments, restricted } = result;
+  const activeTab = tab === "projects" ? "projects" : "posts";
   const avatar = profile.image || "/brand/nice-2-network-mark.svg";
   const replyMap = new Map(posts.map(post => [post.id, replies.filter(reply => reply.parentId === post.id)]));
   const commentMap = new Map(publicProjects.map(project => [project.id, comments.filter(comment => comment.parentId === project.id)]));
@@ -81,10 +83,14 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         <div className={styles.identity}><small>@{profile.username}</small><h1>{profile.name ?? profile.username}</h1>{restricted ? <p className={styles.privateCopy}><LockKeyhole size={15} /> This profile is private. Send a follow request to ask for access.</p> : <><p>{profile.headline ?? profile.profession ?? "n2 member"}</p>{profile.bio&&<p className={styles.bio}>{profile.bio}</p>}{profile.showLocation&&profile.location&&<p className={styles.location}>{profile.location}</p>}</>}</div>
         <PublicProfileAction kind={restricted ? "request" : "follow"} targetId={restricted ? profile.id : undefined} authenticatedHref={`/?profile=${profile.id}`} />
       </section>
-      {restricted ? <section className={styles.privatePanel}><LockKeyhole size={22} /><strong>Shared with permission.</strong><p>Once the profile owner accepts your request, sign in to view the profile through n2.</p></section> : <><div className={styles.tabs}><span>Posts & projects</span><small>{posts.length + publicProjects.length} public</small></div>
+      {restricted ? <section className={styles.privatePanel}><LockKeyhole size={22} /><strong>Shared with permission.</strong><p>Once the profile owner accepts your request, sign in to view the profile through n2.</p></section> : <><nav className={styles.tabs} aria-label="Public profile content">
+        <Link className={activeTab === "posts" ? styles.activeTab : ""} href={`/${profile.username}?tab=posts`} aria-current={activeTab === "posts" ? "page" : undefined}>Posts <small>{posts.length}</small></Link>
+        <Link className={activeTab === "projects" ? styles.activeTab : ""} href={`/${profile.username}?tab=projects`} aria-current={activeTab === "projects" ? "page" : undefined}>Projects <small>{publicProjects.length}</small></Link>
+      </nav>
       <section className={styles.feed}>
-        {!posts.length&&!publicProjects.length&&<div className={styles.empty}>No public posts or projects yet.</div>}
-        {posts.map(post => <article className={styles.card} key={post.id}>
+        {activeTab === "posts" && !posts.length&&<div className={styles.empty}>No public posts yet.</div>}
+        {activeTab === "projects" && !publicProjects.length&&<div className={styles.empty}>No public projects yet.</div>}
+        {activeTab === "posts" && posts.map(post => <article className={styles.card} key={post.id}>
           <header className={styles.cardHeader}><Image className={styles.miniAvatar} src={avatar} alt="" width={72} height={72} unoptimized/><div><strong>{profile.name ?? profile.username}</strong><time>{date(post.createdAt)}</time></div></header>
           <p className={styles.body}>{post.body}</p>
           {post.attachmentUrl&&post.attachmentType==="image"&&<Image className={styles.media} src={post.attachmentUrl} alt="Post attachment" width={1200} height={800} unoptimized/>}
@@ -92,7 +98,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           {post.videoUrl&&<p className={styles.body}><a href={post.videoUrl} target="_blank" rel="noreferrer">Watch linked video</a></p>}
           <Replies items={replyMap.get(post.id) ?? []}/><footer className={styles.cardFooter}><span>{(replyMap.get(post.id) ?? []).length} replies</span><PublicProfileAction authenticatedHref={`/?profile=${profile.id}`} /></footer>
         </article>)}
-        {publicProjects.map(project => <article className={styles.card} key={project.id}>
+        {activeTab === "projects" && publicProjects.map(project => <article className={styles.card} key={project.id}>
           <div className={styles.projectVisual} style={{background:project.accent}}/>
           {project.imageUrl&&<Image className={styles.media} src={project.imageUrl} alt="" width={1200} height={700} unoptimized/>}
           <div className={styles.projectBody}><small>{project.industry} · {project.stage}</small><h2><Link href={`/?view=projects&project=${project.id}`}>{project.title}</Link></h2><p>{project.summary}</p></div>
