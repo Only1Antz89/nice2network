@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-
-const VERSION_CHECK_INTERVAL = 60_000;
+import { DEPLOYMENT_NAVIGATION_EVENT } from "@/lib/deployment-navigation";
 
 export default function DeploymentRefresh({
   initialVersion,
@@ -17,8 +16,7 @@ export default function DeploymentRefresh({
       if (
         checking.current ||
         reloading.current ||
-        !navigator.onLine ||
-        document.visibilityState !== "visible"
+        !navigator.onLine
       ) {
         return;
       }
@@ -41,19 +39,11 @@ export default function DeploymentRefresh({
       }
     }
 
-    const resume = () => {
-      if (document.visibilityState === "visible") void checkForUpdate();
-    };
-    const timer = window.setInterval(checkForUpdate, VERSION_CHECK_INTERVAL);
-    window.addEventListener("focus", checkForUpdate);
-    window.addEventListener("online", checkForUpdate);
-    document.addEventListener("visibilitychange", resume);
+    const refreshAtNavigationBoundary = () => void checkForUpdate();
+    window.addEventListener(DEPLOYMENT_NAVIGATION_EVENT, refreshAtNavigationBoundary);
 
     return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", checkForUpdate);
-      window.removeEventListener("online", checkForUpdate);
-      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener(DEPLOYMENT_NAVIGATION_EVENT, refreshAtNavigationBoundary);
     };
   }, [initialVersion]);
 

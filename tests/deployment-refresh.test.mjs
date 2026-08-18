@@ -4,18 +4,23 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("open sessions automatically load a newly deployed platform version", async () => {
-  const [layout, refresh, route] = await Promise.all([
+test("new deployments load only at deliberate navigation boundaries", async () => {
+  const [layout, refresh, route, page, navigation] = await Promise.all([
     read("app/layout.tsx"),
     read("components/deployment-refresh.tsx"),
     read("app/api/version/route.ts"),
+    read("app/page.tsx"),
+    read("lib/deployment-navigation.ts"),
   ]);
 
   assert.match(layout, /<DeploymentRefresh initialVersion=\{getDeploymentVersion\(\)\}/);
-  assert.match(refresh, /setInterval\(checkForUpdate, VERSION_CHECK_INTERVAL\)/);
-  assert.match(refresh, /visibilitychange/);
+  assert.match(refresh, /DEPLOYMENT_NAVIGATION_EVENT/);
+  assert.doesNotMatch(refresh, /setInterval|visibilitychange|addEventListener\("focus"|addEventListener\("online"/);
   assert.match(refresh, /result\.version !== initialVersion/);
   assert.match(refresh, /window\.location\.reload\(\)/);
+  assert.match(navigation, /n2:deployment-navigation/);
+  assert.match(page, /if \(next !== view\) signalDeploymentNavigation\(\)/);
+  assert.match(page, /function openProject\(projectId: string\)[\s\S]*?signalDeploymentNavigation\(\);[\s\S]*?setSelectedProjectId\(projectId\)/);
   assert.match(route, /dynamic = "force-dynamic"/);
   assert.match(route, /"Cache-Control": "no-store, max-age=0"/);
 });

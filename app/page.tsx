@@ -88,6 +88,7 @@ import {
 } from "@/components/network-brand";
 import { sanitizeRichText } from "@/lib/rich-text";
 import { layoutFocusedNetwork } from "@/lib/network-focus-layout";
+import { signalDeploymentNavigation } from "@/lib/deployment-navigation";
 import {
   ACCESSIBILITY_STORAGE_KEY,
   ACCESSIBILITY_EVENT,
@@ -12367,6 +12368,7 @@ export default function HomePage() {
       requireSignIn();
       return;
     }
+    if (next !== view) signalDeploymentNavigation();
     setSelectedProjectId(null);
     if (next === "messages") setMessageConversationId(null);
     setView(next);
@@ -12379,6 +12381,7 @@ export default function HomePage() {
       return;
     }
     if (!userId.startsWith("demo-")) {
+      if (view === "profile") signalDeploymentNavigation();
       setSelectedProfileId(userId);
       setCommentProject(null);
       go("profile");
@@ -12397,6 +12400,7 @@ export default function HomePage() {
       requireSignIn();
       return;
     }
+    signalDeploymentNavigation();
     setSelectedProjectId(projectId);
     setView("projects");
     setMenuOpen(false);
@@ -12420,6 +12424,7 @@ export default function HomePage() {
       requireSignIn();
       return;
     }
+    signalDeploymentNavigation();
     setInitialMeetingId(meetingId);
     setView("meet");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -12516,6 +12521,7 @@ export default function HomePage() {
             <ProjectDetailView
               projectId={selectedProjectId}
               onBack={() => {
+                signalDeploymentNavigation();
                 setSelectedProjectId(null);
                 setView("projects");
               }}
