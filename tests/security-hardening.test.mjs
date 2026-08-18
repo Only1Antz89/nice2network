@@ -64,25 +64,17 @@ test("distributed sign-in rate limiting keeps Date objects out of raw SQL", asyn
 });
 
 test("credential rate limits return a safe auth response instead of an HTML 500", async () => {
-  const [auth, signin, route] = await Promise.all([
+  const [auth, signin] = await Promise.all([
     read("auth.ts"),
     read("app/signin/page.tsx"),
-    read("app/api/auth/credentials/route.ts"),
   ]);
   assert.match(auth, /class SignInRateLimited extends CredentialsSignin/);
   assert.match(auth, /error instanceof RateLimitError/);
-  assert.match(signin, /fetch\("\/api\/auth\/credentials"/);
-  assert.doesNotMatch(signin, /from "next-auth\/react"/);
+  assert.match(signin, /from "next-auth\/react"/);
+  assert.match(signin, /await signIn\("credentials"/);
+  assert.match(signin, /result\.code==="rate_limit"/);
   assert.match(signin, /catch \{/);
   assert.match(signin, /finally \{\s*setBusy\(false\)/);
-  assert.match(route, /await Auth\(authRequest, \{ \.\.\.authConfig, raw, skipCSRFCheck \}\)/);
-  assert.match(route, /response\.cookies\.set\(cookie\.name, cookie\.value, cookie\.options\)/);
-  assert.doesNotMatch(route, /await signIn\("credentials"/);
-  assert.match(route, /code === "rate_limit"/);
-  assert.match(route, /error instanceof CredentialsSignin/);
-  assert.match(route, /status: 401/);
-  assert.match(route, /status: 429/);
-  assert.match(route, /status: 503/);
 });
 
 test("enforces connection-scoped direct content access and safe attachment schemes", async () => {

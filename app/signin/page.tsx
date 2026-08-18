@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { FormEvent, Suspense, useState } from "react";
+import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, Check, Mail } from "lucide-react";
@@ -27,9 +28,8 @@ function SignInContent() {
         setPendingEmail(email);setMode("check-email");return;
       }
       const resumeResponse=await fetch("/api/auth/onboarding/resume",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})}),resume=await resumeResponse.json().catch(()=>({resume:false}));if(resume.resume){window.location.href="/onboarding?resume=1";return}
-      const response=await fetch("/api/auth/credentials",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})});
-      const result=await response.json().catch(()=>({error:"Sign in is temporarily unavailable. Please refresh the page and try again."}));
-      if(!response.ok){setError(result.error);return}
+      const result=await signIn("credentials",{email,password,redirect:false});
+      if(result?.error){setError(result.code==="rate_limit"?"Too many sign-in attempts. Please wait 15 minutes and try again.":"Check your email and password. If registration is unfinished, use the password you created to resume your profile setup.");return}
       const session=await fetch("/api/auth/session").then(response=>response.json()).catch(()=>null);if(session?.user?.forcePasswordChange){window.location.href="/change-password";return}const next=new URLSearchParams(window.location.search).get("next");window.location.href=next?.startsWith("/")?next:"/";
     } catch {
       setError("Sign in is temporarily unavailable. Please refresh the page and try again.");
