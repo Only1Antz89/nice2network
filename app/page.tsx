@@ -370,6 +370,37 @@ type TimelinePost = {
   reposted?: boolean;
   linkedProjects: Array<{ id: string; title: string }>;
 };
+type ProfileActivityPost = {
+  id: string;
+  body: string;
+  attachmentType: string | null;
+  attachmentUrl: string | null;
+  videoUrl: string | null;
+  createdAt: string;
+  actedAt: string;
+  authorId: string;
+  authorName: string | null;
+  authorImage: string | null;
+  authorProfession: string | null;
+};
+type ProfileWatchingActivity = {
+  id: string;
+  title: string;
+  summary: string;
+  industry: string;
+  stage: string;
+  accent: string;
+  imageUrl: string | null;
+  createdAt: string;
+  actedAt: string;
+  ownerId: string;
+  ownerName: string | null;
+};
+type ProfileActivity = {
+  likes: ProfileActivityPost[];
+  watching: ProfileWatchingActivity[];
+  reposts: ProfileActivityPost[];
+};
 type LinkPreviewRecord = {
   url: string;
   title: string;
@@ -9254,7 +9285,7 @@ function ProfileView({
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
-      "profile" | "projects" | "followers" | "following" | "media" | "bookmarks"
+      "profile" | "projects" | "followers" | "following" | "media" | "likes" | "watching" | "reposts" | "bookmarks"
     >("profile"),
     [networkPeople, setNetworkPeople] = useState<
       Array<{
@@ -9274,6 +9305,8 @@ function ProfileView({
       }>
     >([]),
     [saved, setSaved] = useState<SavedContentItem[]>([]),
+    [activity, setActivity] = useState<ProfileActivity>({ likes: [], watching: [], reposts: [] }),
+    [activityLoading, setActivityLoading] = useState(false),
     [profilePins, setProfilePins] = useState<SavedContentItem[]>([]),
     [savedCategory, setSavedCategory] = useState<"all" | SavedContentItem["entityType"]>("all"),
     [busy, setBusy] = useState(false),
@@ -9307,6 +9340,13 @@ function ProfileView({
       fetch("/api/saved-items")
         .then((response) => (response.ok ? response.json() : { items: [] }))
         .then((data) => setSaved(data.items ?? []));
+    if (section === "likes" || section === "watching" || section === "reposts") {
+      setActivityLoading(true);
+      fetch(`/api/profiles/${userId}/activity`, { cache: "no-store" })
+        .then((response) => response.ok ? response.json() : { likes: [], watching: [], reposts: [] })
+        .then((data) => setActivity({ likes: data.likes ?? [], watching: data.watching ?? [], reposts: data.reposts ?? [] }))
+        .finally(() => setActivityLoading(false));
+    }
   }, [section, userId, profile?.isCurrent]);
   async function connect() {
     if (!profile || profile.isCurrent || busy) return;
@@ -9428,7 +9468,7 @@ function ProfileView({
           {profile?.isMutual && <b>Connected</b>}
         </div>
         <nav className="profile-tabs">
-          {(["profile", "projects", "following", "media"] as const).map(
+          {(["profile", "projects", "following", "media", "likes", "watching", "reposts"] as const).map(
             (item) => (
               <button
                 key={item}
@@ -9573,6 +9613,36 @@ function ProfileView({
                 <p className="profile-empty">No public media shared yet.</p>
               )}
             </div>
+          </section>
+        ) : section === "likes" || section === "reposts" ? (
+          <section className="profile-library profile-activity-library">
+            <div className="profile-section-head">
+              <div><span className="eyebrow">{section.toUpperCase()}</span><h2>{section === "likes" ? "Posts this member appreciates" : "Posts shared again with their network"}</h2></div>
+              <small>{activity[section].length} public {section}</small>
+            </div>
+            {activityLoading ? <div className="profile-activity-loading"><span/>Loading {section}…</div> : <div className="profile-activity-list">
+              {activity[section].map((item) => <article key={item.id} className="profile-activity-card">
+                <button type="button" onClick={() => onPost(item.id)} aria-label={`Open post by ${item.authorName ?? "n2 member"}`}>
+                  <Avatar person={{ name: item.authorName ?? "n2 member", role: item.authorProfession ?? "n2 member", img: item.authorImage }} size="md" />
+                  <span><small>{section === "likes" ? "LIKED" : "REPOSTED"} · {formatNetworkDate(item.actedAt, { day: "numeric", month: "short", year: "numeric" })}</small><strong>{item.authorName ?? "n2 member"}</strong><p>{item.body}</p></span>
+                  {section === "likes" ? <ThumbsUp size={18}/> : <Repeat2 size={18}/>}
+                </button>
+              </article>)}
+              {!activity[section].length && <p className="profile-empty">No public {section} yet.</p>}
+            </div>}
+          </section>
+        ) : section === "watching" ? (
+          <section className="profile-library profile-activity-library">
+            <div className="profile-section-head"><div><span className="eyebrow">WATCHING</span><h2>Projects this member is keeping an eye on</h2></div><small>{activity.watching.length} public projects</small></div>
+            {activityLoading ? <div className="profile-activity-loading"><span/>Loading watched projects…</div> : <div className="profile-project-grid profile-watching-grid">
+              {activity.watching.map(project => <article key={project.id} style={{ "--profile-project-accent": project.accent } as React.CSSProperties}>
+                <header><span>WATCHING</span><Eye size={15}/></header>
+                <h3><button type="button" onClick={() => onProject(project.id)} aria-label={`Open project ${project.title}`}>{project.title}</button></h3>
+                <p>{project.summary}</p>
+                <footer><span>{project.industry}</span><span>{project.stage}</span></footer>
+              </article>)}
+              {!activity.watching.length && <p className="profile-empty">No public watched projects yet.</p>}
+            </div>}
           </section>
         ) : section === "bookmarks" ? (
           <section className="profile-library">
