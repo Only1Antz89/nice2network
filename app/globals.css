@@ -792,7 +792,7 @@ img,video,canvas,svg{max-width:100%}
 .conversation-identity{min-width:0;flex:1;border:0;background:transparent;padding:0;display:flex;align-items:center;gap:10px;text-align:left;color:inherit}
 .conversation-identity>span{min-width:0;display:grid;gap:3px}
 .conversation-identity strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.conversation-identity small{font-size:9px;color:var(--green)}
+.conversation-identity small{font-size:9px;color:var(--ink)}
 .conversation-search{height:42px;border-radius:999px;background:var(--surface-subtle);display:flex;align-items:center;gap:8px;padding:0 13px;margin-bottom:4px}
 .conversation-search input{min-width:0;flex:1;border:0!important;outline:0;background:transparent;color:inherit;font-size:12px}
 .conversation-search button{width:28px;height:28px;border:0;border-radius:50%;background:transparent;color:var(--muted);display:grid;place-items:center}
