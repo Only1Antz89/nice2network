@@ -78,6 +78,13 @@ test("dark mode separates text, surface and solid-action colours", () => {
   assert.match(styles, /html\[data-colour-theme="dark"\]\[data-contrast="high"\]/);
 });
 
+test("the mobile authentication logo keeps inverse contrast in every theme", async () => {
+  const styles = await read("app/globals.css");
+
+  assert.match(styles, /\.mobile-auth-logo span\{[^}]*background:var\(--solid\);color:var\(--solid-ink\)/);
+  assert.doesNotMatch(styles, /\.mobile-auth-logo span\{[^}]*background:var\(--ink\);color:#fff/);
+});
+
 test("mobile navigation omits the current page while full profiles retain banners", () => {
   const page = read("app/page.tsx");
   const styles = read("app/globals.css");

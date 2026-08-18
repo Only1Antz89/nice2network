@@ -8507,6 +8507,7 @@ function MeetAttendeePicker({
 }
 function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | null }) {
   const meetFormRef = useRef<HTMLFormElement>(null);
+  const meetFlowBodyRef = useRef<HTMLDivElement>(null);
   const [clockNow, setClockNow] = useState(0);
   const [calendarView, setCalendarView] = useState<"agenda" | "month">(
       "agenda",
@@ -8651,6 +8652,10 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
     }
     setError("");
     setMeetStep(2);
+    window.requestAnimationFrame(() => {
+      meetFlowBodyRef.current?.scrollTo({ top: 0, behavior: "instant" });
+      meetFlowBodyRef.current?.querySelector<HTMLInputElement>(".meet-invite-step input")?.focus();
+    });
   }
   async function persistMeet(form: HTMLFormElement) {
     setError("");
@@ -8965,7 +8970,7 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
                 <button type="button" className="icon-button" aria-label="Close meet editor" onClick={closeEditor}><X size={18} /></button>
               </div>
             </header>
-            <div className="meet-flow-body">
+            <div className="meet-flow-body" ref={meetFlowBodyRef}>
               <section className="meet-editor-step" hidden={meetStep !== 1}>
                 <div className="meet-editor-panel meet-editor-basics">
                   <div className="meet-editor-visual-row">
@@ -9108,7 +9113,9 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
               <p>{meetStep === 1 ? "Add the essentials now. Invitees come next." : `${invitees.length} ${invitees.length === 1 ? "person" : "people"} selected`}</p>
               <div>
                 {meetStep === 2 && <button type="button" className="secondary-button" onClick={() => setMeetStep(1)}><ArrowLeft size={16}/> Back</button>}
-                {meetStep === 1 ? <button type="button" className="primary-button" onClick={continueMeetSetup}>Continue to invitees <ChevronRight size={16}/></button> : <button type="submit" className="primary-button">{editing ? "Save changes" : "Create meet"}</button>}
+                <button type="submit" className="primary-button">
+                  {meetStep === 1 ? <>Continue to invitees <ChevronRight size={16}/></> : editing ? "Save changes" : "Create meet"}
+                </button>
               </div>
             </footer>
           </form>

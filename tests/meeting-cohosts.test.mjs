@@ -14,7 +14,9 @@ test("meet creation advances through invitees to a clear final create action", a
   assert.match(page, /if \(!invitees\.length\) \{\s*setConfirmEmptyMeet\(true\);\s*return;/);
   assert.match(page, />Invitees<\/span>/);
   assert.match(page, /Continue to invitees/);
-  assert.match(page, /meetStep === 1 \? <button[^>]*>Continue to invitees[\s\S]*?: <button type="submit" className="primary-button">\{editing \? "Save changes" : "Create meet"\}<\/button>/);
+  assert.match(page, /<button type="submit" className="primary-button">\s*\{meetStep === 1 \? <>Continue to invitees/);
+  assert.match(page, /meetFlowBodyRef\.current\?\.scrollTo\(\{ top: 0, behavior: "instant" \}\)/);
+  assert.doesNotMatch(page, /type="button" className="primary-button" onClick=\{continueMeetSetup\}>Continue to invitees/);
   assert.match(page, /Create without invitees/);
   assert.match(page, /persistMeet\(meetFormRef\.current\)/);
   assert.match(page, /meet-detail-people/);

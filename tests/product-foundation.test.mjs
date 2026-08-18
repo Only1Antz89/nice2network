@@ -481,7 +481,7 @@ test("meet editing keeps the invite step and reloads existing invitees", async (
   assert.match(page, /fetch\(`\/api\/meetings\/\$\{meet\.id\}`\)/);
   assert.match(page, /participantProfiles: result\.participants \?\? \[\]/);
   assert.match(page, /if \(meetStep === 1\) \{\s*continueMeetSetup\(\);\s*return;/);
-  assert.match(page, /type="submit" className="primary-button"/);
+  assert.match(page, /<button type="submit" className="primary-button">\s*\{meetStep === 1 \? <>Continue to invitees/);
   assert.match(styles, /\.podcast-table-surface\{[^}]*aspect-ratio:1/);
   assert.match(styles, /background:radial-gradient\(circle at center/);
 });
