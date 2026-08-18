@@ -72,6 +72,7 @@ test("credential rate limits return a safe auth response instead of an HTML 500"
   ]);
   assert.match(auth, /class SignInRateLimited extends CredentialsSignin/);
   assert.match(auth, /error instanceof RateLimitError/);
+  assert.match(auth, /if \(passwordMatches && member\)[\s\S]*?return \{ id: member\.id, email: member\.email, name: member\.name \}[\s\S]*?enforceRateLimit/);
   assert.match(signin, /from "next-auth\/react"/);
   assert.match(signin, /await signIn\("credentials"/);
   assert.match(signin, /result\.code==="rate_limit"/);

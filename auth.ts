@@ -27,6 +27,16 @@ providers.push(Credentials({
   async authorize(credentials, request) {
     if (!isDatabaseConfigured() || typeof credentials.email !== "string" || typeof credentials.password !== "string") return null;
     const email = credentials.email.trim().toLowerCase();
+    const [member] = await getDb().select().from(users).where(eq(users.email, email)).limit(1);
+    const passwordMatches = Boolean(member?.passwordHash && member.status === "active" && await compare(credentials.password, member.passwordHash));
+    if (passwordMatches && member) {
+      // Profile images can be embedded data URLs and are far too large for a JWT
+      // session cookie. Profile APIs remain the source of truth for member media.
+      return { id: member.id, email: member.email, name: member.name };
+    }
+
+    // Count failed credentials only. A correct password must remain usable after
+    // repeated failures, otherwise an attacker can lock another member out.
     try {
       enforceRateLimit(`signin:${requestIp(request)}:${email}`, 8, 15 * 60_000);
       await enforceDistributedRateLimit(`signin:${requestIp(request)}:${email}`, 8, 15 * 60_000);
@@ -34,11 +44,7 @@ providers.push(Credentials({
       if (error instanceof RateLimitError) throw new SignInRateLimited();
       throw error;
     }
-    const [member] = await getDb().select().from(users).where(eq(users.email, email)).limit(1);
-    if (!member?.passwordHash || member.status !== "active" || !(await compare(credentials.password, member.passwordHash))) return null;
-    // Profile images can be embedded data URLs and are far too large for a JWT
-    // session cookie. Profile APIs remain the source of truth for member media.
-    return { id: member.id, email: member.email, name: member.name };
+    return null;
   },
 }));
 
