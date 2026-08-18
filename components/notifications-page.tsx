@@ -30,7 +30,7 @@ function NotificationRow({ item, onRead }: { item: NotificationRecord; onRead: (
     <a className={`notifications-page-row ${item.readAt ? "" : "unread"}`} href={item.href ?? "#"} onClick={() => onRead(item)}>
       <Avatar person={{ name: item.actorName ?? "nice 2 network", role: "", img: item.actorImage }} size="sm" />
       <span>
-        <em>{item.actorName ?? "nice 2 network"}</em>
+        <em className="notification-actor">{item.actorName ?? "nice 2 network"}</em>
         <strong>{item.title}</strong>
         <p>{item.body}</p>
         <small>{new Date(item.createdAt).toLocaleString()}</small>

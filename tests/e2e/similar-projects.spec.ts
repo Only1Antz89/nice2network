@@ -21,8 +21,8 @@ test("pre-publish similarity is default-on, owner-only, role-aware and immediate
   const sourceEmail = `similar-source-${suffix}@nice2.test`, targetEmail = `similar-target-${suffix}@nice2.test`;
   let sourceId: string | undefined, targetOwnerId: string | undefined, sourceProjectId: string | undefined, targetProjectId: string | undefined, targetRoleId: string | undefined;
   try {
-    const [sourceOwner] = await sql`insert into users (name,email,email_verified,password_hash,status,onboarding_completed_at,profession,industry,primary_skill,city,country,timezone,work_mode,availability,age_band) values ('Source Owner',${sourceEmail},now(),${passwordHash},'active',now(),'Product designer','Community services','Product design','London','United Kingdom','Europe/London','hybrid','open','adult') returning id`;
-    const [targetOwner] = await sql`insert into users (name,email,email_verified,password_hash,status,onboarding_completed_at,profession,industry,city,country,timezone,work_mode,age_band) values ('Target Owner',${targetEmail},now(),${passwordHash},'active',now(),'Community lead','Community services','London','United Kingdom','Europe/London','hybrid','adult') returning id`;
+    const [sourceOwner] = await sql`insert into users (name,username,email,email_verified,password_hash,status,onboarding_completed_at,profession,industry,primary_skill,city,country,timezone,work_mode,availability,age_band) values ('Source Owner',${`similar-source-${suffix}`},${sourceEmail},now(),${passwordHash},'active',now(),'Product designer','Community services','Product design','London','United Kingdom','Europe/London','hybrid','open','adult') returning id`;
+    const [targetOwner] = await sql`insert into users (name,username,email,email_verified,password_hash,status,onboarding_completed_at,profession,industry,city,country,timezone,work_mode,age_band) values ('Target Owner',${`similar-target-${suffix}`},${targetEmail},now(),${passwordHash},'active',now(),'Community lead','Community services','London','United Kingdom','Europe/London','hybrid','adult') returning id`;
     sourceId = String(sourceOwner.id); targetOwnerId = String(targetOwner.id);
     const [sourceProject] = await sql`insert into projects (owner_id,title,summary,description,industry,stage,status,visibility,location,city,country,timezone,work_mode) values (${sourceId},'Neighbourhood repair and reuse hub','Repair household items locally and teach practical reuse skills.','A community workshop for repairs and reuse.','Community services','planning','draft','private','London, United Kingdom','London','United Kingdom','Europe/London','hybrid') returning id`;
     const [targetProject] = await sql`insert into projects (owner_id,title,summary,description,industry,stage,status,visibility,location,city,country,timezone,work_mode) values (${targetOwnerId},'Neighbourhood repair and reuse hub','Repair household items locally and teach practical reuse skills.','A community workshop for repairs and reuse.','Community services','building','active','network','London, United Kingdom','London','United Kingdom','Europe/London','hybrid') returning id`;
@@ -54,6 +54,11 @@ test("pre-publish similarity is default-on, owner-only, role-aware and immediate
     await page.route(`**/api/projects/${sourceProjectId}/blueprint/*/approve`, route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, projectId: sourceProjectId }) }));
     await page.getByRole("button", { name: "Start a project" }).click();
     await page.getByLabel("Project title").fill("Neighbourhood repair and reuse hub");
+    await expect(page.getByText("Use 10–500 characters.")).toBeVisible();
+    await page.getByLabel("Project summary").fill("Too short");
+    await expect(page.getByRole("button", { name: "Build my project plan" })).toBeEnabled();
+    await page.getByRole("button", { name: "Build my project plan" }).click();
+    await expect(page.getByRole("alert")).toContainText("Project summary must be at least 10 characters (9/10).");
     await page.getByLabel("Project summary").fill("x".repeat(500));
     await expect(page.getByText("500/500")).toBeVisible();
     await expect(page.getByRole("button", { name: "Build my project plan" })).toBeEnabled();

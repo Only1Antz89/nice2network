@@ -36,7 +36,7 @@ export async function GET(_:Request,{params}:{params:Promise<{projectId:string}>
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
   try {
-    const member = await requireMember(), { projectId } = await params, input = z.object({ title: z.string().trim().min(4).max(120).optional(), summary: z.string().trim().min(20).max(500).optional(), industry:z.string().trim().min(2).max(80).optional(), stage: z.enum(["idea", "planning", "building", "launching"]).optional(), visibility: z.enum(["network", "connections", "private"]).optional() }).refine(value => Object.keys(value).length > 0).parse(await request.json());
+    const member = await requireMember(), { projectId } = await params, input = z.object({ title: z.string().trim().min(4).max(120).optional(), summary: z.string().trim().min(10).max(500).optional(), industry:z.string().trim().min(2).max(80).optional(), stage: z.enum(["idea", "planning", "building", "launching"]).optional(), visibility: z.enum(["network", "connections", "private"]).optional() }).refine(value => Object.keys(value).length > 0).parse(await request.json());
     const before = await requireOwner(member.id, projectId);
     const [project] = await getDb().update(projects).set({ ...input, updatedAt: new Date() }).where(eq(projects.id, projectId)).returning();
     after(async () => { await Promise.allSettled([recomputeProjectRecommendations(projectId), ensureProjectEmbedding(projectId)]); });

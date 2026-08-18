@@ -149,6 +149,7 @@ export default function NotificationPanel({
                   size="sm"
                 />
                 <span>
+                  <em className="notification-actor">{item.actorName ?? "nice 2 network"}</em>
                   <strong>{item.title}</strong>
                   <p>{item.body}</p>
                   <small>{new Date(item.createdAt).toLocaleString()}</small>

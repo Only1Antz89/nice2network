@@ -86,8 +86,8 @@ test("project creation explains its summary limit and returns field-specific val
   assert.match(page, /role="alert" aria-live="polite"/);
   assert.match(drafts, /Project summary must be 500 characters or fewer/);
   assert.match(drafts, /field: String\(issue\.path\[0\]/);
-  assert.match(projects, /summary: z\.string\(\)\.trim\(\)\.min\(20\)\.max\(500\)/);
-  assert.match(projectEdit, /summary: z\.string\(\)\.trim\(\)\.min\(20\)\.max\(500\)/);
+  assert.match(projects, /summary: z\.string\(\)\.trim\(\)\.min\(10\)\.max\(500\)/);
+  assert.match(projectEdit, /summary: z\.string\(\)\.trim\(\)\.min\(10\)\.max\(500\)/);
 });
 
 test("supports authenticated password changes and private reset links", async () => {

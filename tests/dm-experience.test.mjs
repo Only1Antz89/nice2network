@@ -37,8 +37,8 @@ test("direct messages expose empty, sending, attachment, and error states", () =
 test("message hover controls and participant activity stay attached to chat messages", () => {
   assert.match(page, /className="message-footer"/);
   assert.match(page, /tabIndex=\{message\.status === "deleted" \? undefined : 0\}/);
-  assert.match(page, /<NudgeMark\/>/);
-  assert.match(page, /message\.senderId !== currentMember\.id && <button[\s\S]*?<NudgeMark\/>/);
+  assert.match(page, /className="chat-nudge-event"[\s\S]*?User has been nudged/);
+  assert.match(page, /className="dm-nudge-action"[\s\S]*?send\("nudge"\)/);
   assert.match(page, /setEditMessageTarget\(message\)/);
   assert.match(page, /setDeleteMessageTarget\(message\)/);
   assert.match(page, /aria-label="Edit message"/);
@@ -47,9 +47,8 @@ test("message hover controls and participant activity stay attached to chat mess
   assert.match(page, /onPlaybackChange=\{\(playing\) => setSpeakingMessageId/);
   assert.match(styles, /\.chat-message-row:hover \.message-actions/);
   assert.match(styles, /Message actions stay contextual[\s\S]*?\.message-footer \.message-actions\{opacity:0;visibility:hidden/);
-  assert.match(page, /<span><em>⚡<\/em><\/span>/);
-  assert.doesNotMatch(page, /<em>⚡<\/em><em>⚡<\/em>/);
-  assert.match(styles, /\.nudge-mark>span\{[^}]*display:grid;place-items:center/);
+  assert.match(styles, /\.chat-nudge-event\{[^}]*text-align:center;[^}]*color:var\(--orange\)/);
+  assert.match(styles, /\.dm-attachment-menu>\.dm-nudge-action\{[^}]*color:var\(--ink\)!important/);
 });
 
 test("the edit-message field uses a neutral focus treatment", () => {

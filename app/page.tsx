@@ -53,6 +53,7 @@ import {
   Trash2,
   Underline,
   Video,
+  Zap,
   Archive,
   Accessibility,
   X,
@@ -1774,8 +1775,8 @@ function CreateProject({
       setError("Project title must be between 4 and 120 characters.");
       return;
     }
-    if (summaryLength < 20) {
-      setError(`Project summary must be at least 20 characters (${summaryLength}/20).`);
+    if (summaryLength < 10) {
+      setError(`Project summary must be at least 10 characters (${summaryLength}/10).`);
       return;
     }
     if (summaryLength > 500) {
@@ -1788,43 +1789,46 @@ function CreateProject({
     }
     setBusy(true);
     setError("");
-    const draftResponse = await fetch("/api/projects/drafts", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    const draft = await draftResponse.json();
-    if (!draftResponse.ok) {
-      setError(draft.error ?? "Could not save the private project draft.");
+    try {
+      const draftResponse = await fetch("/api/projects/drafts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const draft = await draftResponse.json();
+      if (!draftResponse.ok) {
+        setError(draft.error ?? "Could not save the private project draft.");
+        return;
+      }
+      setProjectId(draft.project.id);
+      const response = await fetch(
+        `/api/projects/${draft.project.id}/blueprint`,
+        { method: "POST" },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        setError(result.error ?? "Could not prepare the project team.");
+        return;
+      }
+      setBlueprint(result.blueprint);
+      setRoles(result.blueprint.roles);
+      setRoadmap(
+        result.blueprint.milestones.map(
+          (item: { title: string; phase: "now" | "next" | "later" }) => ({
+            title: item.title,
+            description: "",
+            phase: item.phase,
+            ownerId: currentMember.id ?? null,
+            dueAt: null,
+          }),
+        ),
+      );
+      setStep(1);
+    } catch {
+      setError("We couldn't build your project plan. Check your connection and try again.");
+    } finally {
       setBusy(false);
-      return;
     }
-    setProjectId(draft.project.id);
-    const response = await fetch(
-      `/api/projects/${draft.project.id}/blueprint`,
-      { method: "POST" },
-    );
-    const result = await response.json();
-    if (!response.ok) {
-      setError(result.error ?? "Could not prepare the project team.");
-      setBusy(false);
-      return;
-    }
-    setBlueprint(result.blueprint);
-    setRoles(result.blueprint.roles);
-    setRoadmap(
-      result.blueprint.milestones.map(
-        (item: { title: string; phase: "now" | "next" | "later" }) => ({
-          title: item.title,
-          description: "",
-          phase: item.phase,
-          ownerId: currentMember.id ?? null,
-          dueAt: null,
-        }),
-      ),
-    );
-    setStep(1);
-    setBusy(false);
   }
   async function publish() {
     if (!blueprint || !projectId) return;
@@ -2020,10 +2024,13 @@ function CreateProject({
                   placeholder="Describe the idea, why it matters, and where you'd like help…"
                   value={form.summary}
                   onChange={(e) => setForm({ ...form, summary: e.target.value })}
-                  minLength={20}
+                  minLength={10}
                   maxLength={500}
-                  aria-describedby="project-summary-hint"
+                  aria-describedby="project-summary-requirement project-summary-hint"
                 />
+                <small id="project-summary-requirement" className="field-requirement">
+                  Use 10–500 characters.
+                </small>
                 <small id="project-summary-hint" className="field-limit" aria-live="polite">
                   <i
                     className="character-fill"
@@ -2171,16 +2178,7 @@ function CreateProject({
             {error && <p className="form-error" role="alert" aria-live="polite">{error}</p>}
             <button
               className="primary-button wide project-plan-button"
-              disabled={
-                busy ||
-                form.title.trim().length < 4 ||
-                form.title.trim().length > 120 ||
-                form.summary.trim().length < 20 ||
-                form.summary.trim().length > 500 ||
-                !form.city ||
-                !form.country ||
-                !form.timezone
-              }
+              disabled={busy}
               onClick={mapTeam}
             >
               {busy ? (
@@ -6590,8 +6588,8 @@ type ChatMessage = {
   senderName: string | null;
   senderImage: string | null;
 };
-function NudgeMark() {
-  return <span className="nudge-mark" aria-hidden="true"><b>(</b><i>(</i><span><em>⚡</em></span><i>)</i><b>)</b></span>;
+function isNudgeMessage(message: ChatMessage) {
+  return message.body === "User has been nudged" || message.body.startsWith("⚡ Nudge —");
 }
 function formatVoiceTime(seconds: number) {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
@@ -7149,7 +7147,9 @@ function MessagesView({
             </div>
           )}
           {chatQuery && !visibleMessages.length && <div className="chat-search-empty">No messages match “{chatQuery}”.</div>}
-          {visibleMessages.map((message) => (
+          {visibleMessages.map((message) => isNudgeMessage(message) ? (
+            <div className="chat-nudge-event" key={message.id} role="status">User has been nudged</div>
+          ) : (
             <div className={`chat-message-row ${message.senderId === currentMember.id ? "mine" : "theirs"}`} key={message.id} tabIndex={message.status === "deleted" ? undefined : 0}>
             <div
               className={`bubble ${message.senderId === currentMember.id ? "mine" : "theirs"} ${message.status === "deleted" ? "deleted" : ""}`}
@@ -7182,7 +7182,6 @@ function MessagesView({
                 {message.editedAt && " · edited"}
               </small>
               {message.status !== "deleted" && <div className="message-actions">
-                {message.senderId !== currentMember.id && <button onClick={() => send("nudge")} disabled={isSending} title="Nudge for a response"><NudgeMark/><span>Nudge</span></button>}
                 {message.senderId === currentMember.id && <><button onClick={() => setEditMessageTarget(message)} title="Edit message" aria-label="Edit message"><Pencil size={11}/><span>Edit</span></button><button onClick={() => setDeleteMessageTarget(message)} title="Delete message" aria-label="Delete message"><Trash2 size={11}/><span>Delete</span></button></>}
               </div>}
             </div>
@@ -7224,6 +7223,7 @@ function MessagesView({
                 <label title="Add image"><ImageIcon size={18}/><span>Photo</span><input type="file" accept="image/*" onChange={(event) => { attach(event.target.files?.[0]); setShowAttachments(false); }}/></label>
                 <label title="Add video"><Video size={18}/><span>Video</span><input type="file" accept="video/*" onChange={(event) => { attach(event.target.files?.[0]); setShowAttachments(false); }}/></label>
                 <label title="Add file"><Paperclip size={18}/><span>File</span><input type="file" accept=".pdf,.zip,.doc,.docx" onChange={(event) => { attach(event.target.files?.[0]); setShowAttachments(false); }}/></label>
+                <button type="button" className="dm-nudge-action" onClick={() => { setShowAttachments(false); send("nudge"); }} disabled={isSending} title="Nudge this conversation"><Zap size={18}/><span>Nudge</span></button>
               </div>}
             </div>
             <div className="dm-composer-main">

@@ -16,6 +16,9 @@ test("project creation separates planning and recruitment into editable steps", 
 
 test("project planning call to action is encouraging and dark-mode safe", () => {
   assert.match(page, /Build my project plan/);
+  assert.match(page, /Use 10–500 characters\./);
+  assert.match(page, /disabled=\{busy\}/);
+  assert.match(page, /We couldn't build your project plan\. Check your connection and try again\./);
   assert.doesNotMatch(page, /Find the gaps/);
   assert.match(styles, /\.project-plan-button/);
   assert.match(styles, /\.project-modal \.ai-orbit/);
