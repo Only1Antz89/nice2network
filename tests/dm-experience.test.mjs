@@ -15,8 +15,8 @@ test("direct messages use a thin circle, pill, circle composer", () => {
   assert.match(page, /<ArrowUpRight size=\{20\}/);
   assert.match(styles, /\.dm-composer\{[\s\S]*?grid-template-columns:44px minmax\(0,1fr\) 44px/);
   assert.match(styles, /\.dm-composer-main\{[\s\S]*?border:0/);
-  assert.match(styles, /\.conversation-composer-dock\{[\s\S]*?background:transparent/);
-  assert.doesNotMatch(styles, /\.conversation-composer-dock\{[\s\S]*?background:linear-gradient/);
+  assert.match(styles, /\.conversation-composer-dock\{[^}]*background:transparent/);
+  assert.doesNotMatch(styles, /\.conversation-composer-dock\{[^}]*background:linear-gradient/);
   assert.doesNotMatch(styles, /data-colour-theme="dark"\] (?:input|select|textarea)/);
   assert.doesNotMatch(styles, /data-colour-theme="system"\] (?:input|select|textarea)/);
 });
