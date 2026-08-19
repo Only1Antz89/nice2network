@@ -41,8 +41,11 @@ test("creation UI uses explicit server drafts without a persistent browser cache
   ]);
   assert.match(page, /kind: "project", initialDraft, payload: projectDraftPayload/);
   assert.match(page, /kind: "post", initialDraft, payload: postDraftPayload/);
-  assert.match(page, /<ContentDraftList kind="post" compact/);
-  assert.match(page, /<ContentDraftList kind="project"/);
+  assert.match(page, /setTab\("drafts"\)/);
+  assert.match(page, /profile-post-tabs/);
+  assert.match(page, /<ContentDraftList kind="post" emptyMessage="No post drafts saved yet\."/);
+  assert.match(page, /<ContentDraftList kind="project" emptyMessage="No project drafts saved yet\."/);
+  assert.doesNotMatch(page, /<ContentDraftList kind="post" compact/);
   assert.match(page, /Project saved to drafts\./);
   assert.match(page, /Post saved to drafts\./);
   assert.match(hook, /export function useContentDraft/);

@@ -2190,6 +2190,7 @@ function CreateProject({
     >(initial?.roadmap ?? []);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
+    [summaryValidationAttempted, setSummaryValidationAttempted] = useState(false),
     [similarProjects, setSimilarProjects] = useState<SimilarProjectSuggestion[]>(initial?.similarProjects ?? []),
     [coOwnerQuery, setCoOwnerQuery] = useState(""),
     [coOwnerResults, setCoOwnerResults] = useState<CoOwnerCandidate[]>([]),
@@ -2245,6 +2246,7 @@ function CreateProject({
     return () => { clearTimeout(timer); controller.abort(); };
   }, [step, coOwnerQuery, currentMember.id, selectedCoOwners]);
   async function mapTeam() {
+    setSummaryValidationAttempted(true);
     const titleLength = form.title.trim().length;
     const summaryLength = form.summary.trim().length;
     if (titleLength < 4 || titleLength > 120) {
@@ -2529,7 +2531,8 @@ function CreateProject({
                   onChange={(e) => setForm((current) => ({ ...current, summary: e.target.value }))}
                   minLength={10}
                   maxLength={500}
-                  aria-describedby="project-summary-minimum project-summary-hint"
+                  aria-describedby={`${summaryValidationAttempted && form.summary.trim().length < 10 ? "project-summary-minimum " : ""}project-summary-hint`}
+                  aria-invalid={summaryValidationAttempted && form.summary.trim().length < 10}
                 />
                 <div className="project-summary-footer">
                   <label htmlFor="project-industry" className="project-summary-industry">
@@ -2550,7 +2553,7 @@ function CreateProject({
                   </small>
                 </div>
               </div>
-              <small id="project-summary-minimum" className="project-summary-minimum">Minimum 10 characters required.</small>
+              {summaryValidationAttempted && form.summary.trim().length < 10 && <small id="project-summary-minimum" className="project-summary-minimum" role="alert">Minimum 10 characters required.</small>}
             </div>
             <fieldset className="project-icon-field">
               <legend>Stage</legend>
@@ -3837,14 +3840,18 @@ function PostComposer({
   );
 }
 
-function ContentDraftList({ kind, onResume, compact = false }: { kind: "project" | "post"; onResume: (draft: ContentDraft) => void; compact?: boolean }) {
+function ContentDraftList({ kind, onResume, compact = false, emptyMessage, onCountChange }: { kind: "project" | "post"; onResume: (draft: ContentDraft) => void; compact?: boolean; emptyMessage?: string; onCountChange?: (count: number) => void }) {
   const [drafts, setDrafts] = useState<DraftSummary[]>([]), [expanded, setExpanded] = useState(false), [busyId, setBusyId] = useState(""), [deleteTarget, setDeleteTarget] = useState<DraftSummary | null>(null);
   const load = useCallback(() => {
     fetch(`/api/drafts?kind=${kind}`, { cache: "no-store" })
       .then(response => response.ok ? response.json() : { drafts: [] })
-      .then(data => setDrafts((data.drafts ?? []) as DraftSummary[]))
+      .then(data => {
+        const nextDrafts = (data.drafts ?? []) as DraftSummary[];
+        setDrafts(nextDrafts);
+        onCountChange?.(nextDrafts.length);
+      })
       .catch(() => undefined);
-  }, [kind]);
+  }, [kind, onCountChange]);
   useEffect(() => {
     load();
     const changed = (event: Event) => { if ((event as CustomEvent<{ kind?: string }>).detail?.kind === kind) load(); };
@@ -3861,9 +3868,16 @@ function ContentDraftList({ kind, onResume, compact = false }: { kind: "project"
     setBusyId(draft.id);
     const response = await fetch(`/api/drafts/${draft.id}`, { method: "DELETE" });
     setBusyId("");
-    if (response.ok) { setDrafts(rows => rows.filter(row => row.id !== draft.id)); window.dispatchEvent(new CustomEvent("n2:drafts-changed", { detail: { kind } })); }
+    if (response.ok) {
+      setDrafts(rows => {
+        const nextRows = rows.filter(row => row.id !== draft.id);
+        onCountChange?.(nextRows.length);
+        return nextRows;
+      });
+      window.dispatchEvent(new CustomEvent("n2:drafts-changed", { detail: { kind } }));
+    }
   }
-  if (!drafts.length) return null;
+  if (!drafts.length) return emptyMessage ? <p className="profile-empty draft-library-empty">{emptyMessage}</p> : null;
   const visible = compact && !expanded ? drafts.slice(0, 3) : drafts;
   return (<>
     <section className={`content-draft-list ${compact ? "compact" : ""}`} aria-label={`${kind} drafts`}>
@@ -4106,7 +4120,6 @@ function Feed({
   onCreate,
   onDiscover,
   onShareIdea,
-  onResumePostDraft,
   onMatch,
   onComments,
   onPostThread,
@@ -4122,7 +4135,6 @@ function Feed({
   onCreate: () => void;
   onDiscover: () => void;
   onShareIdea: () => void;
-  onResumePostDraft: (draft: ContentDraft<PostDraftPayload>) => void;
   onMatch: () => void;
   onComments: (project: ProjectRecord) => void;
   onPostThread: (post: TimelinePost) => void;
@@ -4366,7 +4378,6 @@ function Feed({
           <Lightbulb size={18} />
         </span>
       </section>
-      {authenticated && <ContentDraftList kind="post" compact onResume={(draft) => onResumePostDraft(draft as ContentDraft<PostDraftPayload>)} />}
       <div className="feed-filter">
         {["For you", "Following", "Newest"].map((item) => (
           <button
@@ -6591,7 +6602,22 @@ function ProjectsView({
   const [records, setRecords] = useState<ProjectRecord[]>([]),
     [discover, setDiscover] = useState<ProjectRecord[]>([]),
     [loading, setLoading] = useState(true),
-    [tab, setTab] = useState<"mine" | "involved" | "discover">("mine");
+    [draftCount, setDraftCount] = useState(0),
+    [tab, setTab] = useState<"mine" | "drafts" | "involved" | "discover">("mine");
+  useEffect(() => {
+    const loadDraftCount = () => {
+      fetch("/api/drafts?kind=project", { cache: "no-store" })
+        .then(response => response.ok ? response.json() : { drafts: [] })
+        .then(data => setDraftCount((data.drafts ?? []).length))
+        .catch(() => undefined);
+    };
+    const changed = (event: Event) => {
+      if ((event as CustomEvent<{ kind?: string }>).detail?.kind === "project") loadDraftCount();
+    };
+    loadDraftCount();
+    window.addEventListener("n2:drafts-changed", changed);
+    return () => window.removeEventListener("n2:drafts-changed", changed);
+  }, []);
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -6617,7 +6643,7 @@ function ProjectsView({
   const owned = allMine.filter((record) => record.status !== "draft" && record.isOwner !== false),
     involved = allMine.filter((record) => record.status !== "draft" && record.isOwner === false);
   const visible =
-    tab === "mine" ? owned : tab === "involved" ? involved : discover;
+    tab === "mine" ? owned : tab === "involved" ? involved : tab === "discover" ? discover : [];
   const empty =
     tab === "mine"
       ? {
@@ -6674,6 +6700,14 @@ function ProjectsView({
         </button>
         <button
           role="tab"
+          aria-selected={tab === "drafts"}
+          className={tab === "drafts" ? "active" : ""}
+          onClick={() => setTab("drafts")}
+        >
+          Drafts <b>{draftCount}</b>
+        </button>
+        <button
+          role="tab"
           aria-selected={tab === "involved"}
           className={tab === "involved" ? "active" : ""}
           onClick={() => setTab("involved")}
@@ -6693,24 +6727,26 @@ function ProjectsView({
         <h3>
           {tab === "mine"
             ? "Started by you"
+            : tab === "drafts"
+              ? "Saved project drafts"
             : tab === "involved"
               ? "Projects you’re helping"
               : "Explore the network"}
         </h3>
-        {tab !== "discover" && (
+        {tab !== "discover" && tab !== "drafts" && (
           <button onClick={() => setTab("discover")}>
             Discover projects <ArrowUpRight size={15} />
           </button>
         )}
       </div>
-      {tab === "mine" && <ContentDraftList kind="project" onResume={(draft) => onResumeDraft(draft as ContentDraft<ProjectDraftPayload>)} />}
-      {loading && (
+      {tab === "drafts" && <ContentDraftList kind="project" emptyMessage="No project drafts saved yet." onCountChange={setDraftCount} onResume={(draft) => onResumeDraft(draft as ContentDraft<ProjectDraftPayload>)} />}
+      {loading && tab !== "drafts" && (
         <div className="feed-context">
           <Clock3 size={16} />
           <span>Loading your project workspaces…</span>
         </div>
       )}
-      {!loading &&
+      {!loading && tab !== "drafts" &&
         visible.map((record) => (
           <ProjectCard
             key={`${tab}-${record.id}`}
@@ -6734,7 +6770,7 @@ function ProjectsView({
             }}
           />
         ))}
-      {!loading && !visible.length && (
+      {!loading && tab !== "drafts" && !visible.length && (
         <div className="empty-meets project-library-empty">
           <BriefcaseBusiness size={20} />
           <strong>{empty.title}</strong>
@@ -9533,6 +9569,7 @@ function ProfileView({
   onMeet,
   onShare,
   onToast,
+  onResumePostDraft,
 }: {
   member: MemberPerson;
   userId?: string | null;
@@ -9543,11 +9580,14 @@ function ProfileView({
   onMeet: (meetingId: string) => void;
   onShare: (item: { id: string; title: string; summary: string; kind?: "project" | "post" | "profile"; sharePath?: string }) => void;
   onToast: (message: string) => void;
+  onResumePostDraft: (draft: ContentDraft<PostDraftPayload>) => void;
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
       "profile" | "posts" | "projects" | "followers" | "following" | "media" | "likes" | "watching" | "reposts" | "bookmarks"
     >("profile"),
+    [postView, setPostView] = useState<"published" | "drafts">("published"),
+    [postDraftCount, setPostDraftCount] = useState(0),
     [networkPeople, setNetworkPeople] = useState<
       Array<{
         id: string;
@@ -9578,6 +9618,24 @@ function ProfileView({
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => setProfile(data?.profile ?? null));
   }, [userId]);
+  useEffect(() => {
+    if (!profile?.isCurrent) {
+      setPostDraftCount(0);
+      return;
+    }
+    const loadDraftCount = () => {
+      fetch("/api/drafts?kind=post", { cache: "no-store" })
+        .then(response => response.ok ? response.json() : { drafts: [] })
+        .then(data => setPostDraftCount((data.drafts ?? []).length))
+        .catch(() => undefined);
+    };
+    const changed = (event: Event) => {
+      if ((event as CustomEvent<{ kind?: string }>).detail?.kind === "post") loadDraftCount();
+    };
+    loadDraftCount();
+    window.addEventListener("n2:drafts-changed", changed);
+    return () => window.removeEventListener("n2:drafts-changed", changed);
+  }, [profile?.isCurrent]);
   useEffect(() => {
     if (!userId || !profile) return;
     fetch(`/api/saved-items?profile=${encodeURIComponent(userId)}`, { cache: "no-store" })
@@ -9811,9 +9869,17 @@ function ProfileView({
           <section className="profile-library">
             <div className="profile-section-head">
               <span className="eyebrow">POSTS</span>
-              <small>{profile?.posts?.length ?? 0} posts</small>
+              <small>{postView === "drafts" ? `${postDraftCount} drafts` : `${profile?.posts?.length ?? 0} posts`}</small>
             </div>
-            <div className="profile-post-list">
+            {profile?.isCurrent && (
+              <div className="profile-post-tabs" role="tablist" aria-label="Post views">
+                <button type="button" role="tab" aria-selected={postView === "published"} className={postView === "published" ? "active" : ""} onClick={() => setPostView("published")}>Published <b>{profile.posts?.length ?? 0}</b></button>
+                <button type="button" role="tab" aria-selected={postView === "drafts"} className={postView === "drafts" ? "active" : ""} onClick={() => setPostView("drafts")}>Drafts <b>{postDraftCount}</b></button>
+              </div>
+            )}
+            {profile?.isCurrent && postView === "drafts" ? (
+              <ContentDraftList kind="post" emptyMessage="No post drafts saved yet." onCountChange={setPostDraftCount} onResume={(draft) => onResumePostDraft(draft as ContentDraft<PostDraftPayload>)} />
+            ) : <div className="profile-post-list">
               {profile?.posts?.map((post) => (
                 <TimelinePostCard
                   key={post.id}
@@ -9835,7 +9901,7 @@ function ProfileView({
                 />
               ))}
               {!profile?.posts?.length && <p className="profile-empty">No posts shared yet.</p>}
-            </div>
+            </div>}
           </section>
         ) : section === "projects" ? (
           <section className="profile-library">
@@ -12859,7 +12925,6 @@ export default function HomePage() {
                   onCreate={() => { setProjectDraftToResume(null); setCreateOpen(true); }}
                   onDiscover={() => setSearchOpen(true)}
                   onShareIdea={() => { setPostDraftToResume(null); setPostComposerOpen(true); }}
-                  onResumePostDraft={(draft) => { setPostDraftToResume(draft); setPostComposerOpen(true); }}
                   onMatch={() => setMatchOpen(true)}
                   onComments={(project) =>
                     authenticated ? setCommentProject(project) : requireSignIn()
@@ -12911,6 +12976,7 @@ export default function HomePage() {
                   onMeet={openSavedMeet}
                   onShare={setShareProject}
                   onToast={setToast}
+                  onResumePostDraft={(draft) => { setPostDraftToResume(draft); setPostComposerOpen(true); }}
                 />
               )}
               {authenticated && view === "settings" && (

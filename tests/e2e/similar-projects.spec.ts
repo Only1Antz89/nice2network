@@ -66,12 +66,15 @@ test("pre-publish similarity is default-on, owner-only, role-aware and immediate
     await page.getByLabel("Industry").fill("Community services");
     await page.getByLabel("Location").fill("London");
     await page.getByRole("option").first().click();
-    await expect(page.getByText("Minimum 10 characters required.")).toBeVisible();
+    await expect(page.getByText("Minimum 10 characters required.")).toBeHidden();
     await page.getByLabel("Project summary").fill("Too short");
+    await expect(page.getByText("Minimum 10 characters required.")).toBeHidden();
     await expect(page.getByRole("button", { name: "Build my project plan" })).toBeEnabled();
     await page.getByRole("button", { name: "Build my project plan" }).click();
+    await expect(page.getByText("Minimum 10 characters required.")).toBeVisible();
     await expect(page.locator(".project-modal .form-error")).toContainText("Project summary must be at least 10 characters (9/10).");
     await page.getByLabel("Project summary").fill("x".repeat(500));
+    await expect(page.getByText("Minimum 10 characters required.")).toBeHidden();
     await expect(page.getByText("500/500")).toBeVisible();
     await expect(page.getByRole("button", { name: "Build my project plan" })).toBeEnabled();
     await page.getByPlaceholder("Describe the idea, why it matters, and where you'd like help…").fill("Repair household items locally and teach practical reuse skills.");
