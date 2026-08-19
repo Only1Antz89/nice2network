@@ -6367,7 +6367,7 @@ function ProjectDetailView({
                         <Avatar person={{ name: application.applicantName ?? "n2 member", role: application.applicantProfession ?? "n2 member", img: application.applicantImage }} size="md" />
                         <span><strong>{application.applicantName ?? "n2 member"}</strong><small>{application.roleTitle} · {application.applicantProfession ?? "n2 member"}</small></span>
                       </button>
-                      <div className="application-fit" aria-label={`${application.fit.score}% profile fit`}><strong>{application.fit.score}%</strong><small>profile fit</small></div>
+                      <div className="application-fit" data-fit-tier={application.fit.score >= 80 ? "high" : application.fit.score <= 50 ? "low" : "medium"} role="meter" aria-label="Role fit" aria-valuemin={0} aria-valuemax={100} aria-valuenow={application.fit.score} style={{ "--role-fit-progress": `${Math.max(0, Math.min(100, application.fit.score))}%` } as React.CSSProperties}><strong>{application.fit.score}%</strong><small>role fit</small></div>
                       <button type="button" className="application-expand" aria-expanded={expanded} onClick={() => setExpandedApplicationId(expanded ? null : application.id)}>
                         {expanded ? "Hide details" : "Review details"} <ChevronRight size={15} />
                       </button>

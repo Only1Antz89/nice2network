@@ -46,7 +46,21 @@ test("the role applicant tab shows fit, context, mismatch and a clickable applic
   assert.match(page, /application\.applicantInterests/);
   assert.match(page, /REASON FOR JOINING/);
   assert.match(applicantList, /<footer><span className=\{`application-status \$\{application\.status\}`\}>\{application\.status\}<\/span>/);
-  assert.match(styles, /role-applicant-list article>footer>button\{width:110px;height:40px/);
+  assert.match(styles, /role-applicant-list article>footer>button,\.project-notifications-section \.application-review-actions>button\{width:110px;height:40px/);
+});
+
+test("project notifications reuse the open contribution role-fit meter", () => {
+  const notificationsStart = page.indexOf('<section className="project-notifications-section">');
+  const notifications = page.slice(notificationsStart, page.indexOf('tab === "ai"', notificationsStart));
+  assert.match(notifications, /data-fit-tier=\{application\.fit\.score >= 80 \? "high" : application\.fit\.score <= 50 \? "low" : "medium"\}/);
+  assert.match(notifications, /role="meter"/);
+  assert.match(notifications, /aria-valuenow=\{application\.fit\.score\}/);
+  assert.match(notifications, /--role-fit-progress/);
+  assert.match(notifications, /<small>role fit<\/small>/);
+  assert.match(styles, /\.application-fit\[data-fit-tier\]\{--role-fit-progress:0%;/);
+  assert.match(notifications, /<span className=\{`application-status \$\{application\.status\}`\}>\{application\.status\}<\/span>/);
+  assert.match(styles, /project-notifications-section \.application-review-actions>\.application-status\{margin-left:0;margin-right:auto\}/);
+  assert.match(styles, /project-notifications-section \.application-review-actions>button\{width:110px;height:40px;justify-content:center;padding:0 14px\}/);
 });
 
 test("general involvement offers stay private to owners and support early onboarding", () => {
