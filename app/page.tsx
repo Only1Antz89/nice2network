@@ -4129,6 +4129,7 @@ function Feed({
   onToast,
   currentMember,
   newPost,
+  newProject,
   authenticated,
   onRequireAuth,
 }: {
@@ -4149,6 +4150,7 @@ function Feed({
   onToast: (message: string) => void;
   currentMember: MemberPerson;
   newPost: TimelinePost | null;
+  newProject: ProjectRecord | null;
   authenticated: boolean;
   onRequireAuth: () => void;
 }) {
@@ -4246,6 +4248,13 @@ function Feed({
       ]);
   }, [newPost]);
   useEffect(() => {
+    if (newProject && filter === "Newest")
+      setLiveProjects((rows) => [
+        newProject,
+        ...rows.filter((row) => row.id !== newProject.id),
+      ]);
+  }, [filter, newProject]);
+  useEffect(() => {
     const sync = (event: Event) => {
       const next = (event as CustomEvent<TimelinePost>).detail;
       setPosts((rows) => rows.map((row) => (row.id === next.id ? next : row)));
@@ -4270,16 +4279,19 @@ function Feed({
   }, [filter, projectFilters]);
   useEffect(() => {
     const controller = new AbortController();
-    fetch(projectQuery(), { signal: controller.signal })
+    fetch(projectQuery(), { signal: controller.signal, cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { projects: [] }))
       .then((data) => {
-        setLiveProjects(data.projects ?? []);
+        const projects = (data.projects ?? []) as ProjectRecord[];
+        setLiveProjects(newProject && filter === "Newest"
+          ? [newProject, ...projects.filter((project) => project.id !== newProject.id)]
+          : projects);
         setNextCursor(data.nextCursor ?? null);
         setAlgorithmMode(data.algorithmMode ?? "shadow");
       })
       .catch(() => undefined);
     return () => controller.abort();
-  }, [authenticated, projectQuery]);
+  }, [authenticated, newProject, projectQuery]);
   async function loadMore() {
     if (!nextCursor) return;
     setLoadingMore(true);
@@ -12920,6 +12932,7 @@ export default function HomePage() {
                 <Feed
                   currentMember={currentMember}
                   newPost={latestPost}
+                  newProject={latestProject}
                   authenticated={authenticated}
                   onRequireAuth={requireSignIn}
                   onCreate={() => { setProjectDraftToResume(null); setCreateOpen(true); }}

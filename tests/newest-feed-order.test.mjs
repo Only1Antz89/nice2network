@@ -27,3 +27,14 @@ test("Feed renders new joiners through the same unified newest timeline", async 
   assert.match(source, /timelineFeed\.map\(\(entry\) => \{\s*if \(entry\.kind === "member"\)/s);
   assert.doesNotMatch(source, /filter === "Newest" &&\s*newJoiners\.map/);
 });
+
+test("a newly published project is handed directly into the feed and survives refresh", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /newProject: ProjectRecord \| null/);
+  assert.match(source, /newProject=\{latestProject\}/);
+  assert.match(source, /if \(newProject && filter === "Newest"\)\s*setLiveProjects\(\(rows\) => \[\s*newProject,\s*\.\.\.rows\.filter\(\(row\) => row\.id !== newProject\.id\)/s);
+  assert.match(source, /fetch\(projectQuery\(\), \{ signal: controller\.signal, cache: "no-store" \}\)/);
+  assert.match(source, /newProject && filter === "Newest"/);
+  assert.match(source, /\[newProject, \.\.\.projects\.filter\(\(project\) => project\.id !== newProject\.id\)\]/);
+});
