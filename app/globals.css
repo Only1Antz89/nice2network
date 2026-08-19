@@ -1268,9 +1268,9 @@ input::selection,textarea::selection,[contenteditable]::selection{
 .project-summary-footer .field-limit{justify-self:end}
 .project-summary-industry{display:grid;gap:5px;text-align:left;font-size:8px;color:var(--muted)}
 .project-summary-industry .career-industry-picker{text-align:left}
-.project-summary-industry .career-industry-control>input{display:block;width:100%;height:42px;margin:0!important;padding:0 18px;border:1px solid #11110f!important;border-radius:999px;background:#11110f!important;color:#fff!important;font-size:10px;font-weight:700;line-height:42px}
-.project-summary-industry .career-industry-control>input:focus{border-color:#11110f!important;background:#292925!important}
-.project-summary-industry .career-industry-control>input::placeholder{color:#c8c8c2}
+.project-summary-industry .career-industry-control>input{display:block;width:100%;height:42px;margin:0!important;padding:0 11px;border:1px solid var(--line)!important;border-radius:8px;background:var(--paper)!important;color:var(--ink)!important;font-size:11px;font-weight:400;line-height:42px;outline:0}
+.project-summary-industry .career-industry-control>input:focus{border-color:var(--ink)!important;background:var(--paper)!important}
+.project-summary-industry .career-industry-control>input::placeholder{color:var(--muted)}
 .project-summary-minimum{color:#b42318;font-size:8px;font-weight:700}
 .project-icon-field{margin:15px 0 0;padding:0;border:0;text-align:left}
 .project-icon-field legend{margin-bottom:7px;font-size:9px;color:var(--muted)}

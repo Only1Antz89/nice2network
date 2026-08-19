@@ -45,7 +45,7 @@ test("details page orders image before summary and uses icon cards for stage and
   assert.match(page, /\["idea", "Idea", Lightbulb\]/);
   assert.match(page, /\["remote", "Remote", Globe2\]/);
   assert.match(page, /project-summary-industry/);
-  assert.match(styles, /project-summary-industry \.career-industry-control>input\{[^}]*height:42px[^}]*border-radius:999px[^}]*background:#11110f!important[^}]*color:#fff!important/);
+  assert.match(styles, /project-summary-industry \.career-industry-control>input\{[^}]*height:42px[^}]*border-radius:8px[^}]*background:var\(--paper\)!important[^}]*color:var\(--ink\)!important/);
   assert.match(styles, /project-owner-slot\.fixed\{grid-column:1\/-1/);
   assert.match(industryPicker, /aria-autocomplete="list"/);
   assert.doesNotMatch(industryPicker, /career-industry-prediction/);
