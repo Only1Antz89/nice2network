@@ -14,18 +14,29 @@ import { getDeploymentVersion } from "@/lib/deployment-version";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const siteUrl = "https://nice2network.vercel.app";
+const socialPreviewUrl = `${siteUrl}/nice2-social-preview-v2.png`;
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://nice2network.vercel.app"),
+  metadataBase: new URL(siteUrl),
   title: "nice 2 network — ideas need good people",
   description: "A place for useful connections, shared projects and the people who help ideas grow.",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
   openGraph: {
+    type: "website",
+    url: siteUrl,
+    siteName: "nice 2 network",
+    locale: "en_GB",
     title: "nice 2 network",
     description: "Ideas need good people.",
-    images: [{ url: "/og.png", width: 1734, height: 907, alt: "nice 2 network — Ideas need good people." }],
+    images: [{ url: socialPreviewUrl, secureUrl: socialPreviewUrl, width: 1200, height: 630, type: "image/png", alt: "nice 2 network — Ideas need good people." }],
   },
-  twitter: { card: "summary_large_image", title: "nice 2 network", description: "Ideas need good people.", images: ["/og.png"] },
+  twitter: {
+    card: "summary_large_image",
+    title: "nice 2 network",
+    description: "Ideas need good people.",
+    images: [{ url: socialPreviewUrl, alt: "nice 2 network — Ideas need good people." }],
+  },
 };
 
 export const viewport: Viewport = {

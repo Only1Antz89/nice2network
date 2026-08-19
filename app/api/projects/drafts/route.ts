@@ -12,7 +12,7 @@ const schema = z.object({
   title: z.string().trim().min(4, "Project title must be at least 4 characters.").max(120, "Project title must be 120 characters or fewer."), summary: z.string().trim().min(10, "Project summary must be at least 10 characters.").max(500, "Project summary must be 500 characters or fewer."), description: z.string().trim().max(5000).nullable().optional(),
   industry: z.string().trim().min(2).max(80), stage: z.enum(["idea", "planning", "building", "launching"]).default("idea"),
   workMode: workModeSchema.default("remote"), city: z.string().trim().max(100).nullable().optional(), country: z.string().trim().max(100).nullable().optional(),
-  timezone: z.string().trim().min(3).max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true),
+  timezone: z.string().trim().min(3).max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(false),
   imageUrl: z.string().max(1_500_000).refine(value=>!value||/^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
 });
 

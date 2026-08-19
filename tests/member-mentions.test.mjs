@@ -22,7 +22,7 @@ test("typing @ opens connected-profile suggestions without a tag button", () => 
 test("member search returns and matches usernames", () => {
   assert.match(search, /username: users\.username/);
   assert.match(search, /ilike\(users\.username, term\)/);
-  assert.match(search, /scope"\) === "connections"/);
+  assert.match(search, /const connectionsOnly = scope === "connections"/);
   assert.match(search, /connectionsOnly \? and\(isFollowing, followsViewer\)/);
 });
 

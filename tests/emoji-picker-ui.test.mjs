@@ -24,3 +24,15 @@ test("emoji search and trigger keep neutral focus and dark-mode contrast", async
   assert.match(css, /left: 14px !important/);
   assert.match(css, /html\[data-colour-theme="dark"\]/);
 });
+
+test("emoji picker is portalled and clamped to the available viewport", async () => {
+  const source = await readFile(componentPath, "utf8");
+
+  assert.match(source, /createPortal/);
+  assert.match(source, /getBoundingClientRect/);
+  assert.match(source, /window\.innerWidth - width - gutter/);
+  assert.match(source, /window\.innerHeight - height - gutter/);
+  assert.match(source, /addEventListener\("resize", reposition\)/);
+  assert.match(source, /addEventListener\("scroll", reposition, true\)/);
+  assert.match(source, /popover\.current\?\.contains/);
+});

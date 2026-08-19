@@ -24,7 +24,7 @@ const roleSchema = z.object({
 const inputSchema = z.object({
   title: z.string().trim().min(4).max(120), summary: z.string().trim().min(10).max(500), description: z.string().max(5000).optional(), industry: z.string().min(2).max(80),
   stage: z.enum(["idea", "planning", "building", "launching"]).default("idea"), visibility: z.enum(["network", "connections", "private"]).default("network"),
-  workMode: z.enum(["remote", "hybrid", "in_person"]).default("remote"), city: z.string().max(100).nullable().optional(), country: z.string().max(100).nullable().optional(), timezone: z.string().max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(true),
+  workMode: z.enum(["remote", "hybrid", "in_person"]).default("remote"), city: z.string().max(100).nullable().optional(), country: z.string().max(100).nullable().optional(), timezone: z.string().max(80).default("Europe/London"), allowRemoteFallback: z.boolean().default(false),
   imageUrl: z.string().max(1_500_000).refine(value=>!value||/^data:image\/(jpeg|png|webp);base64,/i.test(value)).nullable().optional(),
   roles: z.array(roleSchema).max(18).default([]),
   coOwnerIds: coOwnerIdsSchema,

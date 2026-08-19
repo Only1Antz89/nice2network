@@ -1,10 +1,12 @@
 "use client";
+/* eslint-disable jsx-a11y/label-has-associated-control */
 
 import Image from "next/image";
 import { FormEvent, useState } from "react";
 import { signIn } from "next-auth/react";
 import { Image as ImageIcon, X } from "lucide-react";
 import PasswordInput from "@/components/password-input";
+import N2Select from "@/components/n2-select";
 import { Logo } from "@/components/network-brand";
 
 export default function GuestAuthPrompt({
@@ -113,15 +115,7 @@ export default function GuestAuthPrompt({
               <div className="guest-signup-grid">
                 <label>
                   Title
-                  <select name="title" defaultValue="Ms" required>
-                    <option>Mr</option>
-                    <option>Ms</option>
-                    <option>Mrs</option>
-                    <option>Miss</option>
-                    <option>Mx</option>
-                    <option>Dr</option>
-                    <option>Prof</option>
-                  </select>
+                  <N2Select name="title" defaultValue="Ms" required ariaLabel="Title" options={["Mr", "Ms", "Mrs", "Miss", "Mx", "Dr", "Prof"].map(value => ({ value, label: value }))} />
                 </label>
                 <label>
                   Date of birth

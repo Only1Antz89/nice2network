@@ -4,7 +4,7 @@ import { and, asc, count, desc, eq, gt, inArray, isNull, ne, or, sql } from "dri
 import { getDb } from "@/db";
 import {
   algorithmSettings, blocks, careerHistory, memberAffinities, memberEmbeddings, milestones, notificationPreferences, notifications,
-  privacySettings, projectBlueprints, projectMembers, projectRecommendations, projectRoles, projects, recommendationJobs,
+  contentDrafts, privacySettings, projectBlueprints, projectMembers, projectRecommendations, projectRoles, projects, recommendationJobs,
   roleEmbeddings, sanctions, users,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api";
@@ -95,7 +95,7 @@ export async function generateProjectBlueprint(projectId: string, requestedBy: s
   return { ...record, latencyMs: Date.now() - started, usedFallback: Boolean(failureStatus) };
 }
 
-export async function approveProjectBlueprint(input: { projectId: string; blueprintId: string; userId: string; roles: BlueprintRole[]; milestones:Array<{title:string;description?:string;phase:"now"|"next"|"later";ownerId?:string|null;dueAt?:string|null}>; visibility: "network" | "connections" | "private"; coOwnerIds?: string[] }) {
+export async function approveProjectBlueprint(input: { projectId: string; blueprintId: string; userId: string; roles: BlueprintRole[]; milestones:Array<{title:string;description?:string;phase:"now"|"next"|"later";ownerId?:string|null;dueAt?:string|null}>; visibility: "network" | "connections" | "private"; allowRemoteFallback: boolean; coOwnerIds?: string[]; draftId?: string }) {
   const db = getDb();
   const roles = projectBlueprintSchema.shape.roles.parse(input.roles);
   const [blueprint] = await db.select({ blueprint: projectBlueprints, project: projects }).from(projectBlueprints).innerJoin(projects, eq(projects.id, projectBlueprints.projectId)).where(and(eq(projectBlueprints.id, input.blueprintId), eq(projectBlueprints.projectId, input.projectId))).limit(1);
@@ -104,6 +104,10 @@ export async function approveProjectBlueprint(input: { projectId: string; bluepr
   if (blueprint.blueprint.status !== "draft") throw new ApiError(409, "This blueprint has already been reviewed");
   let coOwnerInvitations: CoOwnerInvitationDelivery[] = [];
   await db.transaction(async tx => {
+    if (input.draftId) {
+      const [draft] = await tx.select({ id: contentDrafts.id }).from(contentDrafts).where(and(eq(contentDrafts.id, input.draftId), eq(contentDrafts.ownerId, input.userId), eq(contentDrafts.kind, "project"), eq(contentDrafts.projectId, input.projectId))).limit(1);
+      if (!draft) throw new ApiError(409, "Project draft is unavailable");
+    }
     coOwnerInvitations = await createCoOwnerInvitations(tx, { projectId: input.projectId, ownerId: input.userId, coOwnerIds: input.coOwnerIds ?? [] });
     await tx.update(projectBlueprints).set({ status: "superseded" }).where(and(eq(projectBlueprints.projectId, input.projectId), eq(projectBlueprints.status, "approved")));
     await tx.update(projectBlueprints).set({ status: "approved", roles, approvedAt: new Date(), approvedBy: input.userId }).where(eq(projectBlueprints.id, input.blueprintId));
@@ -119,7 +123,8 @@ export async function approveProjectBlueprint(input: { projectId: string; bluepr
       await tx.delete(milestones).where(eq(milestones.projectId,input.projectId));
       await tx.insert(milestones).values(input.milestones.map((item,index)=>({projectId:input.projectId,title:item.title,description:item.description,phase:item.phase,ownerId:item.ownerId,dueAt:item.dueAt?new Date(item.dueAt):null,status:index===0?"in_progress":"planned",startedAt:index===0?new Date():null,sortOrder:index})));
     } else if (!Number(total)) await tx.insert(milestones).values(input.milestones.map((item,index)=>({projectId:input.projectId,title:item.title,description:item.description,phase:item.phase,ownerId:item.ownerId,dueAt:item.dueAt?new Date(item.dueAt):null,status:index===0?"in_progress":"planned",startedAt:index===0?new Date():null,sortOrder:index})));
-    await tx.update(projects).set({ status: "active", visibility: input.visibility, updatedAt: new Date() }).where(eq(projects.id, input.projectId));
+    await tx.update(projects).set({ status: "active", visibility: input.visibility, allowRemoteFallback: input.allowRemoteFallback, updatedAt: new Date() }).where(eq(projects.id, input.projectId));
+    if (input.draftId) await tx.delete(contentDrafts).where(and(eq(contentDrafts.id, input.draftId), eq(contentDrafts.ownerId, input.userId), eq(contentDrafts.kind, "project")));
   });
   await recomputeProjectRecommendations(input.projectId);
   await trackProductEvent({ actorId: input.userId, event: "blueprint_approved", entityType: "project", entityId: input.projectId, properties: { roleCount: roles.length } });

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Trash2, X } from "lucide-react";
+import N2Select from "@/components/n2-select";
 
 export type ActionDialogField = {
   name: string;
@@ -28,7 +29,7 @@ export default function ActionDialog({ eyebrow, title, description, confirmLabel
   onConfirm: (values: Record<string, string>) => boolean | void | Promise<boolean | void>;
 }) {
   const [busy, setBusy] = useState(false);
-  const firstField = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(null);
+  const firstField = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>(null);
 
   useEffect(() => {
     firstField.current?.focus();
@@ -62,9 +63,7 @@ export default function ActionDialog({ eyebrow, title, description, confirmLabel
             <label key={field.name}>
               <span>{field.label}</span>
               {field.kind === "select" ? (
-                <select ref={index === 0 ? firstField as React.RefObject<HTMLSelectElement> : undefined} name={field.name} defaultValue={field.defaultValue} required={field.required}>
-                  {field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
+                <N2Select ref={index === 0 ? firstField as React.RefObject<HTMLButtonElement> : undefined} name={field.name} defaultValue={field.defaultValue} required={field.required} ariaLabel={field.label} options={field.options ?? []} />
               ) : field.kind === "input" || field.multiline === false ? (
                 <input ref={index === 0 ? firstField as React.RefObject<HTMLInputElement> : undefined} name={field.name} defaultValue={field.defaultValue} placeholder={field.placeholder} required={field.required} minLength={field.minLength} maxLength={field.maxLength} />
               ) : (

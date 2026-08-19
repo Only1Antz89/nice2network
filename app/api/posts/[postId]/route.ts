@@ -11,7 +11,7 @@ const videoData = z.string().max(3_500_000).refine(value => /^data:video\/(mp4|w
 const httpUrl = z.string().url().max(1000).refine(value => ["http:", "https:"].includes(new URL(value).protocol), "Use an http(s) link");
 
 const updateSchema = z.object({
-  body: z.string().trim().min(1).max(3000).optional(),
+  body: z.string().trim().min(1).max(1000).optional(),
   visibility: z.enum(["network", "connections"]).optional(),
   linkedProjectIds: z.array(z.uuid()).max(8).optional(),
   attachmentType: z.enum(["image", "video"]).nullable().optional(),

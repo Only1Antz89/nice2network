@@ -1,4 +1,4 @@
-/* eslint-disable no-empty, @next/next/no-img-element, jsx-a11y/media-has-caption, jsx-a11y/no-autofocus, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex, react-hooks/set-state-in-effect */
+/* eslint-disable no-empty, @next/next/no-img-element, jsx-a11y/label-has-associated-control, jsx-a11y/media-has-caption, jsx-a11y/no-autofocus, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex, react-hooks/set-state-in-effect */
 "use client";
 
 import {
@@ -10,6 +10,7 @@ import {
   Bookmark,
   BriefcaseBusiness,
   CalendarDays,
+  ClipboardList,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -24,6 +25,7 @@ import {
   Globe2,
   Home,
   Lightbulb,
+  Laptop,
   List,
   Paperclip,
   Pause,
@@ -39,6 +41,7 @@ import {
   Pin,
   Plus,
   Repeat2,
+  Rocket,
   Search,
   Send,
   Share2,
@@ -53,6 +56,7 @@ import {
   Trash2,
   Underline,
   Video,
+  Wrench,
   Zap,
   Archive,
   Accessibility,
@@ -65,7 +69,10 @@ import Link from "next/link";
 import type { NotificationRecord } from "@/components/notification-panel";
 import N2OrbitMark from "@/components/n2-orbit-mark";
 import PeopleDiscoveryPanel from "@/components/people-discovery-panel";
+import CareerIndustryInput from "@/components/career-industry-input";
+import N2Select from "@/components/n2-select";
 import { PROJECT_ACCENT } from "@/lib/content-accents";
+import { PROJECT_INDUSTRIES } from "@/lib/career-sectors";
 import {
   getBrowserNotificationPreferences,
   playBrowserNotificationSound,
@@ -85,6 +92,9 @@ import { sanitizeRichText } from "@/lib/rich-text";
 import { layoutFocusedNetwork } from "@/lib/network-focus-layout";
 import { mergeNewestTimeline } from "@/lib/newest-timeline";
 import { signalDeploymentNavigation } from "@/lib/deployment-navigation";
+import { draftSummary, type ContentDraft, type DraftSummary, type PostDraftPayload, type ProjectDraftPayload } from "@/lib/content-drafts";
+import { clearBufferedDraft, listBufferedDrafts } from "@/lib/draft-buffer";
+import { DraftSaveIndicator, useContentDraftAutosave } from "@/lib/use-content-draft";
 import {
   ACCESSIBILITY_STORAGE_KEY,
   ACCESSIBILITY_EVENT,
@@ -200,37 +210,6 @@ type ProjectRecord = {
   }>;
   createdAt: string;
 };
-
-const PROJECT_INDUSTRIES = [
-  "Agriculture & food",
-  "Arts & culture",
-  "Automotive & mobility",
-  "Beauty & wellness",
-  "Charity & social impact",
-  "Climate & energy",
-  "Community & local services",
-  "Construction & built environment",
-  "Consumer products & retail",
-  "Creative industries",
-  "Education & training",
-  "Entertainment & media",
-  "Fashion & textiles",
-  "Finance & fintech",
-  "Gaming & interactive",
-  "Government & public services",
-  "Healthcare & life sciences",
-  "Hospitality & tourism",
-  "Legal & professional services",
-  "Manufacturing & engineering",
-  "Marketing & communications",
-  "Property & real estate",
-  "Science & research",
-  "Sport & fitness",
-  "Sustainability & circular economy",
-  "Technology & software",
-  "Transport & logistics",
-  "Other",
-] as const;
 
 type BlueprintRole = {
   phase: "now" | "next" | "later";
@@ -602,6 +581,279 @@ type MentionPerson = {
   profession?: string | null;
 };
 
+type PostTagProject = Pick<
+  ProjectRecord,
+  "id" | "title" | "industry" | "ownerName"
+>;
+
+type ActivePostTag = {
+  kind: "person" | "project";
+  query: string;
+  start: number;
+  end: number;
+};
+
+function projectTagSlug(title: string) {
+  return title
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function activePostTagAtCursor(
+  value: string,
+  input: HTMLTextAreaElement | null,
+): ActivePostTag | null {
+  const cursor = input?.selectionStart ?? value.length;
+  const match = value.slice(0, cursor).match(/(?:^|\s)([@#])([a-z0-9_-]*)$/i);
+  if (!match) return null;
+  return {
+    kind: match[1] === "@" ? "person" : "project",
+    query: match[2],
+    start: cursor - match[2].length - 1,
+    end: cursor,
+  };
+}
+
+function replaceActivePostTag(
+  value: string,
+  active: ActivePostTag,
+  replacement: string,
+  input: HTMLTextAreaElement | null,
+  setValue: (value: string) => void,
+) {
+  const insertion = `${active.kind === "person" ? "@" : "#"}${replacement} `;
+  const next = `${value.slice(0, active.start)}${insertion}${value.slice(active.end)}`;
+  setValue(next);
+  requestAnimationFrame(() => {
+    const cursor = active.start + insertion.length;
+    input?.focus();
+    input?.setSelectionRange(cursor, cursor);
+  });
+  return next;
+}
+
+function PostTagSuggestions({
+  value,
+  inputRef,
+  setValue,
+  ownProjects,
+  linkedProjectIds,
+  onChooseProject,
+}: {
+  value: string;
+  inputRef: RefObject<HTMLTextAreaElement | null>;
+  setValue: (value: string) => void;
+  ownProjects: PostTagProject[];
+  linkedProjectIds: string[];
+  onChooseProject: (project: PostTagProject) => boolean;
+}) {
+  const [active, setActive] = useState<ActivePostTag | null>(null);
+  const suppressedValue = useRef("");
+  const [dismissedKey, setDismissedKey] = useState("");
+  const activeKey = active ? `${active.kind}:${active.start}:${active.query}` : "";
+  const activeKind = active?.kind;
+  const query = active?.query.trim().toLowerCase() ?? "";
+  const searchQuery = activeKind === "project"
+    ? query.replace(/[-_]+/g, " ").trim()
+    : query;
+  const [people, setPeople] = useState<MentionPerson[]>([]);
+  const [projects, setProjects] = useState<PostTagProject[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
+
+  useEffect(() => {
+    if (value === suppressedValue.current) {
+      setActive(null);
+      return;
+    }
+    suppressedValue.current = "";
+    const next = activePostTagAtCursor(value, inputRef.current);
+    const nextKey = next ? `${next.kind}:${next.start}:${next.query}` : "";
+    setActive(nextKey && nextKey !== dismissedKey ? next : null);
+  }, [dismissedKey, inputRef, value]);
+
+  useEffect(() => {
+    setHighlighted(0);
+  }, [activeKey]);
+
+  useEffect(() => {
+    if (!activeKind) {
+      setPeople([]);
+      setProjects([]);
+      setLoading(false);
+      return;
+    }
+    if (activeKind === "project" && searchQuery.length < 2) {
+      setProjects([]);
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      const scope = activeKind === "person" ? "&scope=mentions" : "";
+      fetch(`/api/search?q=${encodeURIComponent(searchQuery)}${scope}`, {
+        signal: controller.signal,
+      })
+        .then((response) =>
+          response.ok ? response.json() : { people: [], projects: [] },
+        )
+        .then((data) => {
+          if (activeKind === "person") {
+            setPeople(
+              (data.people ?? []).filter((person: MentionPerson) => person.username),
+            );
+            setProjects([]);
+          } else {
+            setProjects(data.projects ?? []);
+            setPeople([]);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => setLoading(false));
+    }, 180);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeKey, activeKind, searchQuery]);
+
+  const personalProjects = useMemo(() => activeKind === "project"
+    ? ownProjects.filter((project) =>
+        !linkedProjectIds.includes(project.id) &&
+        (!searchQuery || `${project.title} ${project.industry}`.toLowerCase().includes(searchQuery)),
+      )
+    : [], [activeKind, linkedProjectIds, ownProjects, searchQuery]);
+  const networkProjects = useMemo(() => {
+    const personalIds = new Set(personalProjects.map((project) => project.id));
+    return activeKind === "project"
+      ? projects.filter((project) =>
+        !linkedProjectIds.includes(project.id) && !personalIds.has(project.id),
+      )
+      : [];
+  }, [activeKind, linkedProjectIds, personalProjects, projects]);
+  const options = useMemo<Array<
+    | { kind: "person"; person: MentionPerson }
+    | { kind: "project"; project: PostTagProject }
+  >>(() => activeKind === "person"
+    ? people.slice(0, 8).map((person) => ({ kind: "person", person }))
+    : [
+        ...personalProjects.slice(0, 8).map((project) => ({ kind: "project" as const, project })),
+        ...networkProjects.slice(0, 8).map((project) => ({ kind: "project" as const, project })),
+      ], [activeKind, networkProjects, people, personalProjects]);
+
+  const choose = useCallback((option: (typeof options)[number]) => {
+    if (!active) return;
+    if (option.kind === "person") {
+      suppressedValue.current = replaceActivePostTag(value, active, option.person.username, inputRef.current, setValue);
+    } else if (onChooseProject(option.project)) {
+      suppressedValue.current = replaceActivePostTag(value, active, projectTagSlug(option.project.title), inputRef.current, setValue);
+    }
+    setActive(null);
+    setDismissedKey(activeKey);
+  }, [active, activeKey, inputRef, onChooseProject, setValue, value]);
+
+  useEffect(() => {
+    if (!active) return;
+    function keydown(event: KeyboardEvent) {
+      if (document.activeElement !== inputRef.current) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDismissedKey(activeKey);
+        return;
+      }
+      if (!options.length) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setHighlighted((index) =>
+          event.key === "ArrowDown"
+            ? (index + 1) % options.length
+            : (index - 1 + options.length) % options.length,
+        );
+      } else if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        choose(options[Math.min(highlighted, options.length - 1)]);
+      }
+    }
+    document.addEventListener("keydown", keydown);
+    return () => document.removeEventListener("keydown", keydown);
+  }, [active, activeKey, choose, highlighted, inputRef, options]);
+
+  if (!active) return null;
+  return (
+    <div className={`post-tag-suggestions ${active.kind}`}>
+      <div className="post-tag-query">
+        <Search size={14}/>
+        <span>
+          {active.kind === "person"
+            ? query ? `People matching @${query}` : "Tag a person"
+            : query ? `Projects matching #${query}` : "Your projects"}
+        </span>
+      </div>
+      <div className="post-tag-results" role="listbox" aria-label={active.kind === "person" ? "People to tag" : "Projects to tag"}>
+        {active.kind === "project" && personalProjects.length > 0 && (
+          <section className="post-personal-projects" aria-label="Your projects">
+            <small>Your projects</small>
+            <div>
+              {personalProjects.slice(0, 8).map((project, index) => (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={highlighted === index}
+                  className={highlighted === index ? "highlighted" : ""}
+                  key={project.id}
+                  onMouseEnter={() => setHighlighted(index)}
+                  onClick={() => choose({ kind: "project", project })}
+                >
+                  #{projectTagSlug(project.title)}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+        {active.kind === "person" && people.slice(0, 8).map((person, index) => (
+          <button
+            type="button"
+            role="option"
+            aria-selected={highlighted === index}
+            className={`post-tag-person ${highlighted === index ? "highlighted" : ""}`}
+            key={person.id}
+            onMouseEnter={() => setHighlighted(index)}
+            onClick={() => choose({ kind: "person", person })}
+          >
+            <Avatar person={{ name: person.name ?? person.username, role: person.profession ?? `@${person.username}`, img: person.image }} size="sm"/>
+            <span><strong>{person.name ?? person.username}</strong><small>@{person.username} · {person.profession ?? "n2 member"}</small></span>
+          </button>
+        ))}
+        {active.kind === "project" && networkProjects.slice(0, 8).map((project, projectIndex) => {
+          const index = personalProjects.slice(0, 8).length + projectIndex;
+          return (
+            <button
+              type="button"
+              role="option"
+              aria-selected={highlighted === index}
+              className={`post-tag-project ${highlighted === index ? "highlighted" : ""}`}
+              key={project.id}
+              onMouseEnter={() => setHighlighted(index)}
+              onClick={() => choose({ kind: "project", project })}
+            >
+              <span><strong>#{projectTagSlug(project.title)}</strong><small>{project.industry}{project.ownerName ? ` · ${project.ownerName}` : ""}</small></span>
+            </button>
+          );
+        })}
+        {loading && <p>Searching…</p>}
+        {!loading && !options.length && (
+          <p>{active.kind === "person" ? "No people match that tag." : query.length < 2 ? "Type at least two characters to search the network." : "No projects match that tag."}</p>
+        )}
+      </div>
+      <small className="post-tag-keyboard-hint">↑↓ to choose · Enter to add · Esc to close</small>
+    </div>
+  );
+}
+
 function activeMentionAtCursor(
   value: string,
   input: HTMLInputElement | HTMLTextAreaElement | null,
@@ -796,85 +1048,6 @@ function NetworkGraphIcon({ size = 20 }: { size?: number }) {
   );
 }
 
-function FreeChoiceInput({
-  value,
-  onChange,
-  options,
-  placeholder,
-  id,
-  required = false,
-  ariaDescribedBy,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  options: readonly string[];
-  placeholder?: string;
-  id: string;
-  required?: boolean;
-  ariaDescribedBy?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const matches = options
-    .filter(
-      (option) =>
-        !value.trim() || option.toLowerCase().includes(value.toLowerCase()),
-    )
-    .slice(0, 10);
-  return (
-    <div className="free-choice">
-      <input
-        id={id}
-        role="combobox"
-        required={required}
-        aria-describedby={ariaDescribedBy}
-        value={value}
-        onFocus={() => setOpen(true)}
-        onChange={(event) => {
-          onChange(event.target.value);
-          setOpen(true);
-        }}
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-        placeholder={placeholder}
-        aria-autocomplete="list"
-        aria-controls={`${id}-choices`}
-        aria-expanded={open}
-      />
-      {open && (
-        <div id={`${id}-choices`} className="free-choice-list" role="listbox">
-          {matches.map((option) => (
-            <button
-              type="button"
-              role="option"
-              aria-selected={option === value}
-              key={option}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                onChange(option);
-                setOpen(false);
-              }}
-            >
-              {option}
-            </button>
-          ))}
-          {value.trim() &&
-            !options.some(
-              (option) => option.toLowerCase() === value.trim().toLowerCase(),
-            ) && (
-              <button
-                type="button"
-                className="free-choice-custom"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => setOpen(false)}
-              >
-                <Plus size={13} /> Use “{value.trim()}”
-              </button>
-            )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 type LocationOption = {
   id: number;
   city: string;
@@ -1055,19 +1228,8 @@ function RichTextEditor({ id, value, onChange }: { id: string; value: string; on
         <button type="button" title="Italic" aria-label="Italic" onMouseDown={(event) => { event.preventDefault(); runCommand("italic"); }}><Italic size={15} /></button>
         <button type="button" title="Underline" aria-label="Underline" onMouseDown={(event) => { event.preventDefault(); runCommand("underline"); }}><Underline size={15} /></button>
         <span />
-        <select aria-label="Font" defaultValue="Arial" onMouseDown={rememberSelection} onChange={(event) => runCommand("fontName", event.target.value)}>
-          <option value="Arial">Sans serif</option>
-          <option value="Georgia">Georgia</option>
-          <option value="Times New Roman">Times New Roman</option>
-          <option value="Verdana">Verdana</option>
-          <option value="Courier New">Monospace</option>
-        </select>
-        <select aria-label="Font size" defaultValue="3" onMouseDown={rememberSelection} onChange={(event) => runCommand("fontSize", event.target.value)}>
-          <option value="2">Small</option>
-          <option value="3">Normal</option>
-          <option value="4">Large</option>
-          <option value="5">Extra large</option>
-        </select>
+        <N2Select compact ariaLabel="Font" defaultValue="Arial" onOpen={rememberSelection} onValueChange={(value) => runCommand("fontName", value)} options={[{value:"Arial",label:"Sans serif"},{value:"Georgia",label:"Georgia"},{value:"Times New Roman",label:"Times New Roman"},{value:"Verdana",label:"Verdana"},{value:"Courier New",label:"Monospace"}]}/>
+        <N2Select compact ariaLabel="Font size" defaultValue="3" onOpen={rememberSelection} onValueChange={(value) => runCommand("fontSize", value)} options={[{value:"2",label:"Small"},{value:"3",label:"Normal"},{value:"4",label:"Large"},{value:"5",label:"Extra large"}]}/>
       </div>
       <div
         id={id}
@@ -1579,12 +1741,7 @@ function ProjectMenu({
                 <div className="field-row">
                   <label>
                     Stage
-                    <select name="stage" defaultValue={project.stage}>
-                      <option value="idea">Idea</option>
-                      <option value="planning">Planning</option>
-                      <option value="building">Building</option>
-                      <option value="launching">Launching</option>
-                    </select>
+                    <N2Select name="stage" defaultValue={project.stage} ariaLabel="Stage" options={[{value:"idea",label:"Idea"},{value:"planning",label:"Planning"},{value:"building",label:"Building"},{value:"launching",label:"Launching"}]}/>
                   </label>
                   <label>
                     Industry
@@ -1992,15 +2149,20 @@ function ProjectCard({
 function CreateProject({
   onClose,
   onPublish,
+  onToast,
   currentMember,
+  initialDraft,
 }: {
   onClose: () => void;
   onPublish: (project: ProjectRecord) => void;
+  onToast: (message: string) => void;
   currentMember: MemberPerson;
+  initialDraft?: ContentDraft<ProjectDraftPayload> | null;
 }) {
-  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
-  const [locationQuery, setLocationQuery] = useState("");
-  const [form, setForm] = useState({
+  const initial = initialDraft?.payload;
+  const [step, setStep] = useState<0 | 1 | 2 | 3 | 4>((initial?.step ?? 0) as 0 | 1 | 2 | 3 | 4);
+  const [locationQuery, setLocationQuery] = useState(initial?.locationQuery ?? "");
+  const [form, setForm] = useState<ProjectDraftPayload["form"]>(initial?.form ?? {
     title: "",
     summary: "",
     description: "",
@@ -2011,11 +2173,11 @@ function CreateProject({
     city: "",
     country: "",
     timezone: "",
-    allowRemoteFallback: true,
+    allowRemoteFallback: false,
   });
-  const [projectId, setProjectId] = useState(""),
+  const [projectId, setProjectId] = useState(initial?.projectId ?? ""),
     [blueprint, setBlueprint] = useState<BlueprintRecord | null>(null),
-    [roles, setRoles] = useState<BlueprintRole[]>([]),
+    [roles, setRoles] = useState<BlueprintRole[]>(initial?.roles ?? []),
     [roadmap, setRoadmap] = useState<
       Array<{
         title: string;
@@ -2024,14 +2186,38 @@ function CreateProject({
         ownerId: string | null;
         dueAt: string | null;
       }>
-    >([]);
+    >(initial?.roadmap ?? []);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [similarProjects, setSimilarProjects] = useState<SimilarProjectSuggestion[]>([]),
+    [similarProjects, setSimilarProjects] = useState<SimilarProjectSuggestion[]>(initial?.similarProjects ?? []),
     [coOwnerQuery, setCoOwnerQuery] = useState(""),
     [coOwnerResults, setCoOwnerResults] = useState<CoOwnerCandidate[]>([]),
-    [selectedCoOwners, setSelectedCoOwners] = useState<CoOwnerCandidate[]>([]),
+    [selectedCoOwners, setSelectedCoOwners] = useState<CoOwnerCandidate[]>(initial?.selectedCoOwners ?? []),
     [coOwnerSearchBusy, setCoOwnerSearchBusy] = useState(false);
+  const projectDraftPayload = useMemo<ProjectDraftPayload>(() => ({
+    form, locationQuery, step, projectId: projectId || null, blueprintId: blueprint?.id ?? initial?.blueprintId ?? null,
+    roadmap, roles, selectedCoOwners, similarProjects,
+  }), [form, locationQuery, step, projectId, blueprint?.id, initial?.blueprintId, roadmap, roles, selectedCoOwners, similarProjects]);
+  const meaningfulDraft = Boolean(form.title.trim() || form.summary.trim() || form.industry.trim() || form.imageUrl || projectId);
+  const { draftId, status: draftStatus, saveNow: saveProjectDraft, forget: forgetProjectDraft } = useContentDraftAutosave({
+    kind: "project", initialDraft, payload: projectDraftPayload, meaningful: meaningfulDraft,
+    onRecover: recovered => { setForm(recovered.form); setLocationQuery(recovered.locationQuery); setStep(recovered.step as 0 | 1 | 2 | 3 | 4); setProjectId(recovered.projectId ?? ""); setRoadmap(recovered.roadmap); setRoles(recovered.roles); setSelectedCoOwners(recovered.selectedCoOwners); setSimilarProjects(recovered.similarProjects); },
+  });
+  useEffect(() => {
+    if (!initial?.projectId || blueprint) return;
+    fetch(`/api/projects/${initial.projectId}/blueprint`, { cache: "no-store" })
+      .then(async response => ({ response, data: await response.json() }))
+      .then(({ response, data }) => {
+        if (!response.ok || !data.blueprint) return;
+        setBlueprint(data.blueprint);
+        if (!initial.roles.length) setRoles(data.blueprint.roles ?? []);
+        if (!initial.roadmap.length) setRoadmap((data.blueprint.milestones ?? []).map((item: { title: string; phase: "now" | "next" | "later" }) => ({ title: item.title, description: "", phase: item.phase, ownerId: currentMember.id ?? null, dueAt: null })));
+      }).catch(() => undefined);
+  }, [initial, blueprint, currentMember.id]);
+  async function closeProjectComposer() {
+    if (meaningfulDraft) { await saveProjectDraft(); onToast("Project saved to drafts."); }
+    onClose();
+  }
   useEffect(() => {
     if (step !== 2 || coOwnerQuery.trim().length < 2) {
       setCoOwnerResults([]);
@@ -2077,6 +2263,7 @@ function CreateProject({
     setBusy(true);
     setError("");
     try {
+      await saveProjectDraft();
       const draftResponse = await fetch("/api/projects/drafts", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -2099,18 +2286,17 @@ function CreateProject({
       }
       setBlueprint(result.blueprint);
       setRoles(result.blueprint.roles);
-      setRoadmap(
-        result.blueprint.milestones.map(
+      const nextRoadmap = result.blueprint.milestones.map(
           (item: { title: string; phase: "now" | "next" | "later" }) => ({
             title: item.title,
             description: "",
             phase: item.phase,
             ownerId: currentMember.id ?? null,
             dueAt: null,
-          }),
-        ),
-      );
+          }));
+      setRoadmap(nextRoadmap);
       setStep(1);
+      await saveProjectDraft({ ...projectDraftPayload, step: 1, projectId: draft.project.id, blueprintId: result.blueprint.id, roles: result.blueprint.roles, roadmap: nextRoadmap });
     } catch {
       setError("We couldn't build your project plan. Check your connection and try again.");
     } finally {
@@ -2121,6 +2307,7 @@ function CreateProject({
     if (!blueprint || !projectId) return;
     setBusy(true);
     setError("");
+    const publishingDraftId = await saveProjectDraft();
     const response = await fetch(
       `/api/projects/${projectId}/blueprint/${blueprint.id}/approve`,
       {
@@ -2130,7 +2317,9 @@ function CreateProject({
           roles,
           milestones: roadmap,
           visibility: "network",
+          allowRemoteFallback: form.allowRemoteFallback,
           coOwnerIds: selectedCoOwners.map((person) => person.id),
+          draftId: publishingDraftId || draftId || undefined,
         }),
       },
     );
@@ -2183,6 +2372,7 @@ function CreateProject({
       commentCount: 0,
       createdAt: new Date().toISOString(),
     });
+    await forgetProjectDraft();
     onClose();
   }
   async function checkSimilarityAndPublish() {
@@ -2200,7 +2390,7 @@ function CreateProject({
         const suggestions = Array.isArray(result.suggestions) ? result.suggestions as SimilarProjectSuggestion[] : [];
         if (result.enabled !== false && suggestions.length) {
           setSimilarProjects(suggestions);
-          setStep(3);
+          setStep(4);
           setBusy(false);
           return;
         }
@@ -2268,7 +2458,7 @@ function CreateProject({
     <div
       className="modal-backdrop"
       role="presentation"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) void closeProjectComposer(); }}
     >
       <section
         className="project-modal"
@@ -2277,7 +2467,7 @@ function CreateProject({
         aria-labelledby="modal-title"
       >
         <div className="modal-head">
-          <button className="icon-button" onClick={onClose} aria-label="Close">
+          <button className="icon-button" onClick={() => void closeProjectComposer()} aria-label="Close">
             <X size={20} />
           </button>
           <span>
@@ -2286,10 +2476,13 @@ function CreateProject({
               : step === 1
                 ? "Guided roadmap"
                 : step === 2
-                  ? "Suggested recruitment"
-                  : "Similar projects"}
+                  ? "Ownership"
+                  : step === 3
+                    ? "Suggested recruitment"
+                    : "Similar projects"}
           </span>
-          <span className="step-count">{step < 3 ? `${step + 1}/3` : "Review"}</span>
+          <span className="step-count">{step < 4 ? `${step + 1}/4` : "Review"}</span>
+          <DraftSaveIndicator status={draftStatus} />
         </div>
         {step === 0 ? (
           <div className="modal-content">
@@ -2299,82 +2492,92 @@ function CreateProject({
               Project title
               <input
                 value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))}
                 placeholder="What will your project be called?"
                 minLength={4}
                 maxLength={120}
               />
             </label>
-            <label className="project-summary-field">
-              <span>Project summary</span>
+            <section className="project-visual-fields">
+              <label className="project-image-input">
+                <ImageIcon size={16} />
+                <span>
+                  <strong>{form.imageUrl ? "Change project image" : "Add a project image"}</strong>
+                  <small>Optional · JPG, PNG or WebP · 1.5 MB maximum</small>
+                </span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseProjectImage(event.target.files?.[0])} />
+              </label>
+              {form.imageUrl && (
+                <div className="project-image-preview">
+                  <img src={form.imageUrl} alt="Project preview" />
+                  <button type="button" onClick={() => setForm((current) => ({ ...current, imageUrl: null }))}><X size={14} /> Remove</button>
+                </div>
+              )}
+            </section>
+            <div className="project-summary-field">
+              <label htmlFor="project-summary">Project summary</label>
               <div className="project-summary-input">
                 <textarea
+                  id="project-summary"
                   placeholder="Describe the idea, why it matters, and where you'd like help…"
                   value={form.summary}
-                  onChange={(e) => setForm({ ...form, summary: e.target.value })}
+                  onChange={(e) => setForm((current) => ({ ...current, summary: e.target.value }))}
                   minLength={10}
                   maxLength={500}
                   aria-describedby="project-summary-requirement project-summary-hint"
                 />
-                <small id="project-summary-requirement" className="field-requirement">
-                  Use 10–500 characters.
-                </small>
-                <small id="project-summary-hint" className="field-limit" aria-live="polite">
-                  <i
-                    className="character-fill"
-                    aria-hidden="true"
-                    style={{ "--character-fill": `${Math.min(100, form.summary.length / 5)}%` } as React.CSSProperties}
-                  />
-                  <span aria-label={`${form.summary.length} of 500 characters`}>
-                    {form.summary.length}/500
-                  </span>
-                </small>
+                <div className="project-summary-footer">
+                  <small id="project-summary-requirement" className="field-requirement">Use 10–500 characters.</small>
+                  <label htmlFor="project-industry" className="project-summary-industry">
+                    <span>Industry</span>
+                    <CareerIndustryInput
+                      id="project-industry"
+                      value={form.industry}
+                      onChange={(industry) => setForm((current) => ({ ...current, industry }))}
+                      placeholder="Type or choose an industry"
+                      required
+                      ariaDescribedBy="project-industry-hint"
+                    />
+                    <small id="project-industry-hint" className="sr-only">Required. Start typing or choose a suggestion.</small>
+                  </label>
+                  <small id="project-summary-hint" className="field-limit" aria-live="polite">
+                    <i className="character-fill" aria-hidden="true" style={{ "--character-fill": `${Math.min(100, form.summary.length / 5)}%` } as React.CSSProperties} />
+                    <span aria-label={`${form.summary.length} of 500 characters`}>{form.summary.length}/500</span>
+                  </small>
+                </div>
               </div>
-            </label>
-            <div className="field-row">
-              <label>
-                Stage
-                <select
-                  value={form.stage}
-                  onChange={(e) => setForm({ ...form, stage: e.target.value })}
-                >
-                  <option value="idea">Idea</option>
-                  <option value="planning">Planning</option>
-                  <option value="building">Building</option>
-                  <option value="launching">Launching</option>
-                </select>
-              </label>
-              <label htmlFor="project-industry">
-                Industry
-                <FreeChoiceInput
-                  id="project-industry"
-                  value={form.industry}
-                  onChange={(industry) => setForm({ ...form, industry })}
-                  options={PROJECT_INDUSTRIES}
-                  placeholder="Type or choose an industry"
-                  required
-                  ariaDescribedBy="project-industry-hint"
-                />
-                <small id="project-industry-hint" className="field-requirement">
-                  Required · Start typing or choose a suggestion.
-                </small>
-              </label>
             </div>
-            <div className="field-row single-field">
-              <label>
-                Working style
-                <select
-                  value={form.workMode}
-                  onChange={(e) =>
-                    setForm({ ...form, workMode: e.target.value })
-                  }
-                >
-                  <option value="remote">Remote</option>
-                  <option value="hybrid">Hybrid</option>
-                  <option value="in_person">In person</option>
-                </select>
-              </label>
-            </div>
+            <fieldset className="project-icon-field">
+              <legend>Stage</legend>
+              <div className="project-icon-choices four-up">
+                {([
+                  ["idea", "Idea", Lightbulb],
+                  ["planning", "Planning", ClipboardList],
+                  ["building", "Building", Wrench],
+                  ["launching", "Launching", Rocket],
+                ] as const).map(([value, label, Icon]) => (
+                  <label key={value} className={form.stage === value ? "selected" : ""}>
+                    <input type="radio" name="project-stage" value={value} checked={form.stage === value} onChange={() => setForm((current) => ({ ...current, stage: value }))} />
+                    <Icon size={21} aria-hidden="true" /><span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="project-icon-field">
+              <legend>Working style</legend>
+              <div className="project-icon-choices">
+                {([
+                  ["remote", "Remote", Globe2],
+                  ["hybrid", "Hybrid", Laptop],
+                  ["in_person", "In person", MapPin],
+                ] as const).map(([value, label, Icon]) => (
+                  <label key={value} className={form.workMode === value ? "selected" : ""}>
+                    <input type="radio" name="project-work-mode" value={value} checked={form.workMode === value} onChange={() => setForm((current) => ({ ...current, workMode: value }))} />
+                    <Icon size={21} aria-hidden="true" /><span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <ProjectLocationInput
               query={locationQuery}
               selected={form.city && form.country && form.timezone ? {
@@ -2398,69 +2601,14 @@ function CreateProject({
                 setError("");
               }}
             />
-            <section className="project-visual-fields">
-              <label className="project-image-input">
-                <ImageIcon size={16} />
-                <span>
-                  <strong>
-                    {form.imageUrl
-                      ? "Change project image"
-                      : "Add a project image"}
-                  </strong>
-                  <small>Optional · JPG, PNG or WebP · 1.5 MB maximum</small>
-                </span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(event) =>
-                    chooseProjectImage(event.target.files?.[0])
-                  }
-                />
-              </label>
-              {form.imageUrl && (
-                <div className="project-image-preview">
-                  <img src={form.imageUrl} alt="Project preview" />
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, imageUrl: null })}
-                  >
-                    <X size={14} /> Remove
-                  </button>
-                </div>
-              )}
-            </section>
-            <div className="remote-fallback">
-              <input
-                id="remote-fallback"
-                type="checkbox"
-                checked={form.allowRemoteFallback}
-                onChange={(e) =>
-                  setForm({ ...form, allowRemoteFallback: e.target.checked })
-                }
-              />
-              <label htmlFor="remote-fallback">
-                <strong>Use remote fallback</strong>
-                <small>
-                  Widen the search only when suitable local people are scarce.
-                </small>
-              </label>
-            </div>
             {error && <p className="form-error" role="alert" aria-live="polite">{error}</p>}
-            <button
-              className="primary-button wide project-plan-button"
-              disabled={busy}
-              onClick={mapTeam}
-            >
-              {busy ? (
-                "Mapping the project…"
-              ) : (
-                <>
-                  Build my project plan <N2Mark />
-                </>
-              )}
-            </button>
+            <div className="project-wizard-actions project-details-actions">
+              <button className="primary-button project-plan-button" disabled={busy} onClick={mapTeam}>
+                {busy ? "Mapping the project…" : "Build my project plan"}
+              </button>
+            </div>
           </div>
-        ) : step === 3 ? (
+        ) : step === 4 ? (
           <div className="modal-content similar-project-review">
             <div className="ai-orbit"><N2Mark /><span>n2 project check</span></div>
             <span className="eyebrow">SIMILAR WORK FOUND</span>
@@ -2484,7 +2632,7 @@ function CreateProject({
             </div>
             {error && <p className="form-error">{error}</p>}
             <div className="similar-project-actions">
-              <button type="button" className="secondary-button" onClick={() => setStep(2)} disabled={busy}><ArrowLeft size={15}/> Back</button>
+              <button type="button" className="secondary-button" onClick={() => setStep(3)} disabled={busy}><ArrowLeft size={15}/> Back</button>
               <button type="button" className="primary-button" onClick={continueWithProject} disabled={busy}>{busy ? "Publishing…" : "Continue with my project"}</button>
             </div>
           </div>
@@ -2572,25 +2720,23 @@ function CreateProject({
                       }
                     />
                     <div>
-                      <select
+                      <N2Select
                         value={item.phase}
-                        onChange={(e) =>
+                        onValueChange={(phase) =>
                           setRoadmap((items) =>
                             items.map((row, i) =>
                               i === index
                                 ? {
                                     ...row,
-                                    phase: e.target.value as typeof item.phase,
+                                    phase: phase as typeof item.phase,
                                   }
                                 : row,
                             ),
                           )
                         }
-                      >
-                        <option value="now">Now</option>
-                        <option value="next">Next</option>
-                        <option value="later">Later</option>
-                      </select>
+                        options={[{ value: "now", label: "Now" }, { value: "next", label: "Next" }, { value: "later", label: "Later" }]}
+                        compact
+                      />
                       <input
                         aria-label="Due date"
                         type="date"
@@ -2675,21 +2821,20 @@ function CreateProject({
                 onClick={() => setStep(2)}
                 disabled={busy || roadmap.length === 0}
               >
-                Continue to recruitment <ChevronRight size={16} />
+                Continue to ownership <ChevronRight size={16} />
               </button>
             </div>
           </div>
-        ) : (
-          <div className="modal-content ai-result project-recruitment-step">
+        ) : step === 2 ? (
+          <div className="modal-content ai-result project-ownership-step">
             <div className="ai-orbit">
               <N2Mark />
-              <span>n2 team match</span>
+              <span>n2 ownership</span>
             </div>
-            <span className="eyebrow">SUGGESTED RECRUITMENT</span>
-            <h2 id="modal-title">Build the team your project needs</h2>
+            <span className="eyebrow">PROJECT OWNERSHIP</span>
+            <h2 id="modal-title">Choose who can help lead</h2>
             <p>
-              Review and edit each suggested role before it affects matching.
-              n2 never sends automatic invitations.
+              Keep yourself as primary owner and optionally invite up to two mutual connections as co-owners.
             </p>
             <section className="project-ownership-section" aria-labelledby="project-ownership-heading">
               <header>
@@ -2746,37 +2891,51 @@ function CreateProject({
                 </div>
               )}
             </section>
+            {error && <p className="form-error">{error}</p>}
+            <div className="project-wizard-actions">
+              <button type="button" className="secondary-button" onClick={() => setStep(1)} disabled={busy}><ArrowLeft size={15} /> Back</button>
+              <button type="button" className="primary-button" onClick={() => setStep(3)} disabled={busy}>Continue to recruitment <ChevronRight size={16} /></button>
+            </div>
+          </div>
+        ) : (
+          <div className="modal-content ai-result project-recruitment-step">
+            <div className="ai-orbit"><N2Mark /><span>n2 team match</span></div>
+            <span className="eyebrow">SUGGESTED RECRUITMENT</span>
+            <h2 id="modal-title">Build the team your project needs</h2>
+            <p>Review and edit each suggested role before it affects matching. n2 never sends automatic invitations.</p>
+            <div className="remote-fallback remote-fallback-switch">
+              <span className="remote-fallback-icon"><Globe2 size={19} aria-hidden="true" /></span>
+              <span><strong>Use remote fallback</strong><small>Widen matching only when suitable local people are scarce.</small></span>
+              <button type="button" role="switch" aria-checked={form.allowRemoteFallback} aria-label="Use remote fallback" onClick={() => setForm((current) => ({ ...current, allowRemoteFallback: !current.allowRemoteFallback }))}>
+                <span aria-hidden="true" />
+              </button>
+            </div>
             <div className="blueprint-roles">
               {roles.map((role, index) => (
                 <article key={`${index}-${role.title}`}>
                   <div className="blueprint-role-head">
-                    <select
+                    <N2Select
                       aria-label="Role phase"
                       value={role.phase}
-                      onChange={(e) =>
+                      onValueChange={(phase) =>
                         updateRole(index, {
-                          phase: e.target.value as BlueprintRole["phase"],
+                          phase: phase as BlueprintRole["phase"],
                         })
                       }
-                    >
-                      <option value="now">Now</option>
-                      <option value="next">Next</option>
-                      <option value="later">Later</option>
-                    </select>
-                    <select
+                      options={[{ value: "now", label: "Now" }, { value: "next", label: "Next" }, { value: "later", label: "Later" }]}
+                      compact
+                    />
+                    <N2Select
                       aria-label="Role criticality"
                       value={role.criticality}
-                      onChange={(e) =>
+                      onValueChange={(criticality) =>
                         updateRole(index, {
-                          criticality: e.target
-                            .value as BlueprintRole["criticality"],
+                          criticality: criticality as BlueprintRole["criticality"],
                         })
                       }
-                    >
-                      <option value="critical">Critical</option>
-                      <option value="important">Important</option>
-                      <option value="useful">Useful</option>
-                    </select>
+                      options={[{ value: "critical", label: "Critical" }, { value: "important", label: "Important" }, { value: "useful", label: "Useful" }]}
+                      compact
+                    />
                     <button
                       aria-label={`Remove ${role.title}`}
                       onClick={() =>
@@ -2846,14 +3005,14 @@ function CreateProject({
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => setStep(1)}
+                onClick={() => setStep(2)}
                 disabled={busy}
               >
                 <ArrowLeft size={15} /> Back
               </button>
               <button
                 type="button"
-                className="primary-button"
+                className="primary-button publish-project-button"
                 disabled={busy || roles.length === 0}
                 onClick={checkSimilarityAndPublish}
               >
@@ -3168,11 +3327,7 @@ function TimelinePostCard({
         <div className="post-project-links">
           {post.linkedProjects.map((project) => (
             <button key={project.id} onClick={() => onProject(project.id)}>
-              #
-              {project.title
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, "-")
-                .replace(/^-|-$/g, "")}
+              #{projectTagSlug(project.title)}
             </button>
           ))}
         </div>
@@ -3288,18 +3443,25 @@ function TimelinePostCard({
 function PostComposer({
   currentMember,
   initialPost,
+  initialDraft,
   onClose,
   onPosted,
   onToast,
 }: {
   currentMember: MemberPerson;
   initialPost?: TimelinePost;
+  initialDraft?: ContentDraft<PostDraftPayload> | null;
   onClose: () => void;
   onPosted: (post: TimelinePost) => void;
   onToast: (message: string) => void;
 }) {
   const editing = Boolean(initialPost);
-  const [body, setBody] = useState(initialPost?.body ?? ""),
+  const initialProjectDetails: PostTagProject[] = (initialPost?.linkedProjects ?? []).map((project) => ({
+    ...project,
+    industry: "",
+    ownerName: null,
+  }));
+  const [body, setBody] = useState(initialPost?.body ?? initialDraft?.payload.body ?? ""),
     [attachment, setAttachment] = useState<{
       type: "image" | "video";
       url: string;
@@ -3311,51 +3473,112 @@ function PostComposer({
             url: initialPost.attachmentUrl,
             name: "Current attachment",
           }
-        : null,
+        : initialDraft?.payload.attachment ?? null,
     ),
     [ownProjects, setOwnProjects] = useState<ProjectRecord[]>([]),
-    [publicProjects, setPublicProjects] = useState<ProjectRecord[]>([]),
-    [projectSource, setProjectSource] = useState<"mine" | "public">("mine"),
-    [projectQuery, setProjectQuery] = useState(""),
+    [projectDetails, setProjectDetails] = useState<PostTagProject[]>(initialProjectDetails),
     [linked, setLinked] = useState<string[]>(
-      initialPost?.linkedProjects.map((project) => project.id) ?? [],
+      initialPost?.linkedProjects.map((project) => project.id) ?? initialDraft?.payload.linkedProjectIds ?? [],
     ),
+    [showTools, setShowTools] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const managedProjectTags = useRef(new Set(
+    initialProjectDetails
+      .filter((project) => new RegExp(`(?:^|\\s)#${projectTagSlug(project.title)}(?=\\s|$|[.,!?;:])`, "i").test(body))
+      .map((project) => project.id),
+  ));
+  const postDraftPayload = useMemo<PostDraftPayload>(() => ({ body, linkedProjectIds: linked, attachment, visibility: initialDraft?.payload.visibility ?? "network" }), [body, linked, attachment, initialDraft?.payload.visibility]);
+  const meaningfulDraft = !editing && Boolean(body.trim() || attachment || linked.length);
+  const { status: draftStatus, saveNow: savePostDraft, forget: forgetPostDraft } = useContentDraftAutosave({
+    kind: "post", initialDraft, payload: postDraftPayload, meaningful: meaningfulDraft,
+    onRecover: recovered => { setBody(recovered.body); setLinked(recovered.linkedProjectIds); setAttachment(recovered.attachment); },
+  });
+  async function closePostComposer() {
+    if (meaningfulDraft) { await savePostDraft(); onToast("Post saved to drafts."); }
+    onClose();
+  }
   useEffect(() => {
-    Promise.all([
-      fetch("/api/projects?scope=mine&limit=40"),
-      fetch("/api/projects?scope=discover&filter=newest&limit=40"),
-    ])
-      .then(async ([mine, discover]) => {
-        const mineData = mine.ok ? await mine.json() : { projects: [] },
-          publicData = discover.ok ? await discover.json() : { projects: [] };
+    fetch("/api/projects?scope=mine&limit=40")
+      .then(async (mine) => {
+        const mineData = mine.ok ? await mine.json() : { projects: [] };
         setOwnProjects(
           (mineData.projects ?? []).filter(
             (project: ProjectRecord) =>
               project.status === "active" && project.visibility === "network",
           ),
         );
-        setPublicProjects(publicData.projects ?? []);
       })
       .catch(() => undefined);
   }, []);
-  const projectsList = [
+  useEffect(() => {
+    const known = new Set(projectDetails.map((project) => project.id));
+    const missing = linked.filter((id) => !known.has(id));
+    if (!missing.length) return;
+    const controller = new AbortController();
+    Promise.all(missing.map((id) =>
+      fetch(`/api/projects/${encodeURIComponent(id)}`, { signal: controller.signal })
+        .then(async (response) => response.ok ? (await response.json()).project as PostTagProject : null)
+        .catch(() => null),
+    )).then((rows) => {
+      const resolved = rows.filter((project): project is PostTagProject => Boolean(project));
+      if (!resolved.length) return;
+      setProjectDetails((current) => [
+        ...current,
+        ...resolved.filter((project) => !current.some((item) => item.id === project.id)),
+      ]);
+    });
+    return () => controller.abort();
+  }, [linked, projectDetails]);
+  useEffect(() => {
+    for (const project of projectDetails) {
+      if (linked.includes(project.id) && new RegExp(`(?:^|\\s)#${projectTagSlug(project.title)}(?=\\s|$|[.,!?;:])`, "i").test(body)) {
+        managedProjectTags.current.add(project.id);
+      }
+    }
+  }, [body, linked, projectDetails]);
+  useEffect(() => {
+    if (!bodyRef.current) return;
+    bodyRef.current.style.height = "auto";
+    bodyRef.current.style.height = `${Math.min(132, Math.max(24, bodyRef.current.scrollHeight))}px`;
+  }, [body]);
+  const projectsList: PostTagProject[] = [
     ...ownProjects,
-    ...publicProjects.filter(
-      (project) => !ownProjects.some((own) => own.id === project.id),
-    ),
+    ...projectDetails.filter((project) => !ownProjects.some((own) => own.id === project.id)),
   ];
-  const visibleProjects = (
-    projectSource === "mine" ? ownProjects : publicProjects
-  ).filter(
-    (project) =>
-      !projectQuery.trim() ||
-      `${project.title} ${project.industry}`
-        .toLowerCase()
-        .includes(projectQuery.trim().toLowerCase()),
-  );
+  const selectedProjects = linked
+    .map((id) => projectsList.find((project) => project.id === id))
+    .filter((project): project is PostTagProject => Boolean(project));
+  const mentionedUsernames = [...new Set(
+    [...body.matchAll(/(?:^|\s)@([a-z0-9_-]{2,30})\b/gi)].map((match) => match[1].toLowerCase()),
+  )];
+
+  function updateBody(next: string) {
+    setBody(next);
+    const removedIds = [...managedProjectTags.current].filter((id) => {
+      const project = projectsList.find((item) => item.id === id);
+      return project && !new RegExp(`(?:^|\\s)#${projectTagSlug(project.title)}(?=\\s|$|[.,!?;:])`, "i").test(next);
+    });
+    if (removedIds.length) {
+      setLinked((ids) => ids.filter((id) => !removedIds.includes(id)));
+      removedIds.forEach((id) => managedProjectTags.current.delete(id));
+    }
+  }
+
+  function insertAtCursor(text: string) {
+    const input = bodyRef.current;
+    const start = input?.selectionStart ?? body.length;
+    const end = input?.selectionEnd ?? body.length;
+    const next = `${body.slice(0, start)}${text}${body.slice(end)}`;
+    if (next.length > 1000) return;
+    updateBody(next);
+    requestAnimationFrame(() => {
+      const cursor = start + text.length;
+      input?.focus();
+      input?.setSelectionRange(cursor, cursor);
+    });
+  }
   function chooseFile(file?: File) {
     if (!file) return;
     const isImage = file.type.startsWith("image/"),
@@ -3382,33 +3605,44 @@ function PostComposer({
     };
     reader.readAsDataURL(file);
   }
-  function toggleProject(project: ProjectRecord) {
-    setLinked((ids) => {
-      if (ids.includes(project.id)) {
-        setBody((value) =>
-          value.replace(
-            new RegExp(
-              `\\s*#${project.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}\\b`,
-              "i",
-            ),
-            "",
-          ),
-        );
-        return ids.filter((id) => id !== project.id);
-      }
-      if (ids.length >= 8) return ids;
-      const tag = `#${project.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")}`;
-      setBody((value) => `${value.trim()}${value.trim() ? " " : ""}${tag}`);
-      return [...ids, project.id];
-    });
+  function chooseProject(project: PostTagProject) {
+    if (!linked.includes(project.id) && linked.length >= 8) {
+      setError("You can tag up to eight projects in one post.");
+      return false;
+    }
+    setProjectDetails((current) => current.some((item) => item.id === project.id) ? current : [...current, project]);
+    setLinked((ids) => ids.includes(project.id) ? ids : [...ids, project.id]);
+    managedProjectTags.current.add(project.id);
+    setError("");
+    return true;
+  }
+
+  function removeProject(project: PostTagProject) {
+    const slug = projectTagSlug(project.title);
+    const next = body
+      .replace(new RegExp(`(^|\\s)#${slug}(?=\\s|$|[.,!?;:])`, "i"), "$1")
+      .replace(/ {2,}/g, " ")
+      .trimEnd();
+    managedProjectTags.current.delete(project.id);
+    setLinked((ids) => ids.filter((id) => id !== project.id));
+    setBody(next);
+  }
+
+  function removeMention(username: string) {
+    updateBody(body
+      .replace(new RegExp(`(^|\\s)@${username}(?=\\s|$|[.,!?;:])`, "i"), "$1")
+      .replace(/ {2,}/g, " ")
+      .trimEnd());
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (body.length > 1000) {
+      setError(`Shorten this post by ${body.length - 1000} characters before publishing.`);
+      return;
+    }
     setBusy(true);
     setError("");
+    const publishingDraftId = editing ? "" : await savePostDraft();
     const response = await fetch(
       editing ? `/api/posts/${initialPost!.id}` : "/api/posts",
       {
@@ -3420,6 +3654,7 @@ function PostComposer({
           attachmentType: attachment?.type ?? null,
           attachmentUrl: attachment?.url ?? null,
           videoUrl: firstUrl(body),
+          draftId: publishingDraftId || undefined,
         }),
       },
     );
@@ -3437,13 +3672,14 @@ function PostComposer({
         .map((project) => ({ id: project.id, title: project.title })),
     });
     onToast(editing ? "Post updated." : "Your idea is now on the timeline.");
+    if (!editing) await forgetPostDraft();
     onClose();
   }
   return (
     <div
       className="modal-backdrop"
       role="presentation"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+      onMouseDown={(event) => { if (event.target === event.currentTarget) void closePostComposer(); }}
     >
       <form className="post-composer-modal" onSubmit={submit}>
         <header>
@@ -3453,7 +3689,7 @@ function PostComposer({
             </span>
             <h2>{editing ? "Edit post" : "Share a post or idea"}</h2>
           </div>
-          <button type="button" className="icon-button" onClick={onClose}>
+          <button type="button" className="icon-button" onClick={() => void closePostComposer()}>
             <X size={19} />
           </button>
         </header>
@@ -3464,23 +3700,9 @@ function PostComposer({
             <small>Visible to the n2 network</small>
           </span>
         </div>
-        <textarea
-          ref={bodyRef}
-          autoFocus
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          placeholder="What are you thinking about, building or looking to explore?"
-          maxLength={3000}
-        />
-        <MentionSuggestions
-          value={body}
-          inputRef={bodyRef}
-          setValue={setBody}
-          placement="post"
-        />
         {attachment && (
           <div className="attachment-preview">
-            <button type="button" onClick={() => setAttachment(null)}>
+            <button type="button" onClick={() => setAttachment(null)} aria-label="Remove attachment">
               <X size={14} />
             </button>
             {attachment.type === "image" ? (
@@ -3491,99 +3713,152 @@ function PostComposer({
             <small>{attachment.name}</small>
           </div>
         )}
-        <div className="post-tools">
-          <EmojiPicker
-            onSelect={(emoji) => setBody((value) => `${value}${emoji}`)}
-            align="right"
-          />
-          <label>
-            <ImageIcon size={17} /> Image
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              onChange={(event) => chooseFile(event.target.files?.[0])}
-            />
-          </label>
-          <label>
-            <Video size={17} /> Video
-            <input
-              type="file"
-              accept="video/mp4,video/webm,video/quicktime"
-              onChange={(event) => chooseFile(event.target.files?.[0])}
-            />
-          </label>
-        </div>
-        <section className="project-hashtags">
-          <div>
-            <strong>Link existing projects</strong>
-            <small>
-              Choose one of your public projects or tag any public project.
-            </small>
-          </div>
-          <div className="project-source-tabs">
+        <div className="post-composer-dock">
+          <div className="post-add-wrap">
             <button
               type="button"
-              className={projectSource === "mine" ? "active" : ""}
-              onClick={() => setProjectSource("mine")}
+              className={`post-circle-button post-add-button ${showTools ? "active" : ""}`}
+              onClick={() => setShowTools((value) => !value)}
+              aria-label="Add to post"
+              aria-expanded={showTools}
             >
-              Your projects <span>{ownProjects.length}</span>
+              <Plus size={20}/>
             </button>
-            <button
-              type="button"
-              className={projectSource === "public" ? "active" : ""}
-              onClick={() => setProjectSource("public")}
-            >
-              Public projects <span>{publicProjects.length}</span>
-            </button>
-          </div>
-          <label className="project-link-search">
-            <Search size={14} />
-            <input
-              value={projectQuery}
-              onChange={(event) => setProjectQuery(event.target.value)}
-              placeholder="Search projects or industries"
-            />
-          </label>
-          <div className="project-link-results">
-            {visibleProjects.map((project) => (
-              <button
-                type="button"
-                key={project.id}
-                className={linked.includes(project.id) ? "selected" : ""}
-                onClick={() => toggleProject(project)}
-              >
-                #
-                {project.title
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]+/g, "-")
-                  .replace(/^-|-$/g, "")}
-              </button>
-            ))}
-            {!visibleProjects.length && (
-              <p>
-                {projectSource === "mine"
-                  ? "You do not have a public project to link yet."
-                  : "No public projects match that search."}
-              </p>
+            {showTools && (
+              <div className="post-attachment-menu" aria-label="Post attachments">
+                <EmojiPicker onSelect={(emoji) => { insertAtCursor(emoji); setShowTools(false); }}/>
+                <label title="Add photo">
+                  <ImageIcon size={18}/><span>Photo</span>
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => { chooseFile(event.target.files?.[0]); setShowTools(false); }}/>
+                </label>
+                <label title="Add video">
+                  <Video size={18}/><span>Video</span>
+                  <input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(event) => { chooseFile(event.target.files?.[0]); setShowTools(false); }}/>
+                </label>
+              </div>
             )}
           </div>
-        </section>
-        {error && <p className="form-error">{error}</p>}
-        <footer>
-          <small>{body.length}/3000</small>
-          <button className="primary-button" disabled={busy || !body.trim()}>
-            {busy
-              ? editing
-                ? "Saving…"
-                : "Posting…"
-              : editing
-                ? "Save changes"
-                : "Post"}
+          <div className="post-composer-main">
+            <textarea
+              ref={bodyRef}
+              autoFocus
+              rows={1}
+              value={body}
+              onChange={(event) => updateBody(event.target.value)}
+              placeholder="Share a post or idea… Use @ for people and # for projects"
+              maxLength={1000}
+              aria-label="Post text"
+              aria-autocomplete="list"
+            />
+          </div>
+          <button
+            className="post-circle-button post-submit-button"
+            aria-label={editing ? "Save post changes" : "Publish post"}
+            title={editing ? "Save changes" : "Post"}
+            disabled={busy || !body.trim() || body.length > 1000}
+          >
+            <ArrowUpRight size={20} strokeWidth={1.8}/>
+            <span className="visually-hidden">{busy ? editing ? "Saving…" : "Posting…" : editing ? "Save changes" : "Post"}</span>
           </button>
+          <PostTagSuggestions
+            value={body}
+            inputRef={bodyRef}
+            setValue={updateBody}
+            ownProjects={ownProjects}
+            linkedProjectIds={linked}
+            onChooseProject={chooseProject}
+          />
+        </div>
+        {(mentionedUsernames.length > 0 || selectedProjects.length > 0) && (
+          <div className="post-selected-tags" aria-label="Tagged people and projects">
+            {mentionedUsernames.map((username) => (
+              <button type="button" className="person" key={username} onClick={() => removeMention(username)} aria-label={`Remove @${username}`}>
+                @{username}<X size={11}/>
+              </button>
+            ))}
+            {selectedProjects.map((project) => (
+              <button type="button" className="project" key={project.id} onClick={() => removeProject(project)} aria-label={`Remove ${project.title}`}>
+                #{projectTagSlug(project.title)}<X size={11}/>
+              </button>
+            ))}
+          </div>
+        )}
+        {error && <p className="form-error">{error}</p>}
+        <footer className="post-composer-meta">
+          <span className="post-character-count" aria-label={`${body.length} of 1000 characters`}>
+            <i className="post-character-ring" style={{ "--post-character-fill": `${Math.min(100, body.length / 10)}%` } as React.CSSProperties}/>
+            <small>{body.length}/1000</small>
+          </span>
+          <DraftSaveIndicator status={draftStatus}/>
         </footer>
       </form>
     </div>
   );
+}
+
+function ContentDraftList({ kind, onResume, compact = false }: { kind: "project" | "post"; onResume: (draft: ContentDraft) => void; compact?: boolean }) {
+  const [drafts, setDrafts] = useState<DraftSummary[]>([]), [localPayloads, setLocalPayloads] = useState<Record<string, ProjectDraftPayload | PostDraftPayload>>({}), [expanded, setExpanded] = useState(false), [busyId, setBusyId] = useState(""), [deleteTarget, setDeleteTarget] = useState<DraftSummary | null>(null);
+  const load = useCallback(() => {
+    Promise.all([
+      fetch(`/api/drafts?kind=${kind}`, { cache: "no-store" }).then(response => response.ok ? response.json() : { drafts: [] }),
+      listBufferedDrafts(kind),
+    ]).then(([data, buffered]) => {
+      const serverDrafts = (data.drafts ?? []) as DraftSummary[], unsynced = buffered.filter(item => !item.draftId), payloads: Record<string, ProjectDraftPayload | PostDraftPayload> = {};
+      const localSummaries = unsynced.map(item => {
+        const id = `local:${item.key}`, payload = item.payload as ProjectDraftPayload | PostDraftPayload, summary = draftSummary(kind, payload);
+        payloads[id] = payload;
+        return { id, kind, projectId: kind === "project" ? (payload as ProjectDraftPayload).projectId : null, createdAt: new Date(item.updatedAt).toISOString(), updatedAt: new Date(item.updatedAt).toISOString(), ...summary } satisfies DraftSummary;
+      });
+      setLocalPayloads(payloads); setDrafts([...localSummaries, ...serverDrafts].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
+    }).catch(() => undefined);
+  }, [kind]);
+  useEffect(() => {
+    load();
+    const changed = (event: Event) => { if ((event as CustomEvent<{ kind?: string }>).detail?.kind === kind) load(); };
+    window.addEventListener("n2:drafts-changed", changed);
+    return () => window.removeEventListener("n2:drafts-changed", changed);
+  }, [kind, load]);
+  async function resume(id: string) {
+    if (id.startsWith("local:")) {
+      const payload = localPayloads[id];
+      if (payload) onResume({ ...drafts.find(draft => draft.id === id)!, payload });
+      return;
+    }
+    setBusyId(id);
+    const response = await fetch(`/api/drafts/${id}`, { cache: "no-store" }), result = await response.json().catch(() => ({}));
+    setBusyId("");
+    if (response.ok && result.draft) onResume(result.draft);
+  }
+  async function remove(draft: DraftSummary) {
+    if (draft.id.startsWith("local:")) {
+      await clearBufferedDraft(draft.id.slice(6)); setDrafts(rows => rows.filter(row => row.id !== draft.id)); return;
+    }
+    setBusyId(draft.id);
+    const response = await fetch(`/api/drafts/${draft.id}`, { method: "DELETE" });
+    setBusyId("");
+    if (response.ok) { await clearBufferedDraft(`n2-${kind}-${draft.id}`); setDrafts(rows => rows.filter(row => row.id !== draft.id)); window.dispatchEvent(new CustomEvent("n2:drafts-changed", { detail: { kind } })); }
+  }
+  if (!drafts.length) return null;
+  const visible = compact && !expanded ? drafts.slice(0, 3) : drafts;
+  return (<>
+    <section className={`content-draft-list ${compact ? "compact" : ""}`} aria-label={`${kind} drafts`}>
+      <header><div><span className="eyebrow">DRAFTS</span><h3>{kind === "project" ? "Draft projects" : "Post drafts"}</h3></div><b>{drafts.length}</b></header>
+      <div>
+        {visible.map(draft => (
+          <article key={draft.id}>
+            <button className="draft-resume" onClick={() => void resume(draft.id)} disabled={busyId === draft.id}>
+              <strong>{draft.title || (kind === "project" ? "Untitled project" : "Post draft")}</strong>
+              <span>{draft.preview || "Continue where you left off"}</span>
+              <small>{kind === "project" ? `${["Project details", "Roadmap", "Recruitment", "Review"][draft.step] ?? "Project details"} · ` : ""}Saved {new Date(draft.updatedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</small>
+            </button>
+            <button className="draft-delete" aria-label={`Delete ${draft.title || kind} draft`} onClick={() => setDeleteTarget(draft)} disabled={busyId === draft.id}><Trash2 size={15}/></button>
+          </article>
+        ))}
+      </div>
+      {compact && drafts.length > 3 && <button className="draft-expand" onClick={() => setExpanded(value => !value)}>{expanded ? "Show fewer drafts" : `View all ${drafts.length} drafts`}</button>}
+    </section>
+    {deleteTarget && <ActionDialog eyebrow="DELETE DRAFT" title={`Delete this ${kind} draft?`} description={kind === "project" ? "This permanently removes the private project draft and its generated plan." : "This permanently removes the saved post draft."} confirmLabel="Delete draft" cancelLabel="Keep draft" danger onClose={() => setDeleteTarget(null)} onConfirm={() => remove(deleteTarget)} />}
+  </>);
 }
 
 function NetworkPulse({ onProjects }: { onProjects: () => void }) {
@@ -3742,46 +4017,15 @@ function FeedFilters({
         <div className="feed-filter-fields">
           <label>
             Industry
-            <select
-              value={draft.industry}
-              onChange={(event) =>
-                setDraft({ ...draft, industry: event.target.value })
-              }
-            >
-              <option value="">All industries</option>
-              {industries.map((industry) => (
-                <option key={industry}>{industry}</option>
-              ))}
-            </select>
+            <N2Select value={draft.industry} onValueChange={(industry) => setDraft({ ...draft, industry })} ariaLabel="Industry" options={[{value:"",label:"All industries"},...industries.map(industry=>({value:industry,label:industry}))]}/>
           </label>
           <label>
             Stage
-            <select
-              value={draft.stage}
-              onChange={(event) =>
-                setDraft({ ...draft, stage: event.target.value })
-              }
-            >
-              <option value="">Any stage</option>
-              <option value="idea">Idea</option>
-              <option value="planning">Planning</option>
-              <option value="building">Building</option>
-              <option value="launching">Launching</option>
-            </select>
+            <N2Select value={draft.stage} onValueChange={(stage) => setDraft({ ...draft, stage })} ariaLabel="Stage" options={[{value:"",label:"Any stage"},{value:"idea",label:"Idea"},{value:"planning",label:"Planning"},{value:"building",label:"Building"},{value:"launching",label:"Launching"}]}/>
           </label>
           <label>
             Working style
-            <select
-              value={draft.workMode}
-              onChange={(event) =>
-                setDraft({ ...draft, workMode: event.target.value })
-              }
-            >
-              <option value="">Any working style</option>
-              <option value="remote">Remote</option>
-              <option value="hybrid">Hybrid</option>
-              <option value="in_person">In person</option>
-            </select>
+            <N2Select value={draft.workMode} onValueChange={(workMode) => setDraft({ ...draft, workMode })} ariaLabel="Working style" options={[{value:"",label:"Any working style"},{value:"remote",label:"Remote"},{value:"hybrid",label:"Hybrid"},{value:"in_person",label:"In person"}]}/>
           </label>
           <label>
             Location
@@ -3837,6 +4081,7 @@ function Feed({
   onCreate,
   onDiscover,
   onShareIdea,
+  onResumePostDraft,
   onMatch,
   onComments,
   onPostThread,
@@ -3852,6 +4097,7 @@ function Feed({
   onCreate: () => void;
   onDiscover: () => void;
   onShareIdea: () => void;
+  onResumePostDraft: (draft: ContentDraft<PostDraftPayload>) => void;
   onMatch: () => void;
   onComments: (project: ProjectRecord) => void;
   onPostThread: (post: TimelinePost) => void;
@@ -4095,6 +4341,7 @@ function Feed({
           <Lightbulb size={18} />
         </span>
       </section>
+      {authenticated && <ContentDraftList kind="post" compact onResume={(draft) => onResumePostDraft(draft as ContentDraft<PostDraftPayload>)} />}
       <div className="feed-filter">
         {["For you", "Following", "Newest"].map((item) => (
           <button
@@ -4584,11 +4831,7 @@ function RoadmapPanel({
                   {editor.mode === "add" && (
                     <label>
                       Phase
-                      <select name="phase" defaultValue="later">
-                        <option value="now">Now</option>
-                        <option value="next">Next</option>
-                        <option value="later">Later</option>
-                      </select>
+                      <N2Select name="phase" defaultValue="later" ariaLabel="Phase" options={[{value:"now",label:"Now"},{value:"next",label:"Next"},{value:"later",label:"Later"}]}/>
                     </label>
                   )}
                   <label>
@@ -4628,13 +4871,7 @@ function RoadmapPanel({
                 </label>
                 <label>
                   Headline project stage
-                  <select name="projectStage" defaultValue="">
-                    <option value="">Keep {project.stage}</option>
-                    <option value="idea">Idea</option>
-                    <option value="planning">Planning</option>
-                    <option value="building">Building</option>
-                    <option value="launching">Launching</option>
-                  </select>
+                  <N2Select name="projectStage" defaultValue="" ariaLabel="Headline project stage" options={[{value:"",label:`Keep ${project.stage}`},{value:"idea",label:"Idea"},{value:"planning",label:"Planning"},{value:"building",label:"Building"},{value:"launching",label:"Launching"}]}/>
                 </label>
               </div>
             )}
@@ -4781,31 +5018,20 @@ function UpdatesPanel({
           <div className="field-row">
             <label>
               Update type
-              <select name="type" defaultValue="progress">
-                <option value="progress">Progress</option>
-                <option value="decision">Decision</option>
-                <option value="risk">Risk</option>
-                <option value="win">Win</option>
-                <option value="update">General update</option>
-              </select>
+              <N2Select name="type" defaultValue="progress" ariaLabel="Update type" options={[{value:"progress",label:"Progress"},{value:"decision",label:"Decision"},{value:"risk",label:"Risk"},{value:"win",label:"Win"},{value:"update",label:"General update"}]}/>
             </label>
             <label>
               Roadmap step
-              <select
+              <N2Select
                 name="milestoneId"
                 defaultValue={
                   project.milestones.find(
                     (item) => item.status === "in_progress",
                   )?.id ?? ""
                 }
-              >
-                <option value="">Project-wide update</option>
-                {project.milestones.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.title}
-                  </option>
-                ))}
-              </select>
+                ariaLabel="Roadmap step"
+                options={[{value:"",label:"Project-wide update"},...project.milestones.map(item=>({value:item.id,label:item.title}))]}
+              />
             </label>
           </div>
           <textarea
@@ -5402,11 +5628,7 @@ function RequestProfessionDialog({
                 </label>
                 <label>
                   Working style
-                  <select value={draft.workMode} onChange={(event) => updateDraft("workMode", event.target.value as RecruitmentDraft["workMode"])}>
-                    <option value="remote">Remote</option>
-                    <option value="hybrid">Hybrid</option>
-                    <option value="in_person">In person</option>
-                  </select>
+                  <N2Select value={draft.workMode} onValueChange={(value) => updateDraft("workMode", value as RecruitmentDraft["workMode"])} ariaLabel="Working style" options={[{value:"remote",label:"Remote"},{value:"hybrid",label:"Hybrid"},{value:"in_person",label:"In person"}]}/>
                 </label>
               </div>
               <label>
@@ -6248,8 +6470,8 @@ function ProjectDetailView({
                 <div className="field-row"><label>Professions<input name="professions" defaultValue={(selectedRole.professions ?? []).join(", ")} placeholder="Product designer, UX researcher" /></label><label>Capacity<input name="capacity" type="number" min={Math.max(1, selectedRole.filled)} max={10} defaultValue={selectedRole.capacity} /></label></div>
                 <label>Required skills<input name="requiredSkills" defaultValue={(selectedRole.requiredSkills ?? []).join(", ")} /></label>
                 <label>Useful skills<input name="usefulSkills" defaultValue={(selectedRole.usefulSkills ?? []).join(", ")} /></label>
-                <div className="field-row"><label>Timing<select name="phase" defaultValue={selectedRole.phase}><option value="now">Now</option><option value="next">Next</option><option value="later">Later</option></select></label><label>Priority<select name="criticality" defaultValue={selectedRole.criticality}><option value="critical">Critical</option><option value="important">Important</option><option value="useful">Useful</option></select></label></div>
-                <label>Working style<select name="workMode" defaultValue={selectedRole.workMode ?? "remote"}><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="in_person">In person</option></select></label>
+                <div className="field-row"><label>Timing<N2Select name="phase" defaultValue={selectedRole.phase} ariaLabel="Timing" options={[{value:"now",label:"Now"},{value:"next",label:"Next"},{value:"later",label:"Later"}]}/></label><label>Priority<N2Select name="criticality" defaultValue={selectedRole.criticality} ariaLabel="Priority" options={[{value:"critical",label:"Critical"},{value:"important",label:"Important"},{value:"useful",label:"Useful"}]}/></label></div>
+                <label>Working style<N2Select name="workMode" defaultValue={selectedRole.workMode ?? "remote"} ariaLabel="Working style" options={[{value:"remote",label:"Remote"},{value:"hybrid",label:"Hybrid"},{value:"in_person",label:"In person"}]}/></label>
                 <footer><button type="button" className="danger-button" disabled={busy} onClick={() => setRemoveRoleRequested(true)}>Remove role</button><button type="submit" className="primary-button" disabled={busy}>{busy ? "Saving…" : "Save role"}</button></footer>
               </form>
             ) : (
@@ -6287,7 +6509,7 @@ function ProjectDetailView({
           <form className="involvement-onboard-modal" onSubmit={decideInvolvement}>
             <header><div><span className="eyebrow">EARLY ONBOARDING</span><h2>Add {selectedInvolvement.userName ?? "this contributor"} to the team</h2><p>Assign a role now and optionally give them a first roadmap responsibility.</p></div><button type="button" className="icon-button" onClick={() => setSelectedInvolvementId(null)}><X /></button></header>
             <div className="onboard-profile"><Avatar person={{ name: selectedInvolvement.userName ?? "n2 member", role: selectedInvolvement.userProfession ?? "Contributor", img: selectedInvolvement.userImage }} size="lg" /><span><strong>{selectedInvolvement.userName}</strong><small>{selectedInvolvement.profileBrief}</small></span></div>
-            <label>Assign an existing open role<select name="roleId" defaultValue=""><option value="">Create a role for this person</option>{project.roles.filter(role => role.status === "open" && role.filled < role.capacity).map(role => <option key={role.id} value={role.id}>{role.title}</option>)}</select></label>
+            <label>Assign an existing open role<N2Select name="roleId" defaultValue="" ariaLabel="Assign an existing open role" options={[{value:"",label:"Create a role for this person"},...project.roles.filter(role => role.status === "open" && role.filled < role.capacity).map(role=>({value:role.id,label:role.title}))]}/></label>
             <div className="field-row"><label>New role title<input name="roleTitle" placeholder="Community partnerships lead" /></label><label>Department<input name="department" placeholder="Community" /></label></div>
             <label>Optional first roadmap step<input name="roadmapTitle" placeholder="e.g. Map the first ten community partners" /><small>This creates a planned roadmap item owned by the new member.</small></label>
             <footer><button type="button" className="secondary-button" onClick={() => onProfile(selectedInvolvement.userId)}>View full profile</button><button type="submit" className="primary-button" disabled={busy}>{busy ? "Adding…" : "Add to team"}</button></footer>
@@ -6324,6 +6546,7 @@ function ProjectDetailView({
 
 function ProjectsView({
   onCreate,
+  onResumeDraft,
   latestProject,
   onComments,
   onProfile,
@@ -6332,6 +6555,7 @@ function ProjectsView({
   onShortlist,
 }: {
   onCreate: () => void;
+  onResumeDraft: (draft: ContentDraft<ProjectDraftPayload>) => void;
   latestProject: ProjectRecord | null;
   onComments: (project: ProjectRecord) => void;
   onProfile: (userId: string) => void;
@@ -6365,8 +6589,8 @@ function ProjectsView({
     latestProject && !records.some((record) => record.id === latestProject.id)
       ? [latestProject, ...records]
       : records;
-  const owned = allMine.filter((record) => record.isOwner !== false),
-    involved = allMine.filter((record) => record.isOwner === false);
+  const owned = allMine.filter((record) => record.status !== "draft" && record.isOwner !== false),
+    involved = allMine.filter((record) => record.status !== "draft" && record.isOwner === false);
   const visible =
     tab === "mine" ? owned : tab === "involved" ? involved : discover;
   const empty =
@@ -6454,6 +6678,7 @@ function ProjectsView({
           </button>
         )}
       </div>
+      {tab === "mine" && <ContentDraftList kind="project" onResume={(draft) => onResumeDraft(draft as ContentDraft<ProjectDraftPayload>)} />}
       {loading && (
         <div className="feed-context">
           <Clock3 size={16} />
@@ -7070,15 +7295,7 @@ function NetworkView({
             </label>
             <label className="network-profession-filter">
               <NetworkGraphIcon size={16} />
-              <select
-                value={profession}
-                onChange={(event) => setProfession(event.target.value)}
-                aria-label="Filter network by profession"
-              >
-                {categories.map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-              </select>
+              <N2Select compact value={profession} onValueChange={setProfession} ariaLabel="Filter network by profession" options={categories.map(value=>({value,label:value}))}/>
             </label>
             {(skill || profession !== "All professions") && (
               <button
@@ -8451,12 +8668,7 @@ function MeetAttendeePicker({
                 <Avatar person={{ name: person.name, role: person.profession, img: person.image }} size="sm" />
                 <span>{person.name}</span>{(role !== "cohost" || canAssignCohosts) && <X size={13} />}
               </button>
-              {showRoleSelect ? <select aria-label={`${person.name} meet role`} value={role} disabled={role === "cohost" && !canAssignCohosts} onChange={event => setRole(person, event.target.value as MeetInviteRole)}>
-                {canAssignCohosts && <option value="cohost" disabled={person.group !== "connections" || person.cohostEligible === false || (role !== "cohost" && cohostCount >= 2)}>Co-host{person.group !== "connections" ? " · mutual connections only" : person.cohostEligible === false ? " · unavailable" : ""}</option>}
-                {mode === "audio" && <option value="speaker">Guest speaker</option>}
-                <option value={mode === "audio" ? "listener" : "speaker"}>{meetRoleLabel(mode, defaultMeetInviteRole(mode))}</option>
-                {!canAssignCohosts && role === "cohost" && <option value="cohost">Co-host</option>}
-              </select> : <span className="meet-role-label">{meetRoleLabel(mode, role)}</span>}
+              {showRoleSelect ? <N2Select compact ariaLabel={`${person.name} meet role`} value={role} disabled={role === "cohost" && !canAssignCohosts} onValueChange={value => setRole(person, value as MeetInviteRole)} options={[...(canAssignCohosts ? [{value:"cohost",label:`Co-host${person.group !== "connections" ? " · mutual connections only" : person.cohostEligible === false ? " · unavailable" : ""}`,disabled:person.group !== "connections" || person.cohostEligible === false || (role !== "cohost" && cohostCount >= 2)}] : []),...(mode === "audio" ? [{value:"speaker",label:"Guest speaker"}] : []),{value:mode === "audio" ? "listener" : "speaker",label:meetRoleLabel(mode, defaultMeetInviteRole(mode))},...(!canAssignCohosts && role === "cohost" ? [{value:"cohost",label:"Co-host"}] : [])]}/> : <span className="meet-role-label">{meetRoleLabel(mode, role)}</span>}
             </div>;
           })}
         </div>
@@ -9042,18 +9254,7 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
               {meetVisibility === "project" && (
                 <label className="meet-project-choice">
                   Project
-                  <select
-                    value={meetProjectId}
-                    onChange={(event) => setMeetProjectId(event.target.value)}
-                    required
-                  >
-                    <option value="">Choose a project</option>
-                    {meetProjects.map((project) => (
-                      <option value={project.id} key={project.id}>
-                        {project.title}
-                    </option>
-                  ))}
-                  </select>
+                  <N2Select value={meetProjectId} onValueChange={setMeetProjectId} required ariaLabel="Project" options={[{value:"",label:"Choose a project"},...meetProjects.map(project=>({value:project.id,label:project.title}))]}/>
                   {!meetProjects.length && (
                     <small>You need an active project to create a project meet.</small>
                   )}
@@ -9070,23 +9271,11 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
                     </label>
                     <label>
                       Duration
-                      <select name="duration" defaultValue={editing ? String(Math.max(15, Math.round((new Date(editing.endsAt).getTime() - new Date(editing.startsAt).getTime()) / 60000))) : "45"}>
-                        <option value="30">30 minutes</option>
-                        <option value="45">45 minutes</option>
-                        <option value="60">60 minutes</option>
-                        <option value="90">90 minutes</option>
-                        <option value="120">2 hours</option>
-                      </select>
+                      <N2Select name="duration" defaultValue={editing ? String(Math.max(15, Math.round((new Date(editing.endsAt).getTime() - new Date(editing.startsAt).getTime()) / 60000))) : "45"} ariaLabel="Duration" options={[{value:"30",label:"30 minutes"},{value:"45",label:"45 minutes"},{value:"60",label:"60 minutes"},{value:"90",label:"90 minutes"},{value:"120",label:"2 hours"}]}/>
                     </label>
                     <label>
                       Reminder
-                      <select name="reminderMinutes" defaultValue={String(editing?.reminderMinutes ?? 30)}>
-                        <option value="0">At start time</option>
-                        <option value="10">10 minutes before</option>
-                        <option value="30">30 minutes before</option>
-                        <option value="60">1 hour before</option>
-                        <option value="1440">1 day before</option>
-                      </select>
+                      <N2Select name="reminderMinutes" defaultValue={String(editing?.reminderMinutes ?? 30)} ariaLabel="Reminder" options={[{value:"0",label:"At start time"},{value:"10",label:"10 minutes before"},{value:"30",label:"30 minutes before"},{value:"60",label:"1 hour before"},{value:"1440",label:"1 day before"}]}/>
                     </label>
                   </div>
                 </div>
@@ -11204,12 +11393,11 @@ function SettingsView({
               </label>
               <label htmlFor="profile-industry">
                 Industry
-                <FreeChoiceInput
+                <CareerIndustryInput
                   id="profile-industry"
                   value={profile.industry}
                   onChange={(industry) => setProfile({ ...profile, industry })}
-                  options={PROJECT_INDUSTRIES}
-                  placeholder="Type or choose an industry"
+                  placeholder="Type an industry or career"
                 />
               </label>
               <label>
@@ -11650,17 +11838,7 @@ function SettingsView({
                 <strong>Email digest</strong>
                 <small>A calm summary of network activity.</small>
               </span>
-              <select
-                aria-label="Email digest frequency"
-                value={notifications.digest}
-                onChange={(e) =>
-                  setNotifications({ ...notifications, digest: e.target.value })
-                }
-              >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="never">Never</option>
-              </select>
+              <N2Select ariaLabel="Email digest frequency" value={notifications.digest} onValueChange={(digest) => setNotifications({ ...notifications, digest })} options={[{value:"daily",label:"Daily"},{value:"weekly",label:"Weekly"},{value:"never",label:"Never"}]}/>
             </label>
           </div>
         )}
@@ -11690,20 +11868,7 @@ function SettingsView({
                 <strong>Default calendar</strong>
                 <small>New n2 meets will be added here.</small>
               </span>
-              <select
-                aria-label="Default calendar"
-                value={calendarPrefs.defaultCalendar}
-                onChange={(e) =>
-                  setCalendarPrefs({
-                    ...calendarPrefs,
-                    defaultCalendar: e.target.value,
-                  })
-                }
-              >
-                <option>Google Calendar</option>
-                <option>Microsoft Outlook</option>
-                <option>Ask each time</option>
-              </select>
+              <N2Select ariaLabel="Default calendar" value={calendarPrefs.defaultCalendar} onValueChange={(defaultCalendar) => setCalendarPrefs({ ...calendarPrefs, defaultCalendar })} options={["Google Calendar","Microsoft Outlook","Ask each time"].map(value=>({value,label:value}))}/>
             </label>
             <div className="preference-row">
               <span>
@@ -11746,18 +11911,7 @@ function SettingsView({
                 <strong>Profile visibility</strong>
                 <small>Who can open your complete member profile.</small>
               </span>
-              <select
-                aria-label="Profile visibility"
-                value={privacy.visibility}
-                onChange={(e) =>
-                  setPrivacy({ ...privacy, visibility: e.target.value })
-                }
-              >
-                <option>Public</option>
-                <option>Network only</option>
-                <option>Connections only</option>
-                <option>Private</option>
-              </select>
+              <N2Select ariaLabel="Profile visibility" value={privacy.visibility} onValueChange={(visibility) => setPrivacy({ ...privacy, visibility })} options={["Public","Network only","Connections only","Private"].map(value=>({value,label:value}))}/>
             </label>
             {[
               [
@@ -11797,17 +11951,7 @@ function SettingsView({
                 <strong>Who can message you</strong>
                 <small>Project owners can always contact applicants.</small>
               </span>
-              <select
-                aria-label="Message permissions"
-                value={privacy.messages}
-                onChange={(e) =>
-                  setPrivacy({ ...privacy, messages: e.target.value })
-                }
-              >
-                <option>Connections and project members</option>
-                <option>Connections only</option>
-                <option>No one</option>
-              </select>
+              <N2Select ariaLabel="Message permissions" value={privacy.messages} onValueChange={(messages) => setPrivacy({ ...privacy, messages })} options={["Connections and project members","Connections only","No one"].map(value=>({value,label:value}))}/>
             </label>
             <div className="safety-panel">
               <ShieldCheck size={18} />
@@ -11906,32 +12050,21 @@ function SettingsView({
                 <strong>Colour theme</strong>
                 <small>Follow your device, or keep the platform light or dark.</small>
               </span>
-              <select aria-label="Colour theme" value={accessibility.colourTheme} onChange={(e) => setAccessibility({ ...accessibility, colourTheme: e.target.value as AccessibilityPreferences["colourTheme"] })}>
-                <option value="system">Use device setting</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
+              <N2Select ariaLabel="Colour theme" value={accessibility.colourTheme} onValueChange={(colourTheme) => setAccessibility({ ...accessibility, colourTheme: colourTheme as AccessibilityPreferences["colourTheme"] })} options={[{value:"system",label:"Use device setting"},{value:"light",label:"Light"},{value:"dark",label:"Dark"}]}/>
             </label>
             <label className="select-setting">
               <span>
                 <strong>Text size</strong>
                 <small>Increase interface text without relying on browser zoom.</small>
               </span>
-              <select aria-label="Text size" value={accessibility.textSize} onChange={(e) => setAccessibility({ ...accessibility, textSize: e.target.value as AccessibilityPreferences["textSize"] })}>
-                <option value="default">Default (100%)</option>
-                <option value="large">Large (112%)</option>
-                <option value="extra-large">Extra large (125%)</option>
-              </select>
+              <N2Select ariaLabel="Text size" value={accessibility.textSize} onValueChange={(textSize) => setAccessibility({ ...accessibility, textSize: textSize as AccessibilityPreferences["textSize"] })} options={[{value:"default",label:"Default (100%)"},{value:"large",label:"Large (112%)"},{value:"extra-large",label:"Extra large (125%)"}]}/>
             </label>
             <label className="select-setting">
               <span>
                 <strong>Contrast</strong>
                 <small>Strengthen text, borders and interactive controls.</small>
               </span>
-              <select aria-label="Contrast" value={accessibility.contrast} onChange={(e) => setAccessibility({ ...accessibility, contrast: e.target.value as AccessibilityPreferences["contrast"] })}>
-                <option value="standard">Standard</option>
-                <option value="high">High contrast</option>
-              </select>
+              <N2Select ariaLabel="Contrast" value={accessibility.contrast} onValueChange={(contrast) => setAccessibility({ ...accessibility, contrast: contrast as AccessibilityPreferences["contrast"] })} options={[{value:"standard",label:"Standard"},{value:"high",label:"High contrast"}]}/>
             </label>
             {[
               ["Readable font", "Use a simple, widely spaced font for longer reading.", "readableFont"],
@@ -11952,10 +12085,7 @@ function SettingsView({
                 <strong>Animation and motion</strong>
                 <small>Reduced motion removes transitions, pulses and smooth scrolling.</small>
               </span>
-              <select aria-label="Animation and motion" value={accessibility.motion} onChange={(e) => setAccessibility({ ...accessibility, motion: e.target.value as AccessibilityPreferences["motion"] })}>
-                <option value="system">Use device setting</option>
-                <option value="reduced">Reduce motion</option>
-              </select>
+              <N2Select ariaLabel="Animation and motion" value={accessibility.motion} onValueChange={(motion) => setAccessibility({ ...accessibility, motion: motion as AccessibilityPreferences["motion"] })} options={[{value:"system",label:"Use device setting"},{value:"reduced",label:"Reduce motion"}]}/>
             </label>
             {[
               ["Enhanced keyboard focus", "Add a strong outline to the control you are using.", "enhancedFocus"],
@@ -12136,8 +12266,10 @@ function SettingsView({
 export default function HomePage() {
   const [view, setView] = useState<View>("feed");
   const [createOpen, setCreateOpen] = useState(false);
+  const [projectDraftToResume, setProjectDraftToResume] = useState<ContentDraft<ProjectDraftPayload> | null>(null);
   const [editProfileRequested, setEditProfileRequested] = useState(false);
   const [postComposerOpen, setPostComposerOpen] = useState(false);
+  const [postDraftToResume, setPostDraftToResume] = useState<ContentDraft<PostDraftPayload> | null>(null);
   const [latestPost, setLatestPost] = useState<TimelinePost | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [matchOpen, setMatchOpen] = useState(false);
@@ -12684,9 +12816,10 @@ export default function HomePage() {
                   newPost={latestPost}
                   authenticated={authenticated}
                   onRequireAuth={requireSignIn}
-                  onCreate={() => setCreateOpen(true)}
+                  onCreate={() => { setProjectDraftToResume(null); setCreateOpen(true); }}
                   onDiscover={() => setSearchOpen(true)}
-                  onShareIdea={() => setPostComposerOpen(true)}
+                  onShareIdea={() => { setPostDraftToResume(null); setPostComposerOpen(true); }}
+                  onResumePostDraft={(draft) => { setPostDraftToResume(draft); setPostComposerOpen(true); }}
                   onMatch={() => setMatchOpen(true)}
                   onComments={(project) =>
                     authenticated ? setCommentProject(project) : requireSignIn()
@@ -12700,7 +12833,8 @@ export default function HomePage() {
               )}
               {authenticated && view === "projects" && (
                 <ProjectsView
-                  onCreate={() => setCreateOpen(true)}
+                  onCreate={() => { setProjectDraftToResume(null); setCreateOpen(true); }}
+                  onResumeDraft={(draft) => { setProjectDraftToResume(draft); setCreateOpen(true); }}
                   latestProject={latestProject}
                   onComments={setCommentProject}
                   onProfile={openProfile}
@@ -12866,7 +13000,9 @@ export default function HomePage() {
       {authenticated && createOpen && (
         <CreateProject
           currentMember={currentMember}
-          onClose={() => setCreateOpen(false)}
+          initialDraft={projectDraftToResume}
+          onToast={setToast}
+          onClose={() => { setCreateOpen(false); setProjectDraftToResume(null); }}
           onPublish={(project) => {
             setLatestProject(project);
             setToast("Project published — useful matches are being notified.");
@@ -12877,7 +13013,8 @@ export default function HomePage() {
       {authenticated && postComposerOpen && (
         <PostComposer
           currentMember={currentMember}
-          onClose={() => setPostComposerOpen(false)}
+          initialDraft={postDraftToResume}
+          onClose={() => { setPostComposerOpen(false); setPostDraftToResume(null); }}
           onPosted={setLatestPost}
           onToast={setToast}
         />

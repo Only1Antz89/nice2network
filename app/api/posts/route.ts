@@ -2,8 +2,8 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb, isDatabaseConfigured } from "@/db";
-import { adminAssignments, follows, postLikes, postReplies, postReposts, projects, timelinePosts, users } from "@/db/schema";
-import { apiError, requireMember } from "@/lib/api";
+import { adminAssignments, contentDrafts, follows, postLikes, postReplies, postReposts, projects, timelinePosts, users } from "@/db/schema";
+import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
 import { createNotifications } from "@/lib/notifications";
@@ -14,12 +14,13 @@ const imageData = z.string().max(2_900_000).refine(value => /^data:image\/(jpeg|
 const videoData = z.string().max(3_500_000).refine(value => /^data:video\/(mp4|webm|quicktime);base64,/i.test(value), "Choose an MP4, WebM or QuickTime video");
 const httpUrl = z.string().url().max(1000).refine(value => ["http:", "https:"].includes(new URL(value).protocol), "Use an http(s) video link");
 const postSchema = z.object({
-  body: z.string().trim().min(1).max(3000),
+  body: z.string().trim().min(1).max(1000),
   linkedProjectIds: z.array(z.uuid()).max(8).default([]),
   attachmentType: z.enum(["image", "video"]).nullable().optional(),
   attachmentUrl: z.union([imageData, videoData]).nullable().optional(),
   videoUrl: httpUrl.nullable().optional(),
   visibility: z.enum(["network", "connections"]).default("network"),
+  draftId: z.uuid().optional(),
 }).refine(input => !input.attachmentType || Boolean(input.attachmentUrl), "Attachment data is missing");
 
 export async function GET(request: Request) {
@@ -63,9 +64,17 @@ export async function POST(request: Request) {
       const visible = await db.select({ id: projects.id }).from(projects).where(and(inArray(projects.id, input.linkedProjectIds), eq(projects.status, "active"), eq(projects.visibility, "network")));
       if (visible.length !== input.linkedProjectIds.length) return NextResponse.json({ error: "One of the linked projects is no longer available" }, { status: 400 });
     }
-    const [post] = await db.insert(timelinePosts).values({ authorId: member.id, body: input.body, linkedProjectIds: input.linkedProjectIds, attachmentType: input.attachmentType ?? null, attachmentUrl: input.attachmentUrl ?? null, videoUrl: input.videoUrl ?? null, visibility: input.visibility }).returning();
+    const post = await db.transaction(async tx => {
+      if (input.draftId) {
+        const [draft] = await tx.select({ id: contentDrafts.id }).from(contentDrafts).where(and(eq(contentDrafts.id, input.draftId), eq(contentDrafts.ownerId, member.id), eq(contentDrafts.kind, "post"))).limit(1);
+        if (!draft) throw new ApiError(409, "Post draft is unavailable");
+      }
+      const [created] = await tx.insert(timelinePosts).values({ authorId: member.id, body: input.body, linkedProjectIds: input.linkedProjectIds, attachmentType: input.attachmentType ?? null, attachmentUrl: input.attachmentUrl ?? null, videoUrl: input.videoUrl ?? null, visibility: input.visibility }).returning();
+      if (input.draftId) await tx.delete(contentDrafts).where(and(eq(contentDrafts.id, input.draftId), eq(contentDrafts.ownerId, member.id), eq(contentDrafts.kind, "post")));
+      return created;
+    });
     if (input.visibility === "network") {
-      const [followers, mentioned] = await Promise.all([db.select({ userId: follows.followerId }).from(follows).where(eq(follows.followingId, member.id)), resolveMentionedUsers(input.body, { excludeId: member.id })]);
+      const [followers, mentioned] = await Promise.all([db.select({ userId: follows.followerId }).from(follows).where(eq(follows.followingId, member.id)), resolveMentionedUsers(input.body, { excludeId: member.id, discoverableById: member.id })]);
       const mentionedIds = new Set(mentioned.map((person) => person.id));
       await createNotifications([
         ...followers.filter(({ userId }) => !mentionedIds.has(userId)).map(({ userId }) => ({ userId, actorId: member.id, type: "following" as const, title: `${member.name ?? "A member you follow"} shared a post`, body: input.body.slice(0, 120), entityType: "post", entityId: post.id, href: `/?post=${post.id}` })),

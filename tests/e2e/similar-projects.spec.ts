@@ -10,6 +10,8 @@ async function signIn(page: Page, email: string, password: string) {
   await page.getByLabel(/^Password/).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL("/");
+  const cookieChoice = page.getByRole("button", { name: "Essential only" });
+  if (await cookieChoice.isVisible()) await cookieChoice.click();
 }
 
 test("pre-publish similarity is default-on, owner-only, role-aware and immediately disableable", async ({ page }, testInfo) => {
@@ -51,14 +53,24 @@ test("pre-publish similarity is default-on, owner-only, role-aware and immediate
     await sql`update algorithm_settings set similar_project_suggestions_enabled=true where status='active'`;
     await page.route("**/api/projects/drafts", route => route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ project: { id: sourceProjectId } }) }));
     await page.route(`**/api/projects/${sourceProjectId}/blueprint`, route => route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ blueprint: { id: "11111111-1111-4111-8111-111111111111", outcome: "A focused local repair service with the right launch team.", assumptions: [], coveredContributions: [], milestones: [{ title: "Open the first workshop", phase: "now" }], gaps: [], risks: [], roles: body.roles, provider: "rules" } }) }));
-    await page.route(`**/api/projects/${sourceProjectId}/blueprint/*/approve`, route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, projectId: sourceProjectId }) }));
-    await page.getByRole("button", { name: "Start a project" }).click();
+    let approvalBody: Record<string, unknown> | undefined;
+    await page.route(`**/api/projects/${sourceProjectId}/blueprint/*/approve`, async route => {
+      approvalBody = route.request().postDataJSON();
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, projectId: sourceProjectId }) });
+    });
+    await page.route("**/api/locations/search**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [{ id: 1, city: "London", country: "United Kingdom", countryCode: "GB", timezone: "Europe/London", region: "England", label: "London, United Kingdom" }] }) }));
+    await page.getByRole("button", { name: "Projects", exact: true }).click();
+    await expect(page.getByRole("heading", { name: /Projects/ })).toBeVisible();
+    await page.getByRole("button", { name: "New project" }).click();
     await page.getByLabel("Project title").fill("Neighbourhood repair and reuse hub");
+    await page.getByLabel("Industry").fill("Community services");
+    await page.getByLabel("Location").fill("London");
+    await page.getByRole("option").first().click();
     await expect(page.getByText("Use 10–500 characters.")).toBeVisible();
     await page.getByLabel("Project summary").fill("Too short");
     await expect(page.getByRole("button", { name: "Build my project plan" })).toBeEnabled();
     await page.getByRole("button", { name: "Build my project plan" }).click();
-    await expect(page.getByRole("alert")).toContainText("Project summary must be at least 10 characters (9/10).");
+    await expect(page.locator(".project-modal .form-error")).toContainText("Project summary must be at least 10 characters (9/10).");
     await page.getByLabel("Project summary").fill("x".repeat(500));
     await expect(page.getByText("500/500")).toBeVisible();
     await expect(page.getByRole("button", { name: "Build my project plan" })).toBeEnabled();
@@ -68,17 +80,24 @@ test("pre-publish similarity is default-on, owner-only, role-aware and immediate
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page.getByLabel("Project title")).toHaveValue("Neighbourhood repair and reuse hub");
     await page.getByRole("button", { name: "Build my project plan" }).click();
+    await page.getByRole("button", { name: "Continue to ownership" }).click();
+    await expect(page.getByText("Ownership", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Continue to recruitment" }).click();
     await expect(page.getByText("Suggested recruitment", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back" }).click();
+    await expect(page.getByText("Ownership", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back" }).click();
     await expect(page.getByText("Guided roadmap", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Continue to ownership" }).click();
     await page.getByRole("button", { name: "Continue to recruitment" }).click();
+    await page.getByRole("switch", { name: "Use remote fallback" }).click();
     await page.getByRole("button", { name: "Review matches & publish" }).click();
     await expect(page.getByRole("heading", { name: "Similar work is already underway" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Neighbourhood repair and reuse hub", level: 3 })).toBeVisible();
     await expect(page.getByRole("link", { name: "View matching role" })).toHaveAttribute("href", new RegExp(`project=${targetProjectId}.*role=${targetRoleId}`));
     await page.getByRole("button", { name: "Continue with my project" }).click();
     await expect(page.getByText("Project published — useful matches are being notified.")).toBeVisible();
+    expect(approvalBody).toMatchObject({ allowRemoteFallback: true });
 
     await page.goto(`/?project=${targetProjectId}&role=${targetRoleId}`);
     await expect(page.getByRole("heading", { name: "Apply for Product designer" })).toBeVisible();

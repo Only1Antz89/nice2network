@@ -5,7 +5,9 @@ import test from "node:test";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("project creation offers two invitation-only co-owner slots", async () => {
-  const page = await read("app/page.tsx");
+  const [page, styles, search] = await Promise.all([
+    read("app/page.tsx"), read("app/globals.css"), read("app/api/search/route.ts"),
+  ]);
 
   assert.match(page, /OWNERSHIP/);
   assert.match(page, /Primary owner · fixed/);
@@ -14,6 +16,9 @@ test("project creation offers two invitation-only co-owner slots", async () => {
   assert.match(page, /Name, @username or profession/);
   assert.match(page, /seven-day invitations/);
   assert.match(page, /coOwnerIds: selectedCoOwners\.map/);
+  assert.match(page, /person\.id !== currentMember\.id/);
+  assert.match(search, /ne\(users\.id, member\.id\)/);
+  assert.match(styles, /\.co-owner-results\{position:static/);
 });
 
 test("creation and blueprint APIs validate co-owner IDs before publishing", async () => {

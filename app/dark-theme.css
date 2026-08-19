@@ -35,6 +35,10 @@ html[data-colour-theme="dark"] {
   --shadow-overlay: 0 30px 100px rgba(0, 0, 0, .58);
 }
 
+html[data-colour-theme="dark"] .career-industry-list mark {
+  color: #ffad8c;
+}
+
 @media (prefers-color-scheme: dark) {
   html[data-colour-theme="system"] {
     --control: #272725;
@@ -49,6 +53,10 @@ html[data-colour-theme="dark"] {
     --danger-soft: #40231f;
     --shadow-soft: 0 12px 38px rgba(0, 0, 0, .24);
     --shadow-overlay: 0 30px 100px rgba(0, 0, 0, .58);
+  }
+
+  html[data-colour-theme="system"] .career-industry-list mark {
+    color: #ffad8c;
   }
 }
 
@@ -79,8 +87,6 @@ html[data-colour-theme="dark"] {
 .blueprint-roadmap > article,
 .blueprint-roles article,
 .ai-role-recommendations article,
-.free-choice-list,
-.free-choice-list button,
 .following-list > a,
 .new-joiner-card,
 .new-joiner-card > button,
@@ -408,6 +414,19 @@ select:focus,
   --epr-focus-bg-color: var(--control-hover);
   --epr-highlight-color: var(--ink);
   color: var(--ink) !important;
+}
+
+.post-project-links button {
+  background: color-mix(in srgb, var(--orange) 14%, var(--surface));
+  color: var(--orange);
+  border-color: color-mix(in srgb, var(--orange) 48%, var(--line));
+}
+
+.post-project-links button:hover,
+.post-project-links button:focus-visible {
+  background: var(--orange);
+  color: #11110f;
+  border-color: var(--orange);
 }
 
 /* Posts, notices and conversation threads. */
