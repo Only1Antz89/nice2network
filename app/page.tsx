@@ -68,6 +68,7 @@ import { FormEvent, type ReactNode, type RefObject, useCallback, useEffect, useM
 import { signOut } from "next-auth/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import EmojiPicker from "@/components/emoji-picker";
 import type { NotificationRecord } from "@/components/notification-panel";
 import N2OrbitMark from "@/components/n2-orbit-mark";
 import PeopleDiscoveryPanel from "@/components/people-discovery-panel";
@@ -107,7 +108,6 @@ import {
 } from "@/lib/accessibility-preferences";
 
 const ActionDialog = dynamic(() => import("@/components/action-dialog"));
-const EmojiPicker = dynamic(() => import("@/components/emoji-picker"));
 const GuestAuthPrompt = dynamic(() => import("@/components/guest-auth-prompt"));
 const HelpPanel = dynamic(() => import("@/components/help-panel"));
 const NotificationsPage = dynamic(() => import("@/components/notifications-page"));

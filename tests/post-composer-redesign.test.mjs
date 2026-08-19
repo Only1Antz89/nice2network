@@ -15,6 +15,8 @@ test("post composer uses the compact message-style dock and 1000 character limit
 
   assert.match(page, /className="post-composer-dock"/);
   assert.match(page, /aria-label="Add to post"/);
+  assert.match(page, /import EmojiPicker from "@\/components\/emoji-picker"/);
+  assert.doesNotMatch(page, /const EmojiPicker = dynamic/);
   assert.match(page, /className="post-attachment-menu"/);
   assert.match(page, /className="post-circle-button post-submit-button"/);
   assert.match(page, /onFocus=\{\(\) => setComposerExpanded\(true\)\}/);
