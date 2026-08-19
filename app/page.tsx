@@ -74,6 +74,7 @@ import N2OrbitMark from "@/components/n2-orbit-mark";
 import PeopleDiscoveryPanel from "@/components/people-discovery-panel";
 import CareerIndustryInput from "@/components/career-industry-input";
 import N2Select from "@/components/n2-select";
+import { AppLoadingShell, LoadingState } from "@/components/loading-state";
 import { PROJECT_ACCENT } from "@/lib/content-accents";
 import { PROJECT_INDUSTRIES } from "@/lib/career-sectors";
 import {
@@ -4188,7 +4189,12 @@ function Feed({
   const [worthMeeting, setWorthMeeting] = useState<PeopleSuggestionRecord | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null),
     [loadingMore, setLoadingMore] = useState(false),
-    [algorithmMode, setAlgorithmMode] = useState("shadow");
+    [algorithmMode, setAlgorithmMode] = useState("shadow"),
+    [noticesLoading, setNoticesLoading] = useState(true),
+    [postsLoading, setPostsLoading] = useState(true),
+    [projectsLoading, setProjectsLoading] = useState(true),
+    [joinersLoading, setJoinersLoading] = useState(false),
+    [worthMeetingLoading, setWorthMeetingLoading] = useState(false);
   useEffect(() => {
     const sync = () => setClock(new Date());
     sync();
@@ -4205,43 +4211,64 @@ function Feed({
     };
   }, []);
   useEffect(() => {
+    let active = true;
     fetch("/api/notices")
       .then((r) => (r.ok ? r.json() : { notices: [] }))
-      .then((data) => setNotices(data.notices ?? []))
-      .catch(() => undefined);
+      .then((data) => active && setNotices(data.notices ?? []))
+      .catch(() => undefined)
+      .finally(() => active && setNoticesLoading(false));
+    return () => { active = false; };
   }, []);
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     const scope =
       filter === "Following"
         ? "following"
         : filter === "Newest"
           ? "newest"
           : "for_you";
-    fetch(`/api/posts?scope=${scope}`)
+    setPostsLoading(true);
+    fetch(`/api/posts?scope=${scope}`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : { posts: [] }))
-      .then((data) => setPosts(data.posts ?? []))
-      .catch(() => undefined);
+      .then((data) => active && setPosts(data.posts ?? []))
+      .catch(() => undefined)
+      .finally(() => active && setPostsLoading(false));
+    return () => { active = false; controller.abort(); };
   }, [filter, authenticated]);
   useEffect(() => {
-    if (authenticated && filter === "Newest")
-      fetch("/api/feed/new-joiners")
-        .then((r) => (r.ok ? r.json() : { joiners: [] }))
-        .then((data) => setNewJoiners(data.joiners ?? []))
-        .catch(() => undefined);
+    if (!authenticated || filter !== "Newest") {
+      setNewJoiners([]);
+      setJoinersLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    let active = true;
+    setJoinersLoading(true);
+    fetch("/api/feed/new-joiners", { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : { joiners: [] }))
+      .then((data) => active && setNewJoiners(data.joiners ?? []))
+      .catch(() => undefined)
+      .finally(() => active && setJoinersLoading(false));
+    return () => { active = false; controller.abort(); };
   }, [authenticated, filter]);
   useEffect(() => {
     if (!authenticated || filter !== "Following") {
       setWorthMeeting(null);
+      setWorthMeetingLoading(false);
       return;
     }
     const controller = new AbortController();
+    let active = true;
+    setWorthMeetingLoading(true);
     fetch("/api/people/worth-meeting", { signal: controller.signal, cache: "no-store" })
       .then((response) => response.ok ? response.json() : { worthMeeting: null })
-      .then((data) => setWorthMeeting(data.worthMeeting ?? null))
+      .then((data) => active && setWorthMeeting(data.worthMeeting ?? null))
       .catch((error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) setWorthMeeting(null);
-      });
-    return () => controller.abort();
+        if (active && !(error instanceof DOMException && error.name === "AbortError")) setWorthMeeting(null);
+      })
+      .finally(() => active && setWorthMeetingLoading(false));
+    return () => { active = false; controller.abort(); };
   }, [authenticated, filter]);
   useEffect(() => {
     if (newPost)
@@ -4282,9 +4309,12 @@ function Feed({
   }, [filter, projectFilters]);
   useEffect(() => {
     const controller = new AbortController();
+    let active = true;
+    setProjectsLoading(true);
     fetch(projectQuery(), { signal: controller.signal, cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { projects: [] }))
       .then((data) => {
+        if (!active) return;
         const projects = (data.projects ?? []) as ProjectRecord[];
         setLiveProjects(newProject && filter === "Newest"
           ? [newProject, ...projects.filter((project) => project.id !== newProject.id)]
@@ -4292,8 +4322,9 @@ function Feed({
         setNextCursor(data.nextCursor ?? null);
         setAlgorithmMode(data.algorithmMode ?? "shadow");
       })
-      .catch(() => undefined);
-    return () => controller.abort();
+      .catch(() => undefined)
+      .finally(() => active && setProjectsLoading(false));
+    return () => { active = false; controller.abort(); };
   }, [authenticated, newProject, projectQuery]);
   async function loadMore() {
     if (!nextCursor) return;
@@ -4325,6 +4356,7 @@ function Feed({
           projects: liveProjects,
         })
       : mixedFeed;
+  const contentLoading = noticesLoading || postsLoading || projectsLoading || joinersLoading || worthMeetingLoading;
   return (
     <>
       <div className="mobile-topbar">
@@ -4398,7 +4430,19 @@ function Feed({
           <button
             key={item}
             className={filter === item ? "active" : ""}
-            onClick={() => (authenticated ? setFilter(item) : onRequireAuth())}
+            onClick={() => {
+              if (!authenticated) {
+                onRequireAuth();
+                return;
+              }
+              if (item !== filter) {
+                setPostsLoading(true);
+                setProjectsLoading(true);
+                setJoinersLoading(item === "Newest");
+                setWorthMeetingLoading(item === "Following");
+                setFilter(item);
+              }
+            }}
           >
             {item}
           </button>
@@ -4419,7 +4463,10 @@ function Feed({
           <p>Join n2 to personalise these views.</p>
         </div>
       )}
-      {notices.map((notice) => (
+      {contentLoading && (
+        <LoadingState label="Loading your network feed" count={2} />
+      )}
+      {!contentLoading && notices.map((notice) => (
         <article className="official-notice" key={notice.id}>
           <span className="official-badge">
             <b>n2</b> OFFICIAL NOTICE
@@ -4431,7 +4478,7 @@ function Feed({
           </small>
         </article>
       ))}
-      {authenticated && filter === "Following" && (
+      {!contentLoading && authenticated && filter === "Following" && (
         <div className="feed-context">
           <UsersRound size={16} />
           <span>
@@ -4440,7 +4487,7 @@ function Feed({
           </span>
         </div>
       )}
-      {authenticated && filter === "Newest" && (
+      {!contentLoading && authenticated && filter === "Newest" && (
         <div className="feed-context">
           <Clock3 size={16} />
           <span>
@@ -4449,7 +4496,7 @@ function Feed({
           </span>
         </div>
       )}
-      {authenticated && filter === "For you" && algorithmMode === "shadow" && (
+      {!contentLoading && authenticated && filter === "For you" && algorithmMode === "shadow" && (
         <div className="feed-context">
           <N2Mark />
           <span>
@@ -4458,7 +4505,7 @@ function Feed({
           </span>
         </div>
       )}
-      {timelineFeed.map((entry) => {
+      {!contentLoading && timelineFeed.map((entry) => {
         if (entry.kind === "member") {
           const person = entry.item;
           return (
@@ -4534,7 +4581,7 @@ function Feed({
           />
         );
       })}
-      {!liveProjects.length && (
+      {!contentLoading && !liveProjects.length && (
         <ProjectCard
           onShare={onShare}
           onMatch={authenticated ? onMatch : onRequireAuth}
@@ -4542,7 +4589,7 @@ function Feed({
           onRequireAuth={onRequireAuth}
         />
       )}
-      {nextCursor && (
+      {!contentLoading && nextCursor && (
         <button
           className="feed-load-more"
           disabled={loadingMore}
@@ -4551,7 +4598,7 @@ function Feed({
           {loadingMore ? "Loading useful projects…" : "Load more projects"}
         </button>
       )}
-      {!liveProjects.length && (
+      {!contentLoading && !liveProjects.length && (
         <ProjectCard
           second
           onShare={onShare}
@@ -4560,7 +4607,7 @@ function Feed({
           onRequireAuth={onRequireAuth}
         />
       )}
-      {authenticated && filter === "Following" && worthMeeting && (
+      {!contentLoading && authenticated && filter === "Following" && worthMeeting && (
         <article className="connection-card">
           <div className="connection-copy">
             <span className="eyebrow">WORTH MEETING</span>
@@ -4573,10 +4620,10 @@ function Feed({
           <Avatar person={{ name: worthMeeting.name ?? "n2 member", role: worthMeeting.profession ?? "Member", img: worthMeeting.image }} size="xl" ring />
         </article>
       )}
-      <div className="end-note">
+      {!contentLoading && <div className="end-note">
         <span>n2</span>
         <p>You’re all caught up for now.</p>
-      </div>
+      </div>}
       {filtersOpen && (
         <FeedFilters
           value={projectFilters}
@@ -6014,9 +6061,7 @@ function ProjectDetailView({
   }
   if (loading)
     return (
-      <div className="feed-context">
-        <Clock3 size={16} /> Loading project…
-      </div>
+      <LoadingState label="Loading project details" count={2} />
     );
   if (!project)
     return (
@@ -6529,12 +6574,12 @@ function ProjectDetailView({
               <div className="role-applicant-list">
                 {project.applications.filter(application => application.roleId === selectedRole.id).map(application => (
                   <article key={application.id}>
-                    <header><button type="button" className="application-person" onClick={() => onProfile(application.applicantId)}><Avatar person={{ name: application.applicantName ?? "n2 member", role: application.applicantProfession ?? "n2 member", img: application.applicantImage }} size="md" /><span><strong>{application.applicantName ?? "n2 member"}</strong><small>{application.applicantProfession ?? "Profession not shared"} · {application.applicantLocation || "Location not shared"}</small></span></button><div className="application-fit"><strong>{application.fit.score}%</strong><small>role fit</small></div></header>
+                    <header><button type="button" className="application-person" onClick={() => onProfile(application.applicantId)}><Avatar person={{ name: application.applicantName ?? "n2 member", role: application.applicantProfession ?? "n2 member", img: application.applicantImage }} size="md" /><span><strong>{application.applicantName ?? "n2 member"}</strong><small>{application.applicantProfession ?? "Profession not shared"} · {application.applicantLocation || "Location not shared"}</small></span></button><div className="application-fit" data-fit-tier={application.fit.score >= 80 ? "high" : application.fit.score <= 50 ? "low" : "medium"} role="meter" aria-label="Role fit" aria-valuemin={0} aria-valuemax={100} aria-valuenow={application.fit.score} style={{ "--role-fit-progress": `${Math.max(0, Math.min(100, application.fit.score))}%` } as React.CSSProperties}><strong>{application.fit.score}%</strong><small>role fit</small></div></header>
                     {application.fit.mismatch && <span className="application-mismatch">Applied outside role match</span>}
                     <p>{application.profileBrief}</p>
                     <dl><div><dt>Skills</dt><dd className="application-tags">{application.applicantSkills.length ? application.applicantSkills.map(skill => <span key={skill}>{skill}</span>) : "Not added"}</dd></div><div><dt>Interests</dt><dd className="application-tags">{application.applicantInterests.length ? application.applicantInterests.map(interest => <span key={interest}>{interest}</span>) : "Not added"}</dd></div></dl>
                     <div className="application-note"><small>REASON FOR JOINING</small><p>{application.message || "No application note was provided."}</p></div>
-                    <footer><button type="button" className="secondary-button" onClick={() => onProfile(application.applicantId)}>View full profile</button><span className={`application-status ${application.status}`}>{application.status}</span>{application.status === "pending" && <><button type="button" className="secondary-button" onClick={() => decideApplication(application.id, "declined")}>Decline</button><button type="button" className="primary-button" onClick={() => decideApplication(application.id, "accepted")}>Add to team</button></>}</footer>
+                    <footer><span className={`application-status ${application.status}`}>{application.status}</span>{application.status === "pending" && <><button type="button" className="secondary-button" onClick={() => decideApplication(application.id, "declined")}>Decline</button><button type="button" className="primary-button" onClick={() => decideApplication(application.id, "accepted")}>Add to team</button></>}</footer>
                   </article>
                 ))}
                 {!project.applications.some(application => application.roleId === selectedRole.id) && <p className="profile-empty">No one has applied for this role yet.</p>}
@@ -6686,17 +6731,17 @@ function ProjectsView({
           <Plus size={18} /> New project
         </button>
       </div>
-      <div className="stats-row">
+      <div className={`stats-row ${loading ? "is-loading" : ""}`} aria-busy={loading}>
         <div>
-          <strong>{String(owned.length).padStart(2, "0")}</strong>
+          <strong>{loading ? <span className="loading-stat-value" aria-label="Loading project count" /> : String(owned.length).padStart(2, "0")}</strong>
           <span>Your projects</span>
         </div>
         <div>
-          <strong>{involved.length}</strong>
+          <strong>{loading ? <span className="loading-stat-value" aria-label="Loading involvement count" /> : involved.length}</strong>
           <span>Involved</span>
         </div>
         <div>
-          <strong>{discover.length}</strong>
+          <strong>{loading ? <span className="loading-stat-value" aria-label="Loading public project count" /> : discover.length}</strong>
           <span>Public projects</span>
         </div>
       </div>
@@ -6756,10 +6801,7 @@ function ProjectsView({
       </div>
       {tab === "drafts" && <ContentDraftList kind="project" emptyMessage="No project drafts saved yet." onCountChange={setDraftCount} onResume={(draft) => onResumeDraft(draft as ContentDraft<ProjectDraftPayload>)} />}
       {loading && tab !== "drafts" && (
-        <div className="feed-context">
-          <Clock3 size={16} />
-          <span>Loading your project workspaces…</span>
-        </div>
+        <LoadingState label="Loading your project workspaces" count={2} />
       )}
       {!loading && tab !== "drafts" &&
         visible.map((record) => (
@@ -7237,7 +7279,7 @@ function NetworkView({
           <p>Explore the people, professions and skills connected to you.</p>
         </div>
         <div className="network-count">
-          <strong>{data.totals?.visible ?? peopleNodes.length}</strong>
+          <strong>{loading ? <span className="loading-stat-value" aria-label="Loading connection count" /> : data.totals?.visible ?? peopleNodes.length}</strong>
           <span>visible connections</span>
         </div>
       </div>
@@ -7451,7 +7493,10 @@ function NetworkView({
               </button>
             );
           })}
-          {(loading || focusLoading) && (
+          {loading && (
+            <LoadingState label="Mapping your network" variant="network" className="network-loading-state" />
+          )}
+          {!loading && focusLoading && (
             <div className="network-map-status">Mapping your network…</div>
           )}
           {!loading && !data.nodes.length && (
@@ -7692,6 +7737,8 @@ function MessagesView({
     [showChatSearch, setShowChatSearch] = useState(false),
     [showChatDetails, setShowChatDetails] = useState(false),
     [showAttachments, setShowAttachments] = useState(false),
+    [conversationsLoading, setConversationsLoading] = useState(true),
+    [messagesLoading, setMessagesLoading] = useState(false),
     [isRecording, setIsRecording] = useState(false),
     [recordingSeconds, setRecordingSeconds] = useState(0),
     [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null),
@@ -7721,18 +7768,25 @@ function MessagesView({
         ? "conversation-title--direct"
         : undefined;
   async function load() {
-    const response = await fetch("/api/conversations"),
-      data = await response
-        .json()
-        .catch(() => ({
-          conversations: [],
-          error: "Messages could not be loaded.",
-        }));
-    if (!response.ok)
-      setConversationError(data.error ?? "Messages could not be loaded.");
-    else {
-      setConversationError("");
-      setConversationsList(data.conversations ?? []);
+    setConversationsLoading(true);
+    try {
+      const response = await fetch("/api/conversations"),
+        data = await response
+          .json()
+          .catch(() => ({
+            conversations: [],
+            error: "Messages could not be loaded.",
+          }));
+      if (!response.ok)
+        setConversationError(data.error ?? "Messages could not be loaded.");
+      else {
+        setConversationError("");
+        setConversationsList(data.conversations ?? []);
+      }
+    } catch {
+      setConversationError("Messages could not be loaded. Check your connection and try again.");
+    } finally {
+      setConversationsLoading(false);
     }
   }
   useEffect(() => {
@@ -7762,6 +7816,10 @@ function MessagesView({
   }, [onUnreadCounts, selectedConversationId]);
   useEffect(() => {
     if (!selected) return;
+    let firstLoad = true;
+    let active = true;
+    setMessagesList([]);
+    setMessagesLoading(true);
     const run = () =>
       Promise.all([
         fetch(`/api/conversations/${selected.id}/messages`).then((r) =>
@@ -7771,16 +7829,22 @@ function MessagesView({
           r.ok ? r.json() : { people: [] },
         ),
       ]).then(([messageData, typingData]) => {
+        if (!active) return;
         setMessagesList(messageData.messages ?? []);
         setTypingNames(
           (typingData.people ?? []).map(
             (person: { name?: string | null }) => person.name || "Someone",
           ),
         );
+      }).catch(() => undefined).finally(() => {
+        if (active && firstLoad) {
+          firstLoad = false;
+          setMessagesLoading(false);
+        }
       });
     run();
     const timer = setInterval(run, 2500);
-    return () => clearInterval(timer);
+    return () => { active = false; clearInterval(timer); };
   }, [selected]);
   useEffect(() => {
     if (!selected || !draft.trim()) return;
@@ -8118,7 +8182,8 @@ function MessagesView({
         </div>
         <div className="chat-flow" role="log" aria-live="polite">
           <div className="chat-date">CONVERSATION</div>
-          {!messagesList.length && (
+          {messagesLoading && <LoadingState label="Loading conversation" variant="list" count={4} className="loading-chat" />}
+          {!messagesLoading && !messagesList.length && (
             <div className="chat-empty-state">
               <span>
                 <MessageCircle size={23} />
@@ -8130,7 +8195,7 @@ function MessagesView({
             </div>
           )}
           {chatQuery && !visibleMessages.length && <div className="chat-search-empty">No messages match “{chatQuery}”.</div>}
-          {visibleMessages.map((message) => isNudgeMessage(message) ? (
+          {!messagesLoading && visibleMessages.map((message) => isNudgeMessage(message) ? (
             <div className="chat-nudge-event" key={message.id} role="status">User has been nudged</div>
           ) : (
             <div className={`chat-message-row ${message.senderId === currentMember.id ? "mine" : "theirs"}`} key={message.id} tabIndex={message.status === "deleted" ? undefined : 0}>
@@ -8332,7 +8397,8 @@ function MessagesView({
         />
       </div>
       <div className="message-list">
-        {filtered.map((row) => (
+        {conversationsLoading && <LoadingState label="Loading conversations" variant="list" count={5} className="loading-conversations" />}
+        {!conversationsLoading && filtered.map((row) => (
           <article className={`message-list-row ${row.unreadCount ? "unread" : ""}`} key={row.id}>
           <button className="message-list-row-main" onClick={() => setSelected(row)}>
             <Avatar
@@ -8371,7 +8437,7 @@ function MessagesView({
           </div>
           </article>
         ))}
-        {!filtered.length && (
+        {!conversationsLoading && !filtered.length && (
           <div className="empty-meets">
             <MessageCircle size={20} />
             <strong>
@@ -9598,6 +9664,7 @@ function ProfileView({
   onResumePostDraft: (draft: ContentDraft<PostDraftPayload>) => void;
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
+    [profileLoading, setProfileLoading] = useState(true),
     [section, setSection] = useState<
       "profile" | "posts" | "projects" | "followers" | "following" | "media" | "likes" | "reposts" | "bookmarks"
     >("profile"),
@@ -9629,10 +9696,19 @@ function ProfileView({
     [busy, setBusy] = useState(false),
     [unfollowOpen, setUnfollowOpen] = useState(false);
   useEffect(() => {
-    if (!userId) return;
-    fetch(`/api/profiles/${userId}`, { cache: "no-store" })
+    if (!userId) {
+      setProfileLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    let active = true;
+    setProfileLoading(true);
+    fetch(`/api/profiles/${userId}`, { cache: "no-store", signal: controller.signal })
       .then((response) => (response.ok ? response.json() : null))
-      .then((data) => setProfile(data?.profile ?? null));
+      .then((data) => active && setProfile(data?.profile ?? null))
+      .catch(() => undefined)
+      .finally(() => active && setProfileLoading(false));
+    return () => { active = false; controller.abort(); };
   }, [userId]);
   useEffect(() => {
     if (!profile?.isCurrent) {
@@ -9732,6 +9808,7 @@ function ProfileView({
         }
       : member,
     skills = profile?.rankedSkills?.slice(0, 3) ?? [];
+  if (profileLoading) return <LoadingState label="Loading profile" count={2} />;
   return (
     <div className="subpage profile-page">
       {unfollowOpen && (
@@ -12431,7 +12508,8 @@ export default function HomePage() {
   const [peopleSuggestions, setPeopleSuggestions] = useState<
       PeopleSuggestionRecord[]
     >([]),
-    [peopleOpen, setPeopleOpen] = useState(false);
+    [peopleOpen, setPeopleOpen] = useState(false),
+    [peopleSuggestionsLoading, setPeopleSuggestionsLoading] = useState(true);
   const [contributionTarget, setContributionTarget] =
     useState<ContributionTarget | null>(null);
   const [currentMember, setCurrentMember] = useState<MemberPerson>({
@@ -12689,13 +12767,15 @@ export default function HomePage() {
     if (!wideRail.matches && !searchOpen && !peopleOpen) return;
     if (peopleSuggestionsLoaded.current) return;
     const controller = new AbortController();
+    setPeopleSuggestionsLoading(true);
     fetch("/api/people/suggestions?limit=3", { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : { suggestions: [] }))
       .then((data) => {
         peopleSuggestionsLoaded.current = true;
         setPeopleSuggestions(data.suggestions ?? []);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setPeopleSuggestionsLoading(false));
     return () => controller.abort();
   }, [authenticated, peopleOpen, searchOpen]);
   useEffect(() => {
@@ -12829,6 +12909,7 @@ export default function HomePage() {
       ? `You and ${item.name} are now mutually connected.`
       : `You’re now following ${item.name}.`);
   }
+  if (!sessionChecked) return <AppLoadingShell />;
   return (
     <div
       className={`app-shell ${view === "network" && !selectedProjectId ? "network-shell" : ""}`}
@@ -13039,7 +13120,10 @@ export default function HomePage() {
                 <span>PEOPLE TO KNOW</span>
                 <button onClick={() => setPeopleOpen(true)}>See all</button>
               </div>
-              {peopleSuggestions.map((item) => (
+              {peopleSuggestionsLoading && (
+                <LoadingState label="Loading people to know" variant="list" count={3} className="loading-rail-people" />
+              )}
+              {!peopleSuggestionsLoading && peopleSuggestions.map((item) => (
                 <div className="person-suggest" key={item.id}>
                   <button
                     className="suggested-person-profile"
@@ -13070,7 +13154,7 @@ export default function HomePage() {
                   </button>
                 </div>
               ))}
-              {!peopleSuggestions.length && (
+              {!peopleSuggestionsLoading && !peopleSuggestions.length && (
                 <p className="people-cold-start">
                   Useful live members will appear as the network grows.
                 </p>
