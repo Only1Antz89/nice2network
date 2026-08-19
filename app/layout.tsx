@@ -9,6 +9,7 @@ import SiteAnalytics from "./site-analytics";
 import AccessibilityController from "@/components/accessibility-controller";
 import CookieBanner from "@/components/cookie-banner";
 import DeploymentRefresh from "@/components/deployment-refresh";
+import TabletViewportController from "@/components/tablet-viewport-controller";
 import { getDeploymentVersion } from "@/lib/deployment-version";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -34,5 +35,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable}`}><AccessibilityController/><DeploymentRefresh initialVersion={getDeploymentVersion()}/>{children}<CookieBanner/><SiteAnalytics/></body></html>;
+  return <html lang="en"><body className={`${geistSans.variable} ${geistMono.variable}`}><AccessibilityController/><TabletViewportController/><DeploymentRefresh initialVersion={getDeploymentVersion()}/>{children}<CookieBanner/><SiteAnalytics/></body></html>;
 }

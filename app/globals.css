@@ -1423,3 +1423,237 @@ html[data-colour-theme="dark"] .admin-shell{
   font-size:9px;
   font-weight:800;
 }
+
+/* TABLET-ONLY START
+   This layer is enabled exclusively by TabletViewportController after positive
+   iPad/iPadOS or Android-tablet detection. Phone and desktop rules stay intact. */
+html[data-device-class="tablet"] body{
+  --tablet-control-size:44px;
+  --tablet-body-size:14px;
+  --tablet-support-size:12px;
+  --tablet-input-size:16px;
+}
+html[data-device-class="tablet"] :is(p,label){font-size:var(--tablet-body-size)}
+html[data-device-class="tablet"] small{font-size:var(--tablet-support-size)}
+html[data-device-class="tablet"] :is(
+  .eyebrow,.step-count,.settings-label,.field-requirement,.field-limit,
+  .team-role,.dept,.project-detail-meta span,.profile-username,
+  .blueprint-roadmap>header button,.covered-contributions>span,
+  .covered-contributions b,.blueprint-fallback strong,.blueprint-fallback small
+){font-size:var(--tablet-support-size)}
+html[data-device-class="tablet"] :is(button,input,select,textarea,[contenteditable="true"]){
+  touch-action:manipulation;
+}
+html[data-device-class="tablet"] :is(button,[role="button"]):not(.toggle){
+  min-height:var(--tablet-control-size);
+  font-size:14px;
+}
+html[data-device-class="tablet"] :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,textarea,[contenteditable="true"]
+){
+  min-height:var(--tablet-control-size);
+  font-size:var(--tablet-input-size)!important;
+}
+html[data-device-class="tablet"] :is(input[type="checkbox"],input[type="radio"]){
+  width:22px;
+  height:22px;
+  min-width:22px;
+}
+html[data-device-class="tablet"] .icon-button{
+  width:var(--tablet-control-size);
+  height:var(--tablet-control-size);
+  min-width:var(--tablet-control-size);
+}
+html[data-device-class="tablet"] :is(
+  .app-shell,.main-content,.content-column,.subpage,.modal-content,
+  .field-row>*,.blueprint-roadmap>article>div,.settings-form,
+  .conversation-page,.message-list,.project-detail-grid>*
+){min-width:0}
+html[data-device-class="tablet"] :is(
+  .app-shell,.main-content,.content-column,.subpage,.modal-content,
+  .settings-form,.conversation-page,.project-detail
+){max-width:100%}
+html[data-device-class="tablet"] :is(img,video,canvas,svg){max-width:100%}
+
+html[data-device-class="tablet"] .modal-backdrop{
+  inset:auto 0 auto;
+  top:var(--tablet-visual-viewport-offset-top,0px);
+  width:100%;
+  height:var(--tablet-visual-viewport-height,100dvh);
+  min-height:0;
+  padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
+  overflow:hidden;
+  align-items:center;
+}
+html[data-device-class="tablet"] .modal-backdrop>[role="dialog"]{
+  max-height:calc(var(--tablet-visual-viewport-height,100dvh) - 24px);
+}
+html[data-device-class="tablet"] .project-modal{
+  width:min(860px,calc(100vw - 24px));
+  max-width:100%;
+  max-height:calc(var(--tablet-visual-viewport-height,100dvh) - 24px);
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
+  overflow:hidden;
+}
+html[data-device-class="tablet"] .project-modal .modal-head{
+  position:relative;
+  z-index:8;
+  min-height:58px;
+  height:auto;
+  background:var(--paper);
+  font-size:14px;
+}
+html[data-device-class="tablet"] .project-modal .modal-content{
+  min-height:0;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-gutter:stable;
+  scroll-padding-block:20px calc(104px + env(safe-area-inset-bottom));
+  padding:clamp(24px,4vw,38px);
+}
+html[data-device-class="tablet"] .project-modal .modal-content :is(
+  input,select,textarea,[contenteditable="true"]
+){scroll-margin-block:24px 112px}
+html[data-device-class="tablet"] .project-plan-button{
+  position:sticky;
+  z-index:7;
+  bottom:0;
+  min-height:52px;
+  margin-top:16px;
+  box-shadow:0 -12px 24px var(--paper);
+}
+html[data-device-class="tablet"] :is(.project-wizard-actions,.similar-project-actions){
+  position:sticky;
+  z-index:7;
+  bottom:0;
+  margin-top:18px;
+  padding:14px 0 max(4px,env(safe-area-inset-bottom));
+  background:var(--paper);
+  box-shadow:0 -12px 24px var(--paper);
+}
+html[data-device-class="tablet"] .blueprint-roadmap{gap:12px}
+html[data-device-class="tablet"] .blueprint-roadmap>article{
+  grid-template-columns:44px minmax(0,1fr);
+  gap:12px;
+  padding:14px;
+}
+html[data-device-class="tablet"] .blueprint-roadmap>article>b{
+  width:36px;
+  height:36px;
+  font-size:12px;
+}
+html[data-device-class="tablet"] .blueprint-roadmap textarea{
+  height:82px;
+  min-height:82px;
+}
+html[data-device-class="tablet"] .blueprint-roadmap article>div>div{
+  grid-template-columns:minmax(112px,.7fr) minmax(160px,1.3fr) repeat(3,44px);
+  gap:8px;
+}
+html[data-device-class="tablet"] .blueprint-roadmap article button{
+  width:44px;
+  min-width:44px;
+  min-height:44px;
+}
+html[data-device-class="tablet"] :is(
+  .remote-fallback,.blueprint-fallback,.covered-contributions,
+  .settings-row,.preference-row,.select-setting,.message-list>button,
+  .chat-message-row,.project-card,.timeline-post
+){font-size:var(--tablet-body-size)}
+html[data-device-class="tablet"] :is(
+  .remote-fallback,.blueprint-fallback,.settings-row,.preference-row,
+  .select-setting,.message-list>button
+){min-height:56px}
+
+@media(orientation:portrait){
+  html[data-device-class="tablet"] .app-shell{display:block}
+  html[data-device-class="tablet"] .right-rail{display:none}
+  html[data-device-class="tablet"] .sidebar{
+    position:fixed;
+    inset:0 auto 0 0;
+    z-index:40;
+    width:min(270px,calc(100vw - 64px));
+    height:100dvh;
+    transform:translateX(-100%);
+    visibility:hidden;
+    pointer-events:none;
+    box-shadow:10px 0 40px rgba(0,0,0,.15);
+  }
+  html[data-device-class="tablet"] .sidebar.open{
+    transform:translateX(0);
+    visibility:visible;
+    pointer-events:auto;
+  }
+  html[data-device-class="tablet"] .main-content{border:0;min-width:0}
+  html[data-device-class="tablet"] .content-column{
+    width:100%;
+    max-width:820px;
+    padding:max(24px,env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) calc(94px + env(safe-area-inset-bottom)) max(24px,env(safe-area-inset-left));
+  }
+  html[data-device-class="tablet"] .mobile-topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:28px;
+  }
+  html[data-device-class="tablet"] .mobile-topbar .logo>span:last-child{display:inline}
+  html[data-device-class="tablet"] .mobile-menu{
+    display:grid;
+    place-items:center;
+    position:fixed;
+    left:max(18px,env(safe-area-inset-left));
+    bottom:calc(86px + env(safe-area-inset-bottom));
+    z-index:41;
+    width:48px;
+    height:48px;
+  }
+  html[data-device-class="tablet"] .mobile-nav{
+    display:grid;
+    grid-auto-flow:column;
+    grid-auto-columns:minmax(0,1fr);
+    position:fixed;
+    z-index:25;
+    inset:auto 0 0;
+    min-height:72px;
+    height:auto;
+    padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  html[data-device-class="tablet"] .mobile-nav button{
+    min-width:0;
+    min-height:72px;
+    font-size:12px;
+  }
+  html[data-device-class="tablet"] .field-row{grid-template-columns:minmax(0,1fr)}
+  html[data-device-class="tablet"] .project-owner-slots{grid-template-columns:1fr}
+}
+
+@media(orientation:landscape){
+  html[data-device-class="tablet"] .app-shell{
+    display:grid;
+    grid-template-columns:minmax(200px,220px) minmax(0,860px);
+    justify-content:center;
+  }
+  html[data-device-class="tablet"] .right-rail{display:none}
+  html[data-device-class="tablet"] .sidebar{
+    position:sticky;
+    inset:0 auto auto;
+    width:auto;
+    height:100dvh;
+    transform:none;
+    visibility:visible;
+    pointer-events:auto;
+    box-shadow:none;
+  }
+  html[data-device-class="tablet"] .main-content{min-width:0;border-right:0}
+  html[data-device-class="tablet"] .content-column{
+    width:100%;
+    max-width:820px;
+    padding:38px clamp(24px,4vw,42px) 90px;
+  }
+  html[data-device-class="tablet"] :is(.mobile-topbar,.mobile-menu,.mobile-nav){display:none}
+}
+/* TABLET-ONLY END */

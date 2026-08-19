@@ -12,9 +12,11 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile-chromium", use: { ...devices["Pixel 7"] } },
-    { name: "mobile-webkit", use: { ...devices["iPhone 15"] } },
+    { name: "desktop-chromium", testIgnore: /tablet-layout\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
+    { name: "mobile-chromium", testIgnore: /tablet-layout\.spec\.ts/, use: { ...devices["Pixel 7"] } },
+    { name: "mobile-webkit", testIgnore: /tablet-layout\.spec\.ts/, use: { ...devices["iPhone 15"] } },
+    { name: "tablet-chromium", testMatch: /tablet-layout\.spec\.ts/, use: { ...devices["Galaxy Tab S9"] } },
+    { name: "tablet-webkit", testMatch: /tablet-layout\.spec\.ts/, use: { ...devices["iPad Pro 11"] } },
   ],
   webServer: {
     command: "npm run start -- --hostname 127.0.0.1 --port 3100",

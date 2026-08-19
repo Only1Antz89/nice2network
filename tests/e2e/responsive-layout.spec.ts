@@ -31,11 +31,16 @@ test("compact navigation stays within a phone viewport", async ({ page }) => {
 
   const navigation = page.getByRole("navigation", { name: "Mobile navigation" });
   await expect(navigation).toBeVisible();
-  await expect(navigation.locator("button")).toHaveCount(5);
+  await expect(navigation.locator("button")).toHaveCount(4);
 
   const bounds = await navigation.locator("button").evaluateAll((buttons) =>
     buttons.map((button) => button.getBoundingClientRect()).map(({ left, right, width }) => ({ left, right, width })),
   );
 
   expect(bounds.every(({ left, right, width }) => left >= 0 && right <= 320 && width > 0)).toBe(true);
+});
+
+test("phone and desktop profiles do not enable the tablet presentation layer", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("html")).not.toHaveAttribute("data-device-class", "tablet");
 });
