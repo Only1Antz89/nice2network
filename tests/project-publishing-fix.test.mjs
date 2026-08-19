@@ -26,5 +26,7 @@ test("approval persists fallback atomically before recommendations are recompute
   assert.match(service, /db\.transaction/);
   assert.match(service, /allowRemoteFallback: input\.allowRemoteFallback/);
   assert.ok(service.indexOf("allowRemoteFallback: input.allowRemoteFallback") < service.indexOf("recomputeProjectRecommendations(input.projectId)"));
+  assert.match(service, /Promise\.allSettled\(\[/);
+  assert.match(route, /after\(\(\) => audit/);
   for (const source of [schema, drafts, direct]) assert.match(source, /allowRemoteFallback:[^\n]*default\(false\)/);
 });

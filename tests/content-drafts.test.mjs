@@ -35,9 +35,9 @@ test("post and project publication consume only owned drafts", async () => {
   assert.match(service, /tx\.delete\(contentDrafts\)/);
 });
 
-test("creation UI autosaves, resumes, and exposes contextual draft lists", async () => {
-  const [page, hook, buffer, styles] = await Promise.all([
-    read("app/page.tsx"), read("lib/use-content-draft.ts"), read("lib/draft-buffer.ts"), read("app/globals.css"),
+test("creation UI uses explicit server drafts without a persistent browser cache", async () => {
+  const [page, hook, styles] = await Promise.all([
+    read("app/page.tsx"), read("lib/use-content-draft.ts"), read("app/globals.css"),
   ]);
   assert.match(page, /kind: "project", initialDraft, payload: projectDraftPayload/);
   assert.match(page, /kind: "post", initialDraft, payload: postDraftPayload/);
@@ -45,10 +45,11 @@ test("creation UI autosaves, resumes, and exposes contextual draft lists", async
   assert.match(page, /<ContentDraftList kind="project"/);
   assert.match(page, /Project saved to drafts\./);
   assert.match(page, /Post saved to drafts\./);
-  assert.match(hook, /800/);
-  assert.match(hook, /pagehide/);
-  assert.match(hook, /keepalive: true/);
-  assert.match(buffer, /indexedDB\.open/);
+  assert.match(hook, /export function useContentDraft/);
+  assert.match(hook, /const discard = useCallback/);
+  assert.doesNotMatch(hook, /indexedDB|pagehide|visibilitychange|setTimeout/);
+  assert.doesNotMatch(page, /listBufferedDrafts|clearBufferedDraft|draftSummary/);
+  assert.match(page, /Could not remove this empty post draft/);
   assert.match(styles, /\.content-draft-list/);
   assert.match(styles, /\.draft-save-status/);
 });

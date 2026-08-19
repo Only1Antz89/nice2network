@@ -22,7 +22,8 @@ test("project creation separates details, planning, ownership, and recruitment i
 
 test("project planning call to action is encouraging and dark-mode safe", () => {
   assert.match(page, /Build my project plan/);
-  assert.match(page, /Use 10–500 characters\./);
+  assert.doesNotMatch(page, /Use 10–500 characters\./);
+  assert.match(page, /Minimum 10 characters required\./);
   assert.match(page, /disabled=\{busy\}/);
   assert.match(page, /We couldn't build your project plan\. Check your connection and try again\./);
   assert.doesNotMatch(page, /Find the gaps/);
@@ -43,6 +44,8 @@ test("details page orders image before summary and uses icon cards for stage and
   assert.match(page, /\["idea", "Idea", Lightbulb\]/);
   assert.match(page, /\["remote", "Remote", Globe2\]/);
   assert.match(page, /project-summary-industry/);
+  assert.match(styles, /project-summary-industry \.career-industry-control>input\{background:#11110f!important;color:#fff!important/);
+  assert.match(styles, /project-owner-slot\.fixed\{grid-column:1\/-1/);
   assert.match(industryPicker, /aria-autocomplete="list"/);
   assert.doesNotMatch(industryPicker, /career-industry-prediction/);
 });

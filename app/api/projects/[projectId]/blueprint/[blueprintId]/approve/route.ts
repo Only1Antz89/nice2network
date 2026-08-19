@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
     const result = await approveProjectBlueprint({ projectId, blueprintId, userId: member.id, roles: input.roles, milestones:input.milestones, visibility: input.visibility, allowRemoteFallback: input.allowRemoteFallback, coOwnerIds: input.coOwnerIds, draftId: input.draftId });
     after(() => ensureProjectEmbedding(projectId).catch(() => undefined));
     after(() => createNotifications(result.coOwnerInvitations.map(invitation => ({ userId: invitation.inviteeId, actorId: member.id, type: "invitation", title: `${member.name ?? "An n2 member"} invited you to co-own a project`, body: "Accept the invitation to receive co-owner permissions.", entityType: "invitation", entityId: invitation.invitationId, href: `/invite/${invitation.token}` }))).catch(() => undefined));
-    await audit(member.id, "project.blueprint_approved", "project", projectId, { blueprintId, roleCount: input.roles.length });
+    after(() => audit(member.id, "project.blueprint_approved", "project", projectId, { blueprintId, roleCount: input.roles.length }).catch(() => undefined));
     return NextResponse.json({ success: true, projectId, coOwnerInvitationCount: result.coOwnerInvitations.length });
   } catch (error) { return apiError(error); }
 }

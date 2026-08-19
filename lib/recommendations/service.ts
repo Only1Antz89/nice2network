@@ -126,8 +126,10 @@ export async function approveProjectBlueprint(input: { projectId: string; bluepr
     await tx.update(projects).set({ status: "active", visibility: input.visibility, allowRemoteFallback: input.allowRemoteFallback, updatedAt: new Date() }).where(eq(projects.id, input.projectId));
     if (input.draftId) await tx.delete(contentDrafts).where(and(eq(contentDrafts.id, input.draftId), eq(contentDrafts.ownerId, input.userId), eq(contentDrafts.kind, "project")));
   });
-  await recomputeProjectRecommendations(input.projectId);
-  await trackProductEvent({ actorId: input.userId, event: "blueprint_approved", entityType: "project", entityId: input.projectId, properties: { roleCount: roles.length } });
+  await Promise.allSettled([
+    recomputeProjectRecommendations(input.projectId),
+    trackProductEvent({ actorId: input.userId, event: "blueprint_approved", entityType: "project", entityId: input.projectId, properties: { roleCount: roles.length } }),
+  ]);
   return { coOwnerInvitations };
 }
 

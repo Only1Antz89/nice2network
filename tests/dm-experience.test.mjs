@@ -51,6 +51,13 @@ test("message hover controls and participant activity stay attached to chat mess
   assert.match(styles, /\.dm-attachment-menu>\.dm-nudge-action\{[^}]*color:var\(--ink\)!important/);
 });
 
+test("group and project chat messages identify their senders", () => {
+  assert.match(page, /const showsMessageSenders = Boolean\(selected\.projectId\) \|\| selected\.members\.length > 2/);
+  assert.match(page, /showsMessageSenders && \([\s\S]*?className="message-sender"[\s\S]*?message\.senderImage[\s\S]*?message\.senderName/);
+  assert.match(styles, /\.message-sender\{[^}]*display:flex;[^}]*align-items:center/);
+  assert.match(styles, /\.chat-message-row\.mine \.message-sender\{[^}]*flex-direction:row-reverse/);
+});
+
 test("the edit-message field uses a neutral focus treatment", () => {
   assert.match(styles, /\.action-dialog \.n2-editor-fields textarea:focus[\s\S]*?outline:none!important;[\s\S]*?box-shadow:none!important/);
 });

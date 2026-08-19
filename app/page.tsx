@@ -32,7 +32,9 @@ import {
   Play,
   LogOut,
   MapPin,
+  Maximize2,
   Minus,
+  Minimize2,
   Mic,
   Menu,
   MessageCircle,
@@ -92,9 +94,8 @@ import { sanitizeRichText } from "@/lib/rich-text";
 import { layoutFocusedNetwork } from "@/lib/network-focus-layout";
 import { mergeNewestTimeline } from "@/lib/newest-timeline";
 import { signalDeploymentNavigation } from "@/lib/deployment-navigation";
-import { draftSummary, type ContentDraft, type DraftSummary, type PostDraftPayload, type ProjectDraftPayload } from "@/lib/content-drafts";
-import { clearBufferedDraft, listBufferedDrafts } from "@/lib/draft-buffer";
-import { DraftSaveIndicator, useContentDraftAutosave } from "@/lib/use-content-draft";
+import { type ContentDraft, type DraftSummary, type PostDraftPayload, type ProjectDraftPayload } from "@/lib/content-drafts";
+import { DraftSaveIndicator, useContentDraft } from "@/lib/use-content-draft";
 import {
   ACCESSIBILITY_STORAGE_KEY,
   ACCESSIBILITY_EVENT,
@@ -2199,9 +2200,8 @@ function CreateProject({
     roadmap, roles, selectedCoOwners, similarProjects,
   }), [form, locationQuery, step, projectId, blueprint?.id, initial?.blueprintId, roadmap, roles, selectedCoOwners, similarProjects]);
   const meaningfulDraft = Boolean(form.title.trim() || form.summary.trim() || form.industry.trim() || form.imageUrl || projectId);
-  const { draftId, status: draftStatus, saveNow: saveProjectDraft, forget: forgetProjectDraft } = useContentDraftAutosave({
-    kind: "project", initialDraft, payload: projectDraftPayload, meaningful: meaningfulDraft,
-    onRecover: recovered => { setForm(recovered.form); setLocationQuery(recovered.locationQuery); setStep(recovered.step as 0 | 1 | 2 | 3 | 4); setProjectId(recovered.projectId ?? ""); setRoadmap(recovered.roadmap); setRoles(recovered.roles); setSelectedCoOwners(recovered.selectedCoOwners); setSimilarProjects(recovered.similarProjects); },
+  const { draftId, status: draftStatus, saveNow: saveProjectDraft, discard: discardProjectDraft, forget: forgetProjectDraft } = useContentDraft({
+    kind: "project", initialDraft, payload: projectDraftPayload,
   });
   useEffect(() => {
     if (!initial?.projectId || blueprint) return;
@@ -2215,7 +2215,14 @@ function CreateProject({
       }).catch(() => undefined);
   }, [initial, blueprint, currentMember.id]);
   async function closeProjectComposer() {
-    if (meaningfulDraft) { await saveProjectDraft(); onToast("Project saved to drafts."); }
+    if (meaningfulDraft) {
+      const savedId = await saveProjectDraft();
+      if (!savedId) { setError("Could not save this project draft. Please try again."); return; }
+      onToast("Project saved to drafts.");
+    } else if (draftId && !await discardProjectDraft()) {
+      setError("Could not remove this empty project draft. Please try again.");
+      return;
+    }
     onClose();
   }
   useEffect(() => {
@@ -2263,7 +2270,6 @@ function CreateProject({
     setBusy(true);
     setError("");
     try {
-      await saveProjectDraft();
       const draftResponse = await fetch("/api/projects/drafts", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -2307,7 +2313,6 @@ function CreateProject({
     if (!blueprint || !projectId) return;
     setBusy(true);
     setError("");
-    const publishingDraftId = await saveProjectDraft();
     const response = await fetch(
       `/api/projects/${projectId}/blueprint/${blueprint.id}/approve`,
       {
@@ -2319,7 +2324,7 @@ function CreateProject({
           visibility: "network",
           allowRemoteFallback: form.allowRemoteFallback,
           coOwnerIds: selectedCoOwners.map((person) => person.id),
-          draftId: publishingDraftId || draftId || undefined,
+          draftId: draftId || undefined,
         }),
       },
     );
@@ -2482,8 +2487,8 @@ function CreateProject({
                     : "Similar projects"}
           </span>
           <span className="step-count">{step < 4 ? `${step + 1}/4` : "Review"}</span>
-          <DraftSaveIndicator status={draftStatus} />
         </div>
+        {draftStatus !== "idle" && <div className="project-draft-status"><DraftSaveIndicator status={draftStatus} /></div>}
         {step === 0 ? (
           <div className="modal-content">
             <span className="eyebrow">START WITH THE SPARK</span>
@@ -2524,10 +2529,9 @@ function CreateProject({
                   onChange={(e) => setForm((current) => ({ ...current, summary: e.target.value }))}
                   minLength={10}
                   maxLength={500}
-                  aria-describedby="project-summary-requirement project-summary-hint"
+                  aria-describedby="project-summary-minimum project-summary-hint"
                 />
                 <div className="project-summary-footer">
-                  <small id="project-summary-requirement" className="field-requirement">Use 10–500 characters.</small>
                   <label htmlFor="project-industry" className="project-summary-industry">
                     <span>Industry</span>
                     <CareerIndustryInput
@@ -2546,6 +2550,7 @@ function CreateProject({
                   </small>
                 </div>
               </div>
+              <small id="project-summary-minimum" className="project-summary-minimum">Minimum 10 characters required.</small>
             </div>
             <fieldset className="project-icon-field">
               <legend>Stage</legend>
@@ -3481,6 +3486,8 @@ function PostComposer({
       initialPost?.linkedProjects.map((project) => project.id) ?? initialDraft?.payload.linkedProjectIds ?? [],
     ),
     [showTools, setShowTools] = useState(false),
+    [composerExpanded, setComposerExpanded] = useState(false),
+    [composerFullscreen, setComposerFullscreen] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -3491,12 +3498,18 @@ function PostComposer({
   ));
   const postDraftPayload = useMemo<PostDraftPayload>(() => ({ body, linkedProjectIds: linked, attachment, visibility: initialDraft?.payload.visibility ?? "network" }), [body, linked, attachment, initialDraft?.payload.visibility]);
   const meaningfulDraft = !editing && Boolean(body.trim() || attachment || linked.length);
-  const { status: draftStatus, saveNow: savePostDraft, forget: forgetPostDraft } = useContentDraftAutosave({
-    kind: "post", initialDraft, payload: postDraftPayload, meaningful: meaningfulDraft,
-    onRecover: recovered => { setBody(recovered.body); setLinked(recovered.linkedProjectIds); setAttachment(recovered.attachment); },
+  const { draftId, status: draftStatus, saveNow: savePostDraft, discard: discardPostDraft, forget: forgetPostDraft } = useContentDraft({
+    kind: "post", initialDraft, payload: postDraftPayload,
   });
   async function closePostComposer() {
-    if (meaningfulDraft) { await savePostDraft(); onToast("Post saved to drafts."); }
+    if (meaningfulDraft) {
+      const savedId = await savePostDraft();
+      if (!savedId) { setError("Could not save this post draft. Please try again."); return; }
+      onToast("Post saved to drafts.");
+    } else if (draftId && !await discardPostDraft()) {
+      setError("Could not remove this empty post draft. Please try again.");
+      return;
+    }
     onClose();
   }
   useEffect(() => {
@@ -3542,7 +3555,18 @@ function PostComposer({
     if (!bodyRef.current) return;
     bodyRef.current.style.height = "auto";
     bodyRef.current.style.height = `${Math.min(132, Math.max(24, bodyRef.current.scrollHeight))}px`;
-  }, [body]);
+  }, [body, composerExpanded, composerFullscreen]);
+  useEffect(() => {
+    if (!composerFullscreen) return;
+    const leaveFullscreen = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setComposerFullscreen(false);
+      requestAnimationFrame(() => bodyRef.current?.focus());
+    };
+    window.addEventListener("keydown", leaveFullscreen);
+    return () => window.removeEventListener("keydown", leaveFullscreen);
+  }, [composerFullscreen]);
   const projectsList: PostTagProject[] = [
     ...ownProjects,
     ...projectDetails.filter((project) => !ownProjects.some((own) => own.id === project.id)),
@@ -3642,7 +3666,6 @@ function PostComposer({
     }
     setBusy(true);
     setError("");
-    const publishingDraftId = editing ? "" : await savePostDraft();
     const response = await fetch(
       editing ? `/api/posts/${initialPost!.id}` : "/api/posts",
       {
@@ -3654,7 +3677,7 @@ function PostComposer({
           attachmentType: attachment?.type ?? null,
           attachmentUrl: attachment?.url ?? null,
           videoUrl: firstUrl(body),
-          draftId: publishingDraftId || undefined,
+          draftId: editing ? undefined : draftId || undefined,
         }),
       },
     );
@@ -3681,7 +3704,10 @@ function PostComposer({
       role="presentation"
       onMouseDown={(event) => { if (event.target === event.currentTarget) void closePostComposer(); }}
     >
-      <form className="post-composer-modal" onSubmit={submit}>
+      <form
+        className={`post-composer-modal ${composerExpanded ? "composer-active" : ""} ${composerFullscreen ? "composer-fullscreen" : ""}`}
+        onSubmit={submit}
+      >
         <header>
           <div>
             <span className="eyebrow">
@@ -3741,15 +3767,30 @@ function PostComposer({
           <div className="post-composer-main">
             <textarea
               ref={bodyRef}
-              autoFocus
               rows={1}
               value={body}
+              onFocus={() => setComposerExpanded(true)}
               onChange={(event) => updateBody(event.target.value)}
               placeholder="Share a post or idea… Use @ for people and # for projects"
               maxLength={1000}
               aria-label="Post text"
               aria-autocomplete="list"
             />
+            {composerExpanded && (
+              <button
+                type="button"
+                className="post-composer-expand-button"
+                aria-label={composerFullscreen ? "Exit full screen editor" : "Open full screen editor"}
+                aria-pressed={composerFullscreen}
+                title={composerFullscreen ? "Exit full screen" : "Write in full screen"}
+                onClick={() => {
+                  setComposerFullscreen((value) => !value);
+                  requestAnimationFrame(() => bodyRef.current?.focus());
+                }}
+              >
+                {composerFullscreen ? <Minimize2 size={17}/> : <Maximize2 size={17}/>}
+              </button>
+            )}
           </div>
           <button
             className="post-circle-button post-submit-button"
@@ -3797,20 +3838,12 @@ function PostComposer({
 }
 
 function ContentDraftList({ kind, onResume, compact = false }: { kind: "project" | "post"; onResume: (draft: ContentDraft) => void; compact?: boolean }) {
-  const [drafts, setDrafts] = useState<DraftSummary[]>([]), [localPayloads, setLocalPayloads] = useState<Record<string, ProjectDraftPayload | PostDraftPayload>>({}), [expanded, setExpanded] = useState(false), [busyId, setBusyId] = useState(""), [deleteTarget, setDeleteTarget] = useState<DraftSummary | null>(null);
+  const [drafts, setDrafts] = useState<DraftSummary[]>([]), [expanded, setExpanded] = useState(false), [busyId, setBusyId] = useState(""), [deleteTarget, setDeleteTarget] = useState<DraftSummary | null>(null);
   const load = useCallback(() => {
-    Promise.all([
-      fetch(`/api/drafts?kind=${kind}`, { cache: "no-store" }).then(response => response.ok ? response.json() : { drafts: [] }),
-      listBufferedDrafts(kind),
-    ]).then(([data, buffered]) => {
-      const serverDrafts = (data.drafts ?? []) as DraftSummary[], unsynced = buffered.filter(item => !item.draftId), payloads: Record<string, ProjectDraftPayload | PostDraftPayload> = {};
-      const localSummaries = unsynced.map(item => {
-        const id = `local:${item.key}`, payload = item.payload as ProjectDraftPayload | PostDraftPayload, summary = draftSummary(kind, payload);
-        payloads[id] = payload;
-        return { id, kind, projectId: kind === "project" ? (payload as ProjectDraftPayload).projectId : null, createdAt: new Date(item.updatedAt).toISOString(), updatedAt: new Date(item.updatedAt).toISOString(), ...summary } satisfies DraftSummary;
-      });
-      setLocalPayloads(payloads); setDrafts([...localSummaries, ...serverDrafts].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
-    }).catch(() => undefined);
+    fetch(`/api/drafts?kind=${kind}`, { cache: "no-store" })
+      .then(response => response.ok ? response.json() : { drafts: [] })
+      .then(data => setDrafts((data.drafts ?? []) as DraftSummary[]))
+      .catch(() => undefined);
   }, [kind]);
   useEffect(() => {
     load();
@@ -3819,24 +3852,16 @@ function ContentDraftList({ kind, onResume, compact = false }: { kind: "project"
     return () => window.removeEventListener("n2:drafts-changed", changed);
   }, [kind, load]);
   async function resume(id: string) {
-    if (id.startsWith("local:")) {
-      const payload = localPayloads[id];
-      if (payload) onResume({ ...drafts.find(draft => draft.id === id)!, payload });
-      return;
-    }
     setBusyId(id);
     const response = await fetch(`/api/drafts/${id}`, { cache: "no-store" }), result = await response.json().catch(() => ({}));
     setBusyId("");
     if (response.ok && result.draft) onResume(result.draft);
   }
   async function remove(draft: DraftSummary) {
-    if (draft.id.startsWith("local:")) {
-      await clearBufferedDraft(draft.id.slice(6)); setDrafts(rows => rows.filter(row => row.id !== draft.id)); return;
-    }
     setBusyId(draft.id);
     const response = await fetch(`/api/drafts/${draft.id}`, { method: "DELETE" });
     setBusyId("");
-    if (response.ok) { await clearBufferedDraft(`n2-${kind}-${draft.id}`); setDrafts(rows => rows.filter(row => row.id !== draft.id)); window.dispatchEvent(new CustomEvent("n2:drafts-changed", { detail: { kind } })); }
+    if (response.ok) { setDrafts(rows => rows.filter(row => row.id !== draft.id)); window.dispatchEvent(new CustomEvent("n2:drafts-changed", { detail: { kind } })); }
   }
   if (!drafts.length) return null;
   const visible = compact && !expanded ? drafts.slice(0, 3) : drafts;
@@ -7990,6 +8015,7 @@ function MessagesView({
     return response.ok;
   }
   if (selected) {
+    const showsMessageSenders = Boolean(selected.projectId) || selected.members.length > 2;
     const speakingMessage = messagesList.find((message) => message.id === speakingMessageId);
     const status = speakingMessage
       ? `${speakingMessage.senderId === currentMember.id ? "You are" : `${speakingMessage.senderName ?? "Someone"} is`} speaking…`
@@ -8057,6 +8083,20 @@ function MessagesView({
             <div className="chat-nudge-event" key={message.id} role="status">User has been nudged</div>
           ) : (
             <div className={`chat-message-row ${message.senderId === currentMember.id ? "mine" : "theirs"}`} key={message.id} tabIndex={message.status === "deleted" ? undefined : 0}>
+            {showsMessageSenders && (
+              <div className="message-sender">
+                <Avatar
+                  person={{
+                    name: message.senderName ?? "n2 member",
+                    role: "Message sender",
+                    img: message.senderImage,
+                  }}
+                  size="sm"
+                  expandable={false}
+                />
+                <strong>{message.senderName ?? "n2 member"}</strong>
+              </div>
+            )}
             <div
               className={`bubble ${message.senderId === currentMember.id ? "mine" : "theirs"} ${message.status === "deleted" ? "deleted" : ""}`}
             >

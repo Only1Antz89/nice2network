@@ -17,9 +17,14 @@ test("post composer uses the compact message-style dock and 1000 character limit
   assert.match(page, /aria-label="Add to post"/);
   assert.match(page, /className="post-attachment-menu"/);
   assert.match(page, /className="post-circle-button post-submit-button"/);
+  assert.match(page, /onFocus=\{\(\) => setComposerExpanded\(true\)\}/);
+  assert.match(page, /className="post-composer-expand-button"/);
+  assert.match(page, /composerFullscreen \? <Minimize2 size=\{17\}\/> : <Maximize2 size=\{17\}\/>/);
   assert.match(page, /maxLength=\{1000\}/);
   assert.match(page, /body\.length\}\/1000/);
   assert.match(styles, /conic-gradient\(#11110f var\(--post-character-fill\),#d4d4cf 0\)/);
+  assert.match(styles, /\.post-composer-modal\.composer-active \.post-composer-main\{min-height:156px/);
+  assert.match(styles, /\.post-composer-modal\.composer-fullscreen\{position:fixed;inset:0;width:100vw;height:100dvh/);
   assert.match(createRoute, /body: z\.string\(\)\.trim\(\)\.min\(1\)\.max\(1000\)/);
   assert.match(updateRoute, /body: z\.string\(\)\.trim\(\)\.min\(1\)\.max\(1000\)\.optional\(\)/);
   assert.match(drafts, /body: z\.string\(\)\.max\(3000\)/);

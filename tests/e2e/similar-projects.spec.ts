@@ -66,7 +66,7 @@ test("pre-publish similarity is default-on, owner-only, role-aware and immediate
     await page.getByLabel("Industry").fill("Community services");
     await page.getByLabel("Location").fill("London");
     await page.getByRole("option").first().click();
-    await expect(page.getByText("Use 10–500 characters.")).toBeVisible();
+    await expect(page.getByText("Minimum 10 characters required.")).toBeVisible();
     await page.getByLabel("Project summary").fill("Too short");
     await expect(page.getByRole("button", { name: "Build my project plan" })).toBeEnabled();
     await page.getByRole("button", { name: "Build my project plan" }).click();
