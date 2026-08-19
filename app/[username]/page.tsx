@@ -79,13 +79,14 @@ function ActivityPostCard({ post, action, profileId }: { post: ProfilePostActivi
   </article>;
 }
 
-export default async function PublicProfilePage({ params, searchParams }: { params: Promise<{ username: string }>; searchParams: Promise<{ tab?: string }> }) {
+export default async function PublicProfilePage({ params, searchParams }: { params: Promise<{ username: string }>; searchParams: Promise<{ tab?: string; projectView?: string }> }) {
   const { username } = await params;
-  const { tab } = await searchParams;
+  const { tab, projectView: requestedProjectView } = await searchParams;
   const result = await getSharedProfile(username);
   if (!result) notFound();
   const { profile, posts, projects: publicProjects, replies, comments, activity, restricted } = result;
-  const activeTab = (["posts", "projects", "likes", "watching", "reposts"] as const).find(item => item === tab) ?? "posts";
+  const activeTab = (["posts", "projects", "likes", "reposts"] as const).find(item => item === tab) ?? (tab === "watching" ? "projects" : "posts");
+  const projectView = requestedProjectView === "watching" || tab === "watching" ? "watching" : "history";
   const avatar = profile.image || "/brand/nice-2-network-mark.svg";
   const replyMap = new Map(posts.map(post => [post.id, replies.filter(reply => reply.parentId === post.id)]));
   const commentMap = new Map(publicProjects.map(project => [project.id, comments.filter(comment => comment.parentId === project.id)]));
@@ -102,14 +103,17 @@ export default async function PublicProfilePage({ params, searchParams }: { para
         <Link className={activeTab === "posts" ? styles.activeTab : ""} href={`/${profile.username}?tab=posts`} aria-current={activeTab === "posts" ? "page" : undefined}>Posts <small>{posts.length}</small></Link>
         <Link className={activeTab === "projects" ? styles.activeTab : ""} href={`/${profile.username}?tab=projects`} aria-current={activeTab === "projects" ? "page" : undefined}>Projects <small>{publicProjects.length}</small></Link>
         <Link className={activeTab === "likes" ? styles.activeTab : ""} href={`/${profile.username}?tab=likes`} aria-current={activeTab === "likes" ? "page" : undefined}>Likes <small>{activity.likes.length}</small></Link>
-        <Link className={activeTab === "watching" ? styles.activeTab : ""} href={`/${profile.username}?tab=watching`} aria-current={activeTab === "watching" ? "page" : undefined}>Watching <small>{activity.watching.length}</small></Link>
         <Link className={activeTab === "reposts" ? styles.activeTab : ""} href={`/${profile.username}?tab=reposts`} aria-current={activeTab === "reposts" ? "page" : undefined}>Reposts <small>{activity.reposts.length}</small></Link>
       </nav>
+      {activeTab === "projects" && <nav className={styles.subtabs} aria-label="Project views">
+        <Link className={projectView === "history" ? styles.activeSubtab : ""} href={`/${profile.username}?tab=projects&projectView=history`} aria-current={projectView === "history" ? "page" : undefined}>Project history <small>{publicProjects.length}</small></Link>
+        <Link className={projectView === "watching" ? styles.activeSubtab : ""} href={`/${profile.username}?tab=projects&projectView=watching`} aria-current={projectView === "watching" ? "page" : undefined}>Watching <small>{activity.watching.length}</small></Link>
+      </nav>}
       <section className={styles.feed}>
         {activeTab === "posts" && !posts.length&&<div className={styles.empty}>No public posts yet.</div>}
-        {activeTab === "projects" && !publicProjects.length&&<div className={styles.empty}>No public projects yet.</div>}
+        {activeTab === "projects" && projectView === "history" && !publicProjects.length&&<div className={styles.empty}>No public projects yet.</div>}
+        {activeTab === "projects" && projectView === "watching" && !activity.watching.length&&<div className={styles.empty}>No public projects being watched yet.</div>}
         {activeTab === "likes" && !activity.likes.length&&<div className={styles.empty}>No public likes yet.</div>}
-        {activeTab === "watching" && !activity.watching.length&&<div className={styles.empty}>No public projects being watched yet.</div>}
         {activeTab === "reposts" && !activity.reposts.length&&<div className={styles.empty}>No public reposts yet.</div>}
         {activeTab === "posts" && posts.map(post => <article className={styles.card} key={post.id}>
           <header className={styles.cardHeader}><Image className={styles.miniAvatar} src={avatar} alt="" width={72} height={72} unoptimized/><div><strong>{profile.name ?? profile.username}</strong><time>{date(post.createdAt)}</time></div></header>
@@ -119,7 +123,7 @@ export default async function PublicProfilePage({ params, searchParams }: { para
           {post.videoUrl&&<p className={styles.body}><a href={post.videoUrl} target="_blank" rel="noreferrer">Watch linked video</a></p>}
           <Replies items={replyMap.get(post.id) ?? []}/><footer className={styles.cardFooter}><span>{(replyMap.get(post.id) ?? []).length} replies</span><PublicProfileAction authenticatedHref={`/?profile=${profile.id}`} /></footer>
         </article>)}
-        {activeTab === "projects" && publicProjects.map(project => <article className={styles.card} key={project.id}>
+        {activeTab === "projects" && projectView === "history" && publicProjects.map(project => <article className={styles.card} key={project.id}>
           <div className={styles.projectVisual}/>
           {project.imageUrl&&<Image className={styles.media} src={project.imageUrl} alt="" width={1200} height={700} unoptimized/>}
           <div className={styles.projectBody}><small>{project.industry} · {project.stage}</small><h2><Link href={`/?view=projects&project=${project.id}`}>{project.title}</Link></h2><p>{project.summary}</p></div>
@@ -127,7 +131,7 @@ export default async function PublicProfilePage({ params, searchParams }: { para
         </article>)}
         {activeTab === "likes" && activity.likes.map(post => <ActivityPostCard key={post.id} post={post} action="Liked" profileId={profile.id}/>)}
         {activeTab === "reposts" && activity.reposts.map(post => <ActivityPostCard key={post.id} post={post} action="Reposted" profileId={profile.id}/>)}
-        {activeTab === "watching" && activity.watching.map(project => <article className={styles.card} key={project.id}>
+        {activeTab === "projects" && projectView === "watching" && activity.watching.map(project => <article className={styles.card} key={project.id}>
           <div className={styles.activityLabel}>Watching since {date(project.actedAt)}</div>
           <div className={styles.projectVisual}/>
           {project.imageUrl&&<Image className={styles.media} src={project.imageUrl} alt="" width={1200} height={700} unoptimized/>}

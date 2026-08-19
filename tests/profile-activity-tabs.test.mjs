@@ -4,21 +4,23 @@ import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("signed-in profiles expose likes, watching and repost tabs", async () => {
+test("signed-in profiles expose likes and reposts while nesting watching under projects", async () => {
   const [page, route] = await Promise.all([
     read("app/page.tsx"),
     read("app/api/profiles/[userId]/activity/route.ts"),
   ]);
-  assert.match(page, /"likes", "watching", "reposts"/);
+  assert.match(page, /"likes", "reposts"/);
+  assert.doesNotMatch(page, /"likes", "watching", "reposts"/);
   assert.match(page, /\/api\/profiles\/\$\{userId\}\/activity/);
   assert.match(page, /section === "likes" \|\| section === "reposts"/);
-  assert.match(page, /section === "watching"/);
+  assert.match(page, /projectView === "watching"/);
+  assert.match(page, /aria-label="Project views"/);
   assert.match(route, /getProfileActivity\(userId\)/);
 });
 
 test("profile navigation omits the redundant following tab while keeping the count link", async () => {
   const page = await read("app/page.tsx");
-  assert.match(page, /\["profile", "posts", "projects", "media", "likes", "watching", "reposts"\]/);
+  assert.match(page, /\["profile", "posts", "projects", "media", "likes", "reposts"\]/);
   assert.doesNotMatch(page, /\["profile", "projects", "following",/);
   assert.match(page, /onClick=\{\(\) => setSection\("following"\)\}/);
 });
@@ -44,9 +46,11 @@ test("public profiles expose the same activity tabs and only visible network con
     read("app/[username]/page.tsx"),
     read("lib/profile-activity.ts"),
   ]);
-  for (const tab of ["likes", "watching", "reposts"]) {
+  for (const tab of ["likes", "reposts"]) {
     assert.match(page, new RegExp(`tab=${tab}`));
   }
+  assert.match(page, /tab=projects&projectView=watching/);
+  assert.doesNotMatch(page, />Watching <small>[\s\S]*tab=watching/);
   assert.match(activity, /eq\(timelinePosts\.status, "visible"\)/);
   assert.match(activity, /eq\(timelinePosts\.visibility, "network"\)/);
   assert.match(activity, /eq\(projects\.status, "active"\)/);

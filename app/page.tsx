@@ -9599,9 +9599,10 @@ function ProfileView({
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null),
     [section, setSection] = useState<
-      "profile" | "posts" | "projects" | "followers" | "following" | "media" | "likes" | "watching" | "reposts" | "bookmarks"
+      "profile" | "posts" | "projects" | "followers" | "following" | "media" | "likes" | "reposts" | "bookmarks"
     >("profile"),
     [postView, setPostView] = useState<"published" | "drafts">("published"),
+    [projectView, setProjectView] = useState<"history" | "watching">("history"),
     [postDraftCount, setPostDraftCount] = useState(0),
     [networkPeople, setNetworkPeople] = useState<
       Array<{
@@ -9674,7 +9675,7 @@ function ProfileView({
       fetch("/api/saved-items")
         .then((response) => (response.ok ? response.json() : { items: [] }))
         .then((data) => setSaved(data.items ?? []));
-    if (section === "likes" || section === "watching" || section === "reposts") {
+    if (section === "likes" || section === "projects" || section === "reposts") {
       setActivityLoading(true);
       fetch(`/api/profiles/${userId}/activity`, { cache: "no-store" })
         .then((response) => response.ok ? response.json() : { likes: [], watching: [], reposts: [] })
@@ -9818,7 +9819,7 @@ function ProfileView({
           </button>
         </div>
         <nav className="profile-tabs">
-          {(["profile", "posts", "projects", "media", "likes", "watching", "reposts"] as const).map(
+          {(["profile", "posts", "projects", "media", "likes", "reposts"] as const).map(
             (item) => (
               <button
                 key={item}
@@ -9881,17 +9882,16 @@ function ProfileView({
             </div>
           </section>
         ) : section === "posts" ? (
-          <section className="profile-library">
-            <div className="profile-section-head">
-              <span className="eyebrow">POSTS</span>
-              <small>{postView === "drafts" ? `${postDraftCount} drafts` : `${profile?.posts?.length ?? 0} posts`}</small>
-            </div>
+          <section className={`profile-library ${profile?.isCurrent ? "profile-library-with-subtabs" : ""}`}>
             {profile?.isCurrent && (
-              <div className="profile-post-tabs" role="tablist" aria-label="Post views">
+              <div className="profile-subtabs" role="tablist" aria-label="Post views">
                 <button type="button" role="tab" aria-selected={postView === "published"} className={postView === "published" ? "active" : ""} onClick={() => setPostView("published")}>Published <b>{profile.posts?.length ?? 0}</b></button>
                 <button type="button" role="tab" aria-selected={postView === "drafts"} className={postView === "drafts" ? "active" : ""} onClick={() => setPostView("drafts")}>Drafts <b>{postDraftCount}</b></button>
               </div>
             )}
+            <div className="profile-section-head">
+              <span className="eyebrow">POSTS</span>
+            </div>
             {profile?.isCurrent && postView === "drafts" ? (
               <ContentDraftList kind="post" emptyMessage="No post drafts saved yet." onCountChange={setPostDraftCount} onResume={(draft) => onResumePostDraft(draft as ContentDraft<PostDraftPayload>)} />
             ) : <div className="profile-post-list">
@@ -9919,12 +9919,16 @@ function ProfileView({
             </div>}
           </section>
         ) : section === "projects" ? (
-          <section className="profile-library">
-            <div className="profile-section-head">
-              <span className="eyebrow">PROJECT HISTORY</span>
-              <small>Started and contributed projects</small>
+          <section className="profile-library profile-library-with-subtabs">
+            <div className="profile-subtabs" role="tablist" aria-label="Project views">
+              <button type="button" role="tab" aria-selected={projectView === "history"} className={projectView === "history" ? "active" : ""} onClick={() => setProjectView("history")}>Project history <b>{profile?.projects?.length ?? 0}</b></button>
+              <button type="button" role="tab" aria-selected={projectView === "watching"} className={projectView === "watching" ? "active" : ""} onClick={() => setProjectView("watching")}>Watching <b>{activity.watching.length}</b></button>
             </div>
-            <div className="profile-project-grid">
+            <div className="profile-section-head">
+              <span className="eyebrow">{projectView === "history" ? "PROJECT HISTORY" : "WATCHING"}</span>
+              <small>{projectView === "history" ? "Started and contributed projects" : "Projects this member is keeping an eye on"}</small>
+            </div>
+            {projectView === "history" ? <div className="profile-project-grid">
               {profile?.projects?.map((project) => (
                 <article key={project.id}>
                   <header>
@@ -9956,7 +9960,15 @@ function ProfileView({
               {!profile?.projects?.length && (
                 <p className="profile-empty">No public project history yet.</p>
               )}
-            </div>
+            </div> : activityLoading ? <div className="profile-activity-loading"><span/>Loading watched projects…</div> : <div className="profile-project-grid profile-watching-grid">
+              {activity.watching.map(project => <article key={project.id}>
+                <header><span>WATCHING</span><Eye size={15}/></header>
+                <h3><button type="button" onClick={() => onProject(project.id)} aria-label={`Open project ${project.title}`}>{project.title}</button></h3>
+                <p>{project.summary}</p>
+                <footer><span>{project.industry}</span><span>{project.stage}</span></footer>
+              </article>)}
+              {!activity.watching.length && <p className="profile-empty">No public watched projects yet.</p>}
+            </div>}
           </section>
         ) : section === "media" ? (
           <section className="profile-library">
@@ -9994,19 +10006,6 @@ function ProfileView({
                 </button>
               </article>)}
               {!activity[section].length && <p className="profile-empty">No public {section} yet.</p>}
-            </div>}
-          </section>
-        ) : section === "watching" ? (
-          <section className="profile-library profile-activity-library">
-            <div className="profile-section-head"><div><span className="eyebrow">WATCHING</span><h2>Projects this member is keeping an eye on</h2></div><small>{activity.watching.length} public projects</small></div>
-            {activityLoading ? <div className="profile-activity-loading"><span/>Loading watched projects…</div> : <div className="profile-project-grid profile-watching-grid">
-              {activity.watching.map(project => <article key={project.id}>
-                <header><span>WATCHING</span><Eye size={15}/></header>
-                <h3><button type="button" onClick={() => onProject(project.id)} aria-label={`Open project ${project.title}`}>{project.title}</button></h3>
-                <p>{project.summary}</p>
-                <footer><span>{project.industry}</span><span>{project.stage}</span></footer>
-              </article>)}
-              {!activity.watching.length && <p className="profile-empty">No public watched projects yet.</p>}
             </div>}
           </section>
         ) : section === "bookmarks" ? (
