@@ -9785,6 +9785,22 @@ function ProfileView({
             <strong>{profile?.following ?? 0}</strong> following
           </button>
           {profile?.isMutual && <b>Connected</b>}
+          <button
+            type="button"
+            className="profile-share-button"
+            disabled={!profile?.username}
+            aria-label={`Share ${person.name}'s profile`}
+            title="Share profile"
+            onClick={() => profile?.username && onShare({
+              id: profile.id,
+              title: `${person.name}'s profile`,
+              summary: profile.headline ?? profile.profession ?? `Connect with @${profile.username} on nice 2 network.`,
+              kind: "profile",
+              sharePath: `/${profile.username}`,
+            })}
+          >
+            <Share2 size={17} />
+          </button>
         </div>
         <nav className="profile-tabs">
           {(["profile", "posts", "projects", "media", "likes", "watching", "reposts"] as const).map(
@@ -9806,22 +9822,6 @@ function ProfileView({
               <Bookmark size={14} /> Bookmarks
             </button>
           )}
-          <button
-            type="button"
-            className="profile-share-button"
-            disabled={!profile?.username}
-            aria-label={`Share ${person.name}'s profile`}
-            title="Share profile"
-            onClick={() => profile?.username && onShare({
-              id: profile.id,
-              title: `${person.name}'s profile`,
-              summary: profile.headline ?? profile.profession ?? `Connect with @${profile.username} on nice 2 network.`,
-              kind: "profile",
-              sharePath: `/${profile.username}`,
-            })}
-          >
-            <Share2 size={17} />
-          </button>
         </nav>
         {section === "followers" || section === "following" ? (
           <section className="profile-library">

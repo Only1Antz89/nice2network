@@ -11,8 +11,11 @@ test("profiles expose a right-aligned share action and stable public share path"
     read("components/share-sheet.tsx"),
   ]);
   assert.match(page, /className="profile-share-button"/);
+  assert.match(page, /className="profile-network-counts"[\s\S]*className="profile-share-button"[\s\S]*<nav className="profile-tabs">/);
+  assert.doesNotMatch(page, /<nav className="profile-tabs">[\s\S]*className="profile-share-button"[\s\S]*<\/nav>/);
   assert.match(page, /sharePath: `\/\$\{profile\.username\}`/);
-  assert.match(styles, /profile-share-button\{margin-left:auto/);
+  assert.match(styles, /profile-network-counts\{[^}]*display:flex[^}]*width:100%/);
+  assert.match(styles, /profile-network-counts \.profile-share-button\{margin-left:auto/);
   assert.match(shareSheet, /item\.sharePath \?\?/);
   assert.match(shareSheet, /kind\?: "project" \| "post" \| "profile"/);
 });
