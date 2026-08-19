@@ -46,9 +46,18 @@ test("details page orders image before summary and uses icon cards for stage and
   assert.match(page, /\["remote", "Remote", Globe2\]/);
   assert.match(page, /project-summary-industry/);
   assert.match(styles, /project-summary-industry \.career-industry-control>input\{[^}]*height:42px[^}]*border-radius:8px[^}]*background:var\(--paper\)!important[^}]*color:var\(--ink\)!important/);
-  assert.match(styles, /project-owner-slot\.fixed\{grid-column:1\/-1/);
+  assert.match(page, /project-primary-owner[\s\S]*project-owner-slot fixed[\s\S]*project-owner-divider[\s\S]*project-owner-slots/);
+  assert.match(styles, /project-owner-divider\{width:clamp\(96px,36%,160px\);height:1px/);
   assert.match(industryPicker, /aria-autocomplete="list"/);
   assert.doesNotMatch(industryPicker, /career-industry-prediction/);
+});
+
+test("roadmap and recruitment pages stay within the mobile wizard viewport", () => {
+  assert.match(styles, /blueprint-roadmap input,[^}]*width:100%;[^}]*min-width:0;[^}]*max-width:100%/);
+  assert.match(styles, /blueprint-roles input\{display:block;width:100%;min-width:0;max-width:100%/);
+  assert.match(styles, /@media\(max-width:560px\)[\s\S]*blueprint-roadmap article>div>div\{grid-template-columns:minmax\(0,\.8fr\) minmax\(0,1\.5fr\) repeat\(3,32px\)/);
+  assert.match(styles, /@media\(orientation:portrait\)[\s\S]*blueprint-roadmap article>div>div\{[\s\S]*grid-template-columns:minmax\(0,\.8fr\) minmax\(0,1\.4fr\) repeat\(3,44px\)/);
+  assert.match(styles, /blueprint-role-head\{display:grid;grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\) 36px/);
 });
 
 test("remote fallback lives on recruitment, defaults off, and is persisted by approval", () => {

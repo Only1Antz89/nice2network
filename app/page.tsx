@@ -2853,11 +2853,14 @@ function CreateProject({
                 <span>{selectedCoOwners.length}/2 co-owners</span>
               </header>
               <p>Your selections receive seven-day invitations. They only receive co-owner permissions after accepting.</p>
-              <div className="project-owner-slots">
+              <div className="project-primary-owner">
                 <article className="project-owner-slot fixed">
                   <Avatar person={{ name: currentMember.name, role: currentMember.role, img: currentMember.img }} size="sm" />
                   <span><strong>{currentMember.name}</strong><small>Primary owner · fixed</small></span>
                 </article>
+              </div>
+              <div className="project-owner-divider" aria-hidden="true" />
+              <div className="project-owner-slots">
                 {[0, 1].map((index) => {
                   const person = selectedCoOwners[index];
                   return person ? (

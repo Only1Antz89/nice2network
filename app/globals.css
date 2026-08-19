@@ -1296,8 +1296,39 @@ input::selection,textarea::selection,[contenteditable]::selection{
 .blueprint-role-head .n2-select{width:auto;min-width:82px}
 .project-modal .blueprint-role-head .n2-select>button{height:29px;background:var(--surface-subtle)}
 
+/* Keep the planning and recruitment forms inside narrow wizard viewports. */
+.project-modal{overflow-x:hidden}
+.blueprint-roadmap,.blueprint-roadmap>article,.blueprint-roadmap>article>div,
+.blueprint-roadmap article>div>div,.blueprint-roles,.blueprint-roles article,
+.blueprint-role-head,.blueprint-roles .field-row,.blueprint-roles label{
+  min-width:0;
+  max-width:100%;
+}
+.blueprint-roadmap>article{grid-template-columns:28px minmax(0,1fr)}
+.blueprint-roadmap input,.blueprint-roadmap textarea,.blueprint-roadmap select{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+}
+.blueprint-roadmap article>div>div{grid-template-columns:80px minmax(0,1fr) 28px 28px 28px}
+.blueprint-roadmap article button{min-width:0}
+.blueprint-roadmap .n2-select{max-width:100%}
+.blueprint-roles input{display:block;width:100%;min-width:0;max-width:100%}
+.project-primary-owner{display:grid;min-width:0}
+.project-primary-owner .project-owner-slot{width:100%}
+.project-owner-slot.fixed{grid-column:auto}
+.project-owner-divider{width:clamp(96px,36%,160px);height:1px;margin:12px auto;background:var(--line)}
+
 @media(max-width:560px){
   .project-owner-slots{grid-template-columns:1fr}
+  .blueprint-roadmap>article{grid-template-columns:28px minmax(0,1fr);padding:10px}
+  .blueprint-roadmap article>div>div{grid-template-columns:minmax(0,.8fr) minmax(0,1.5fr) repeat(3,32px);gap:4px}
+  .blueprint-roadmap article button{width:32px}
+  .blueprint-roadmap .n2-select{min-width:0}
+  .blueprint-role-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 36px;align-items:center}
+  .blueprint-role-head .n2-select{width:100%;min-width:0}
+  .blueprint-role-head>button{width:36px;min-width:0;margin-left:0}
+  .remote-fallback-switch{grid-template-columns:auto minmax(0,1fr) auto}
   .project-wizard-actions{align-items:stretch;flex-direction:column-reverse}
   .project-wizard-actions>button{width:100%;margin-left:0!important}
   .project-location-results{max-height:220px}
@@ -1678,6 +1709,17 @@ html[data-device-class="tablet"] :is(
   }
   html[data-device-class="tablet"] .field-row{grid-template-columns:minmax(0,1fr)}
   html[data-device-class="tablet"] .project-owner-slots{grid-template-columns:1fr}
+  html[data-device-class="tablet"] .blueprint-roadmap article>div>div{
+    grid-template-columns:minmax(0,.8fr) minmax(0,1.4fr) repeat(3,44px);
+  }
+  html[data-device-class="tablet"] .blueprint-roadmap .n2-select{min-width:0}
+  html[data-device-class="tablet"] .blueprint-role-head{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px;
+    align-items:center;
+  }
+  html[data-device-class="tablet"] .blueprint-role-head .n2-select{width:100%;min-width:0}
+  html[data-device-class="tablet"] .blueprint-role-head>button{width:44px;min-width:44px;margin-left:0}
 }
 
 @media(orientation:landscape){
