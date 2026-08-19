@@ -4,6 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const page = read("app/page.tsx");
+const styles = read("app/globals.css");
 const projectRoute = read("app/api/projects/[projectId]/route.ts");
 const roleRoute = read("app/api/projects/[projectId]/roles/[roleId]/route.ts");
 const involvementRoute = read("app/api/projects/[projectId]/involvement/[requestId]/route.ts");
@@ -28,15 +29,24 @@ test("owners and co-owners can edit or remove only roles belonging to their proj
   assert.match(page, /REMOVE ROLE/);
 });
 
-test("the role applicant tab shows fit, context, mismatch and profile actions", () => {
+test("the role applicant tab shows fit, context, mismatch and a clickable applicant name", () => {
+  const applicantListStart = page.indexOf('<div className="role-applicant-list">');
+  const applicantList = page.slice(applicantListStart, page.indexOf("!project.applications.some", applicantListStart));
   assert.match(page, /Applicants <b>\{selectedRole\.applicationCount \?\? 0\}<\/b>/);
-  assert.match(page, /application\.fit\.score/);
+  assert.match(applicantList, /className="application-person" onClick=\{\(\) => onProfile\(application\.applicantId\)\}/);
+  assert.doesNotMatch(applicantList, /View full profile/);
+  assert.match(applicantList, /data-fit-tier=\{application\.fit\.score >= 80 \? "high" : application\.fit\.score <= 50 \? "low" : "medium"\}/);
+  assert.match(applicantList, /--role-fit-progress/);
+  assert.match(styles, /conic-gradient\(currentColor var\(--role-fit-progress\),var\(--line\) 0\)/);
+  assert.match(styles, /application-fit\[data-fit-tier="low"\]\{color:var\(--ink\)\}/);
+  assert.match(styles, /application-fit\[data-fit-tier="high"\]\{color:var\(--green\)\}/);
   assert.match(page, /application\.fit\.mismatch/);
   assert.match(page, /Applied outside role match/);
   assert.match(page, /application\.applicantSkills/);
   assert.match(page, /application\.applicantInterests/);
   assert.match(page, /REASON FOR JOINING/);
-  assert.match(page, /View full profile/);
+  assert.match(applicantList, /<footer><span className=\{`application-status \$\{application\.status\}`\}>\{application\.status\}<\/span>/);
+  assert.match(styles, /role-applicant-list article>footer>button\{width:110px;height:40px/);
 });
 
 test("general involvement offers stay private to owners and support early onboarding", () => {
