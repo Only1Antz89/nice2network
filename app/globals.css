@@ -90,6 +90,10 @@ body{font-family:var(--font-geist-sans),Arial,sans-serif}
     content-visibility:auto;
     contain-intrinsic-block-size:auto 420px;
   }
+  .project-card:has(.modal-backdrop){
+    content-visibility:visible;
+    overflow:visible;
+  }
 }
 .emoji-picker{position:relative;display:grid;place-items:center;flex:none}
 .emoji-trigger{width:34px;height:34px;border:1px solid var(--line)!important;border-radius:50%!important;background:#fff!important;color:var(--ink)!important;padding:0!important;display:grid!important;place-items:center!important}

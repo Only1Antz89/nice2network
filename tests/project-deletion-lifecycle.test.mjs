@@ -42,6 +42,11 @@ test("pending deletion is read-only, cancellable only by the primary owner and f
   assert.match(migration, /projects_deletion_lifecycle_guard/);
 });
 
+test("desktop project dialogs escape card rendering containment", async () => {
+  const css = await read("app/globals.css");
+  assert.match(css, /\.project-card:has\(\.modal-backdrop\)\{\s*content-visibility:visible;\s*overflow:visible;/);
+});
+
 test("all deletion stakeholders receive required deduplicated lifecycle notifications", async () => {
   const [deletion, notifications] = await Promise.all([
     read("lib/project-deletion.ts"),
