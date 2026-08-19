@@ -2537,16 +2537,16 @@ function CreateProject({
                 />
                 <div className="project-summary-footer">
                   <label htmlFor="project-industry" className="project-summary-industry">
-                    <span>Industry</span>
                     <CareerIndustryInput
                       id="project-industry"
                       value={form.industry}
                       onChange={(industry) => setForm((current) => ({ ...current, industry }))}
                       placeholder="Type or choose an industry"
                       required
+                      ariaLabel="Industry"
                       ariaDescribedBy="project-industry-hint"
                     />
-                    <small id="project-industry-hint" className="sr-only">Required. Start typing or choose a suggestion.</small>
+                    <small id="project-industry-hint" className="visually-hidden">Required. Start typing or choose a suggestion.</small>
                   </label>
                   <small id="project-summary-hint" className="field-limit" aria-live="polite">
                     <i className="character-fill" aria-hidden="true" style={{ "--character-fill": `${Math.min(100, form.summary.length / 5)}%` } as React.CSSProperties} />
@@ -2855,7 +2855,7 @@ function CreateProject({
               </header>
               <p>Your selections receive seven-day invitations. They only receive co-owner permissions after accepting.</p>
               <div className="project-primary-owner">
-                <article className="project-owner-slot fixed">
+                <article className="project-owner-slot">
                   <Avatar person={{ name: currentMember.name, role: currentMember.role, img: currentMember.img }} size="sm" />
                   <span><strong>{currentMember.name}</strong><small>Primary owner · fixed</small></span>
                 </article>

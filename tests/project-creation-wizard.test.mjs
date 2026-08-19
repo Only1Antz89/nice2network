@@ -45,8 +45,14 @@ test("details page orders image before summary and uses icon cards for stage and
   assert.match(page, /\["idea", "Idea", Lightbulb\]/);
   assert.match(page, /\["remote", "Remote", Globe2\]/);
   assert.match(page, /project-summary-industry/);
-  assert.match(styles, /project-summary-industry \.career-industry-control>input\{[^}]*height:42px[^}]*border-radius:8px[^}]*background:var\(--paper\)!important[^}]*color:var\(--ink\)!important/);
-  assert.match(page, /project-primary-owner[\s\S]*project-owner-slot fixed[\s\S]*project-owner-divider[\s\S]*project-owner-slots/);
+  assert.match(page, /project-summary-industry[\s\S]*ariaLabel="Industry"/);
+  assert.doesNotMatch(page, /className="sr-only">Industry/);
+  assert.match(styles, /project-summary-industry \.career-industry-control>input\{[^}]*height:34px[^}]*border-radius:8px[^}]*background:var\(--paper\)!important[^}]*color:var\(--ink\)!important/);
+  assert.match(styles, /project-summary-footer \.field-limit\{[^}]*font-size:11px/);
+  assert.match(page, /project-primary-owner[\s\S]*className="project-owner-slot"[\s\S]*project-owner-divider[\s\S]*project-owner-slots/);
+  assert.doesNotMatch(page, /project-owner-slot fixed/);
+  assert.doesNotMatch(page, /project-owner-slot primary/);
+  assert.match(styles, /project-primary-owner>\.project-owner-slot\{position:static!important;inset:auto!important;width:100%;max-width:100%/);
   assert.match(styles, /project-owner-divider\{width:clamp\(96px,36%,160px\);height:1px/);
   assert.match(industryPicker, /aria-autocomplete="list"/);
   assert.doesNotMatch(industryPicker, /career-industry-prediction/);

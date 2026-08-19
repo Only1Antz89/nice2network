@@ -4,7 +4,7 @@
 import { Camera, Check, Globe2, Headphones, Lock, Maximize2, MessageCircle, Mic, MicOff, Minimize2, PhoneOff, Podcast, Send, Settings2, UserMinus, UserRoundCheck, Users, Video, VideoOff, Volume2, X } from "lucide-react";
 import Image from "next/image";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import ActionDialog from "@/components/action-dialog";
 import N2Select from "@/components/n2-select";
 
@@ -654,11 +654,10 @@ export default function N2MeetRoom() {
     if (response.ok) await loadPodcast();
   }
 
-  async function sendChat(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = event.currentTarget; const field = form.elements.namedItem("message") as HTMLInputElement; const body = field.value.trim(); if (!body) return;
-    const kind = ((form.elements.namedItem("kind") as HTMLInputElement | null)?.value === "question" ? "question" : "message") as "question" | "message";
+  async function sendChat(body: string, kind: "message" | "question") {
+    if (!body) return;
     const response = await fetch(`/api/meetings/${meetingId}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body, kind }) });
-    if (response.ok) { field.value = ""; const chat = await fetch(`/api/meetings/${meetingId}/chat`); if (chat.ok) applyMessages((await chat.json()).messages ?? []); }
+    if (response.ok) { const chat = await fetch(`/api/meetings/${meetingId}/chat`); if (chat.ok) applyMessages((await chat.json()).messages ?? []); }
   }
 
   function beginJoin(withoutDevices: boolean) {
@@ -706,7 +705,7 @@ export default function N2MeetRoom() {
   ].filter(Boolean).join(" · ");
 
   if (isPodcast) return <>
-    <PodcastRoom meeting={meeting} me={me} localMedia={localMedia} remote={remote} people={roomPeople} currentRole={currentRole} canModerate={canModerate} canManageMeet={canManageMeet} muted={muted} participantCount={participantCount} messages={messages} chatOpen={chatOpen} unreadChat={unreadChat} connectionStates={connectionStates} activeSpeaker={activeSpeaker} controlsVisible={controlsVisible} outputDeviceId={speakerId} setActiveSpeaker={setActiveSpeaker} setChatOpen={open => { setChatOpen(open); if (open) setUnreadChat(0); }} toggleMute={() => toggle("audio")} stageAction={stageAction} sendChat={sendChat} leave={leave} requestEndMeet={() => setConfirmEndMeet(true)} openSettings={() => setShowSettings(true)} onProfile={setProfilePreview} error={error}/>
+    <PodcastRoom meeting={meeting} me={me} localMedia={localMedia} remote={remote} people={roomPeople} currentRole={currentRole} canModerate={canModerate} canManageMeet={canManageMeet} muted={muted} participantCount={participantCount} messages={messages} chatOpen={chatOpen} unreadChat={unreadChat} connectionStates={connectionStates} activeSpeaker={activeSpeaker} outputDeviceId={speakerId} setActiveSpeaker={setActiveSpeaker} setChatOpen={open => { setChatOpen(open); if (open) setUnreadChat(0); }} toggleMute={() => toggle("audio")} stageAction={stageAction} sendChat={sendChat} leave={leave} requestEndMeet={() => setConfirmEndMeet(true)} openSettings={() => setShowSettings(true)} onProfile={setProfilePreview} error={error}/>
     {showSettings && <DeviceSettings devices={devices} microphoneId={microphoneId} cameraId={cameraId} speakerId={speakerId} video={false} onClose={() => setShowSettings(false)} onInput={switchInput} onSpeaker={setSpeakerId}/>}
     {profilePreview && <MeetProfilePreview person={profilePreview} onClose={() => setProfilePreview(null)}/>}
     {confirmEndMeet && <ActionDialog eyebrow="END MEET" title="End this meet for everyone?" description="Everyone in the room will be disconnected. If you only want to leave, use the Leave control instead." confirmLabel="End meet for everyone" cancelLabel="Keep meet running" danger onClose={() => setConfirmEndMeet(false)} onConfirm={endMeet}/>}</>;
@@ -744,8 +743,8 @@ export default function N2MeetRoom() {
   </main>;
 }
 
-function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, canModerate, canManageMeet, muted, participantCount, messages, chatOpen, unreadChat, connectionStates, activeSpeaker, controlsVisible, outputDeviceId, setActiveSpeaker, setChatOpen, toggleMute, stageAction, sendChat, leave, requestEndMeet, openSettings, onProfile, error }: {
-  meeting: Meeting | null; me: Person | null; localMedia?: MediaStream; remote: RemoteParticipant[]; people: Person[]; currentRole: PodcastRole; canModerate: boolean; canManageMeet: boolean; muted: boolean; participantCount: number; messages: ChatMessage[]; chatOpen: boolean; unreadChat: number; connectionStates: Record<string, ConnectionStatus>; activeSpeaker: string | null; controlsVisible: boolean; outputDeviceId: string; setActiveSpeaker: (id: string | null) => void; setChatOpen: (open: boolean) => void; toggleMute: () => void; stageAction: (action: "request_speak" | "cancel_request" | "approve" | "dismiss" | "mute", userId?: string) => void; sendChat: (event: FormEvent<HTMLFormElement>) => void; leave: () => void; requestEndMeet: () => void; openSettings: () => void; onProfile: (person: Person) => void; error: string;
+function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, canModerate, canManageMeet, muted, participantCount, messages, chatOpen, unreadChat, connectionStates, activeSpeaker, outputDeviceId, setActiveSpeaker, setChatOpen, toggleMute, stageAction, sendChat, leave, requestEndMeet, openSettings, onProfile, error }: {
+  meeting: Meeting | null; me: Person | null; localMedia?: MediaStream; remote: RemoteParticipant[]; people: Person[]; currentRole: PodcastRole; canModerate: boolean; canManageMeet: boolean; muted: boolean; participantCount: number; messages: ChatMessage[]; chatOpen: boolean; unreadChat: number; connectionStates: Record<string, ConnectionStatus>; activeSpeaker: string | null; outputDeviceId: string; setActiveSpeaker: (id: string | null) => void; setChatOpen: (open: boolean) => void; toggleMute: () => void; stageAction: (action: "request_speak" | "cancel_request" | "approve" | "dismiss" | "mute", userId?: string) => void; sendChat: (body: string, kind: "message" | "question") => void; leave: () => void; requestEndMeet: () => void; openSettings: () => void; onProfile: (person: Person) => void; error: string;
 }) {
   const [participantPanelOpen, setParticipantPanelOpen] = useState(false);
   const remoteById = new Map(remote.map(person => [person.id, person]));
@@ -755,6 +754,15 @@ function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, can
   const audienceSpeakers = people.filter(person => person.role === "audience_speaker");
   const listeners = people.filter(person => person.role === "listener");
   const stage = [...hosts, ...cohosts, ...guests, ...audienceSpeakers];
+  const orbitStage = stage.slice(0, 5);
+  const overflowStage = stage.slice(5);
+  const orbitSeats: Record<number, string[]> = {
+    1: ["top"],
+    2: ["top", "bottom"],
+    3: ["top", "upper-left", "upper-right"],
+    4: ["top", "upper-left", "upper-right", "bottom"],
+    5: ["top", "upper-left", "upper-right", "lower-left", "lower-right"],
+  };
   const requests = people.filter(person => person.speakerStatus === "requested");
   const self = people.find(person => person.id === me?.id) ?? (me ? { ...me, role: currentRole } : null);
   const isListener = currentRole === "listener";
@@ -770,21 +778,28 @@ function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, can
     const connection = person.id === me?.id ? { stream: localMedia, audioOn: !muted } : remoteById.get(person.id);
     return <PodcastCard key={person.id} person={person} stream={connection?.stream} outputDeviceId={outputDeviceId} local={person.id === me?.id} status={connectionStatus(person)} muted={person.id === me?.id ? muted : !connection?.audioOn} active={activeSpeaker === person.id} onSpeaking={speaking => setActiveSpeaker(speaking ? person.id : activeSpeaker === person.id ? null : activeSpeaker)} canModerate={canModerate && person.id !== me?.id && person.role !== "host"} onDismiss={() => stageAction("dismiss", person.id)} onMute={() => stageAction("mute", person.id)} onProfile={() => onProfile(person)}/>;
   };
-  return <main className={`podcast-room ${chatOpen ? "chat-open" : ""} ${controlsVisible ? "controls-visible" : ""} ${canModerate ? "moderator-view" : "audience-view"}`}>
+  return <main className={`podcast-room ${chatOpen ? "chat-open" : ""} ${canModerate ? "moderator-view" : "audience-view"}`}>
     <header className="podcast-header">
       <a href="/" className="room-brand"><span>n2</span><b>nice 2 network</b></a>
       <div className="podcast-header-mark" aria-label={`${meeting?.visibility ?? "private"} podcast`}><Podcast size={20}/><span>{meeting?.visibility} podcast</span></div>
-      <button className="room-count room-count-button" aria-label="Show everyone in this podcast" onClick={() => setParticipantPanelOpen(true)}><Headphones size={17}/><strong>{participantCount}</strong><span>/{meeting?.maxParticipants ?? 16}</span></button>
+      <button className="room-count room-count-button" aria-label={`Show all ${participantCount} people in this podcast`} onClick={() => setParticipantPanelOpen(true)}><Headphones size={17}/><strong>{participantCount}</strong></button>
     </header>
     <div className="podcast-layout">
       <section className="podcast-main">
+        <div className="podcast-ambient" aria-hidden="true"/>
         {error && <p className="podcast-error">{error}</p>}
-        <div className="podcast-canopy" aria-label={meeting?.title}><span>LIVE PODCAST</span><h1>{meeting?.title ?? "n2 podcast"}</h1><i/><i/><i/><Podcast/></div>
-        <section className={`podcast-table-stage ${stage.length === 1 ? "single-host-stage" : ""}`} aria-label="Podcast stage">
-          <div className="podcast-host-row">{hosts.map(card)}</div>
-          <div className="podcast-table-middle"><div className="podcast-cohost-side left">{cohosts.filter((_, index) => index % 2 === 0).map(card)}</div><div className="podcast-table-surface"><span className="n2-table-mark">n2</span><small>{isListener ? "Listening" : currentRole === "host" ? "Hosting" : "On stage"}</small></div><div className="podcast-cohost-side right">{cohosts.filter((_, index) => index % 2 === 1).map(card)}</div></div>
-          <div className="podcast-guest-row">{guests.map(card)}</div>
+        <section className="podcast-round-stage" aria-label="Podcast stage">
+          <div className="podcast-table-surface" aria-label={meeting?.title}>
+            <span>LIVE PODCAST</span>
+            <h1>{meeting?.title ?? "n2 podcast"}</h1>
+            <small><i aria-hidden="true"/>Recording</small>
+          </div>
+          <div className={`podcast-stage-seats seat-count-${orbitStage.length}`}>
+            {orbitStage.map((person, index) => <div className={`podcast-stage-seat seat-${orbitSeats[orbitStage.length]?.[index] ?? "bottom"}`} key={person.id}>{card(person)}</div>)}
+          </div>
         </section>
+        {overflowStage.length > 0 && <section className="podcast-stage-overflow" aria-label={`${overflowStage.length} more people on stage`}><header><span>MORE ON STAGE</span><strong>{overflowStage.length}</strong></header><div>{overflowStage.map(card)}</div></section>}
+        {canModerate && requests.length > 0 && <section className="speaker-requests"><header><span>QUESTIONS & REQUESTS TO SPEAK</span><strong>{requests.length}</strong></header>{requests.map(person => <div key={person.id}><PersonImage src={person.image}/><span><b>{person.name}</b><small>{person.profession || "n2 member"}</small></span><button aria-label={`Dismiss ${person.name ?? "speaker"}'s request`} onClick={() => stageAction("dismiss", person.id)}><X size={15}/></button><button className="approve" onClick={() => stageAction("approve", person.id)}><UserRoundCheck size={15}/>Bring up</button></div>)}</section>}
         {listeners.length > 0 && <section className="podcast-audience" aria-label={`${listeners.length} listeners`}>
           <header><span>AUDIENCE</span><strong>{listeners.length}</strong></header>
           <div>{listeners.map(person => {
@@ -795,17 +810,15 @@ function PodcastRoom({ meeting, me, localMedia, remote, people, currentRole, can
             </button>;
           })}</div>
         </section>}
-        {audienceSpeakers.length > 0 && <section className="audience-speakers"><header><span>AUDIENCE CONTRIBUTORS</span><small>Temporarily on stage</small></header><div>{audienceSpeakers.map(card)}</div></section>}
-        {canModerate && requests.length > 0 && <section className="speaker-requests"><header><span>QUESTIONS & REQUESTS TO SPEAK</span><strong>{requests.length}</strong></header>{requests.map(person => <div key={person.id}><PersonImage src={person.image}/><span><b>{person.name}</b><small>{person.profession || "n2 member"}</small></span><button onClick={() => stageAction("dismiss", person.id)}><X size={15}/></button><button className="approve" onClick={() => stageAction("approve", person.id)}><UserRoundCheck size={15}/>Bring up</button></div>)}</section>}
       </section>
       <PodcastChat messages={messages} me={me} canModerate={canModerate} onSubmit={sendChat} onClose={() => setChatOpen(false)}/>
     </div>
     <footer className="podcast-controls">
-      {!isListener && <button className={muted ? "off" : ""} onClick={toggleMute}>{muted ? <MicOff/> : <Mic/>}<span>{muted ? "Unmute" : "Mute"}</span></button>}
-      {isListener && <button className={`request-mic ${requested ? "requested" : ""}`} onClick={() => stageAction(requested ? "cancel_request" : "request_speak")}>{requested ? <X/> : <Podcast/>}<span>{requested ? "Cancel request" : "Request to speak"}</span></button>}
-      {!isListener && <button onClick={openSettings}><Settings2/><span>Devices</span></button>}
-      <button className="chat-toggle" onClick={() => setChatOpen(!chatOpen)}><MessageCircle/><span>{canModerate ? "Host console" : "Chat & questions"}</span>{!chatOpen && unreadChat > 0 && <b>{unreadChat > 99 ? "99+" : unreadChat}</b>}</button>
-      <button className="hangup" onClick={leave}><PhoneOff/><span>Leave</span></button>
+      {!isListener && <button aria-pressed={muted} className={muted ? "off" : ""} onClick={toggleMute}>{muted ? <MicOff/> : <Mic/>}<span>{muted ? "Unmute" : "Mute"}</span></button>}
+      {isListener && <button aria-pressed={requested} className={`request-mic ${requested ? "requested" : ""}`} onClick={() => stageAction(requested ? "cancel_request" : "request_speak")}>{requested ? <X/> : <Podcast/>}<span>{requested ? "Cancel request" : "Request to speak"}</span></button>}
+      <button onClick={openSettings}><Settings2/><span>Settings</span></button>
+      <button className="chat-toggle" aria-expanded={chatOpen} onClick={() => setChatOpen(!chatOpen)}><MessageCircle/><span>{canModerate ? "Host console" : "Chat & questions"}</span>{!chatOpen && unreadChat > 0 && <b>{unreadChat > 99 ? "99+" : unreadChat}</b>}</button>
+      <button className="hangup" onClick={leave}><PhoneOff/><span>Leave room</span></button>
     </footer>
     {participantPanelOpen && <ParticipantPanel
       people={people}
@@ -827,16 +840,31 @@ function PodcastCard({ person, stream, outputDeviceId, local, status, muted, act
   return <article className={`podcast-card role-${person.role} status-${status} ${active ? "speaking" : ""}`}>
     {!local && stream && <RemoteAudio stream={stream} outputDeviceId={outputDeviceId}/>}
     <button className="podcast-avatar-wrap" onClick={onProfile} aria-label={`View ${person.name ?? "member"} profile`}>{status === "connected" ? <PersonImage src={person.image}/> : <span>{statusLabel}</span>}</button>
-    <button className="podcast-identity" onClick={onProfile}><span><b>{person.name ?? "n2 member"}</b><small>{person.profession || person.professionalHeadline || "n2 member"}</small></span><em>{label}</em><div className={`podcast-mic ${muted ? "muted" : ""}`}>{muted ? <MicOff/> : <Podcast/>}</div></button>
+    <button className="podcast-identity" onClick={onProfile}><span><b>{person.name ?? "n2 member"}</b><small>{person.profession || person.professionalHeadline || "n2 member"}</small></span><em>{label}</em><div className={`podcast-mic ${muted ? "muted" : ""}`}>{muted ? <MicOff/> : <Mic/>}</div></button>
     {canModerate && status === "connected" && <div className="podcast-member-actions"><button onClick={onMute}><MicOff size={14}/>Mute</button><button onClick={onDismiss}><UserMinus size={14}/>Dismiss</button></div>}
   </article>;
 }
 
-function PodcastChat({ messages, me, canModerate, onSubmit, onClose }: { messages: ChatMessage[]; me: Person | null; canModerate: boolean; onSubmit: (event: FormEvent<HTMLFormElement>) => void; onClose: () => void }) {
+function PodcastChat({ messages, me, canModerate, onSubmit, onClose }: { messages: ChatMessage[]; me: Person | null; canModerate: boolean; onSubmit: (body: string, kind: "message" | "question") => void; onClose: () => void }) {
   const [draft, setDraft] = useState("");
   const [activeTab, setActiveTab] = useState<"chat" | "questions">("chat");
-  const visibleMessages = messages.filter(message => activeTab === "questions" ? message.kind === "question" : message.kind !== "question");
-  return <aside className="podcast-chat"><header><div><span>{canModerate ? "HOST CONSOLE" : "LISTENER VIEW"}</span><b>{canModerate ? "Moderate the live room" : "Join the conversation"}</b></div><button onClick={onClose}><X/></button></header><nav className="podcast-chat-tabs" aria-label="Podcast conversation"><button className={activeTab === "chat" ? "active" : ""} onClick={() => setActiveTab("chat")}><MessageCircle/>Chat</button><button className={activeTab === "questions" ? "active" : ""} onClick={() => setActiveTab("questions")}><span>?</span>Questions{canModerate && messages.some(message => message.kind === "question") && <b>{messages.filter(message => message.kind === "question").length}</b>}</button></nav><div className="podcast-chat-feed">{visibleMessages.length ? visibleMessages.map(message => <article className={`${message.author.id === me?.id ? "mine" : ""} ${message.kind === "question" ? "question" : ""}`} key={message.id}><PersonImage src={message.author.image}/><div><strong>{message.author.name ?? "n2 member"}{message.kind === "question" && <em>Question</em>}</strong><p>{message.body}</p><time>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div></article>) : <div className="chat-empty">{activeTab === "questions" ? <b>?</b> : <MessageCircle/>}<b>{activeTab === "questions" ? (canModerate ? "No listener questions yet" : "Ask the hosts a question") : "Start the room chat"}</b><span>{activeTab === "questions" ? (canModerate ? "Questions submitted by listeners appear here for hosts and co-hosts only." : "Your questions are private to the host team.") : "Everyone in the room can take part."}</span></div>}</div><form onSubmit={event => { onSubmit(event); setDraft(""); }}><input name="message" value={draft} onChange={event => setDraft(event.target.value)} maxLength={1200} placeholder={activeTab === "questions" ? "Ask the hosts…" : "Say something useful…"}/><input type="hidden" name="kind" value={activeTab === "questions" ? "question" : "message"}/><button className={activeTab === "questions" ? "question-send" : ""} aria-label={activeTab === "questions" ? "Send question to the hosts" : "Send to room"}>{activeTab === "questions" ? <b>?</b> : <Send/>}</button></form></aside>;
+  const visibleMessages = canModerate ? messages.filter(message => activeTab === "questions" ? message.kind === "question" : message.kind !== "question") : messages;
+  const submit = () => {
+    const raw = draft.trim();
+    const prefixedQuestion = !canModerate && raw.startsWith("?");
+    const kind: "message" | "question" = canModerate && activeTab === "questions" || prefixedQuestion ? "question" : "message";
+    const body = prefixedQuestion ? raw.slice(1).trim() : raw;
+    if (!body) return;
+    onSubmit(body, kind);
+    setDraft("");
+  };
+  return <aside className={`podcast-chat ${canModerate ? "moderator-console" : "member-chat"}`}>
+    <header><div><span>{canModerate ? "HOST CONSOLE" : "LISTENER VIEW"}</span><b>{canModerate ? "Moderate the live room" : "Join the conversation"}</b></div><button aria-label="Close chat" onClick={onClose}><X/></button></header>
+    {canModerate && <nav className="podcast-chat-tabs" aria-label="Podcast conversation"><button className={activeTab === "chat" ? "active" : ""} onClick={() => setActiveTab("chat")}><MessageCircle/>Chat</button><button className={activeTab === "questions" ? "active" : ""} onClick={() => setActiveTab("questions")}><span>?</span>Questions{messages.some(message => message.kind === "question") && <b>{messages.filter(message => message.kind === "question").length}</b>}</button></nav>}
+    {!canModerate && <p className="podcast-question-hint">Start a message with <b>?</b> to send a private question. Only you, the host, and co-hosts will see it.</p>}
+    <div className="podcast-chat-feed">{visibleMessages.length ? visibleMessages.map(message => <article className={`${message.author.id === me?.id ? "mine" : ""} ${message.kind === "question" ? "question" : ""}`} key={message.id}><PersonImage src={message.author.image}/><div><strong>{message.author.name ?? "n2 member"}{message.kind === "question" && <em>Question</em>}</strong><p>{message.body}</p><time>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div></article>) : <div className="chat-empty">{activeTab === "questions" ? <b>?</b> : <MessageCircle/>}<b>{activeTab === "questions" ? "No listener questions yet" : "Start the room chat"}</b><span>{activeTab === "questions" ? "Questions submitted by listeners appear here for hosts and co-hosts only." : "Everyone in the room can take part."}</span></div>}</div>
+    <form onSubmit={event => { event.preventDefault(); submit(); }}><input name="message" value={draft} onChange={event => setDraft(event.target.value)} maxLength={1200} placeholder={canModerate && activeTab === "questions" ? "Add a question…" : canModerate ? "Say something useful…" : "Message the room or start with ?…"}/><button className={canModerate && activeTab === "questions" ? "question-send" : ""} aria-label={canModerate && activeTab === "questions" ? "Send question to the hosts" : "Send to room"}>{canModerate && activeTab === "questions" ? <b>?</b> : <Send/>}</button></form>
+  </aside>;
 }
 
 function RemoteAudio({ stream, outputDeviceId }: { stream: MediaStream; outputDeviceId: string }) {

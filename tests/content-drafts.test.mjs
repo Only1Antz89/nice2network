@@ -54,6 +54,7 @@ test("creation UI uses explicit server drafts without a persistent browser cache
   assert.doesNotMatch(page, /listBufferedDrafts|clearBufferedDraft|draftSummary/);
   assert.match(page, /Could not remove this empty post draft/);
   assert.match(styles, /\.content-draft-list/);
+  assert.match(styles, /\.content-draft-list \.draft-delete\{[^}]*width:100%;[^}]*height:100%;[^}]*display:grid;[^}]*place-items:center/);
   assert.match(styles, /\.draft-save-status/);
 });
 

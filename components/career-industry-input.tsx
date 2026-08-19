@@ -19,6 +19,7 @@ export default function CareerIndustryInput({
   onChange,
   placeholder = "Type an industry or career",
   required = false,
+  ariaLabel,
   ariaDescribedBy,
   name,
 }: {
@@ -27,6 +28,7 @@ export default function CareerIndustryInput({
   onChange: (value: string) => void;
   placeholder?: string;
   required?: boolean;
+  ariaLabel?: string;
   ariaDescribedBy?: string;
   name?: string;
 }) {
@@ -85,6 +87,7 @@ export default function CareerIndustryInput({
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
+          aria-label={ariaLabel}
           aria-describedby={ariaDescribedBy}
           aria-autocomplete="list"
           aria-controls={listId}
