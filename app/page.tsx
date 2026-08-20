@@ -9838,10 +9838,10 @@ function ProfileView({
     <div className="subpage profile-page deactivated-profile">
       <div className="profile-cover"><span>n2</span></div>
       <div className="profile-main">
-        <Avatar person={{ name: profile.name ?? "n2 member", role: "Account deactivated" }} size="xl" ring />
+        <Avatar person={{ name: profile.name ?? "Unavailable member", role: "Account unavailable" }} size="xl" ring />
         <h1>{profile.name ?? "n2 member"}</h1>
         <span className="profile-username">@{profile.username}</span>
-        <div className="deactivated-profile-notice"><UserX size={22}/><div><strong>Account deactivated</strong><p>This member is no longer active. Their previous posts and messages remain labelled to preserve conversation history.</p></div></div>
+        <div className="deactivated-profile-notice"><UserX size={22}/><div><strong>Account unavailable</strong><p>This member is not currently available. Their previous posts and messages remain labelled to preserve conversation history.</p></div></div>
       </div>
     </div>
   );
@@ -10941,6 +10941,8 @@ function SettingsView({
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [deleteWarningsAccepted, setDeleteWarningsAccepted] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState("");
+  const [deactivateAccountOpen, setDeactivateAccountOpen] = useState(false);
+  const [deactivateAccountError, setDeactivateAccountError] = useState("");
   const [leadershipElections, setLeadershipElections] = useState<LeadershipElectionView[]>([]);
   const [leadershipVoteStatus, setLeadershipVoteStatus] = useState("");
   const [profileUserId, setProfileUserId] = useState("");
@@ -11423,6 +11425,27 @@ function SettingsView({
     form.reset();
     setPasswordStatus({ busy: false, error: "", success: true });
   }
+  async function deactivateAccount(values: Record<string, string>) {
+    setDeactivateAccountError("");
+    try {
+      const response = await fetch("/api/account/deactivate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: values.password || undefined }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        setDeactivateAccountError(result?.error ?? "We couldn't deactivate your account. Please try again.");
+        return false;
+      }
+      localStorage.removeItem("n2-settings");
+      localStorage.removeItem(ACCESSIBILITY_STORAGE_KEY);
+      await signOut({ redirectTo: "/signin?account=deactivated" });
+    } catch {
+      setDeactivateAccountError("We couldn't deactivate your account. Check your connection and try again.");
+      return false;
+    }
+  }
   async function deleteAccount(values: Record<string, string>) {
     setDeleteAccountError("");
     try {
@@ -11438,7 +11461,7 @@ function SettingsView({
       }
       localStorage.removeItem("n2-settings");
       localStorage.removeItem(ACCESSIBILITY_STORAGE_KEY);
-      await signOut({ redirectTo: "/signin?account=deactivated" });
+      await signOut({ redirectTo: "/signin?account=deletion-scheduled" });
     } catch {
       setDeleteAccountError("We couldn't delete your account. Check your connection and try again.");
       return false;
@@ -12483,8 +12506,17 @@ function SettingsView({
             </div>
             <div className="account-danger-zone">
               <span>
+                <strong>Deactivate account</strong>
+                <small>Take a break for up to three months. Your projects stay in place, future meets you host are cancelled, and signing in again will prompt you to reactivate.</small>
+              </span>
+              <button type="button" className="secondary-button" onClick={() => { setDeactivateAccountError(""); setDeactivateAccountOpen(true); }}>
+                <UserX size={15} /> Deactivate account
+              </button>
+            </div>
+            <div className="account-danger-zone delete-account-zone">
+              <span>
                 <strong>Delete account</strong>
-                <small>This deactivates your account immediately, starts a 30-day recovery window, and begins any required project leadership handovers.</small>
+                <small>This closes your account immediately, starts a 30-day deletion window, and begins any required project leadership handovers.</small>
               </span>
               <button type="button" className="secondary-button danger" onClick={() => { setDeleteAccountError(""); setDeleteWarningsAccepted(false); setDeleteAccountOpen(true); }}>
                 <Trash2 size={15} /> Delete account
@@ -12492,11 +12524,24 @@ function SettingsView({
             </div>
           </div>
         )}
+        {deactivateAccountOpen && (
+          <ActionDialog
+            eyebrow="DEACTIVATE ACCOUNT"
+            title="Take a break from n2?"
+            description="Your account, profile and shared content will be labelled as deactivated. Your projects remain in place, but future meets you host are cancelled. Sign in within three months and confirm reactivation to return. After three months, the 30-day deletion process begins automatically."
+            confirmLabel="Deactivate my account"
+            cancelLabel="Keep my account"
+            error={deactivateAccountError}
+            fields={[{ name: "password", label: "Current password (if you use one)", kind: "input", inputType: "password", autoComplete: "current-password", trim: false, maxLength: 128 }]}
+            onClose={() => { setDeactivateAccountOpen(false); setDeactivateAccountError(""); }}
+            onConfirm={deactivateAccount}
+          />
+        )}
         {deleteAccountOpen && !deleteWarningsAccepted && (
           <ActionDialog
             eyebrow="BEFORE YOU DELETE"
             title="Review what happens next"
-            description="Your account becomes deactivated immediately. A sole co-owner takes ownership at once; otherwise eligible co-owners or members have 24 hours to vote before n2 selects the strongest project match. Future meets you host are cancelled and attendees are notified. Your posts, messages and profile are labelled as deactivated. You can recover within 30 days using your previous email and password, but completed transfers and cancelled meets are not automatically reversed."
+            description="Your account closes immediately. A sole co-owner takes ownership at once; otherwise eligible co-owners or members have 24 hours to vote before n2 selects the strongest project match. Future meets you host are cancelled and attendees are notified. Your posts, messages and profile are labelled as deactivated during the 30-day deletion window. Signing in during that window lets you cancel deletion, but completed transfers and cancelled meets are not automatically reversed."
             confirmLabel="I understand, continue"
             cancelLabel="Keep my account"
             danger
@@ -12507,9 +12552,9 @@ function SettingsView({
         {deleteAccountOpen && deleteWarningsAccepted && (
           <ActionDialog
             eyebrow="DELETE ACCOUNT"
-            title="Deactivate and schedule deletion?"
+            title="Schedule permanent deletion?"
             description="This is the final confirmation. Type DELETE below. Your permanent deletion is scheduled for 30 days from now."
-            confirmLabel="Deactivate my account"
+            confirmLabel="Delete my account"
             cancelLabel="Keep my account"
             danger
             error={deleteAccountError}

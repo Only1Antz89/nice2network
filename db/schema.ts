@@ -33,15 +33,35 @@ export const users = pgTable("users", {
   availability: text("availability").notNull().default("open"),
   role: text("role").notNull().default("member"),
   status: text("status").notNull().default("active"),
+  suspendedUntil: timestamp("suspended_until", { withTimezone: true }),
   sessionVersion: integer("session_version").notNull().default(0),
   forcePasswordChange: boolean("force_password_change").notNull().default(false),
   mfaEnrolledAt: timestamp("mfa_enrolled_at", { withTimezone: true }),
   onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
   deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+  deletionRequestedAt: timestamp("deletion_requested_at", { withTimezone: true }),
   recoveryDeadline: timestamp("recovery_deadline", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("users_email_unique").on(table.email), uniqueIndex("users_username_unique").on(table.username)]);
+
+export const accountDeletionHolds = pgTable("account_deletion_holds", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  requestedBy: uuid("requested_by").notNull().references(() => users.id),
+  previousStatus: text("previous_status").notNull(),
+  policyCode: text("policy_code").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").notNull().default("pending"),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).defaultNow().notNull(),
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
+  restoredBy: uuid("restored_by").references(() => users.id),
+  restoredAt: timestamp("restored_at", { withTimezone: true }),
+  finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("account_deletion_pending_user_unique").on(table.userId).where(sql`${table.status} in ('pending', 'finalizing')`),
+  index("account_deletion_schedule_idx").on(table.status, table.scheduledAt),
+]);
 
 export const accounts = pgTable("accounts", {
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -327,6 +347,24 @@ export const conversationTyping = pgTable("conversation_typing", {
 export const reports = pgTable("reports", {
   id: uuid("id").defaultRandom().primaryKey(), reporterId: uuid("reporter_id").notNull().references(() => users.id), targetType: text("target_type").notNull(), targetId: uuid("target_id").notNull(), reason: text("reason").notNull(), details: text("details"), status: text("status").notNull().default("open"), priority: text("priority").notNull().default("normal"), responseDueAt: timestamp("response_due_at", { withTimezone: true }), assignedTo: uuid("assigned_to").references(() => users.id), resolution: text("resolution"), resolvedAt: timestamp("resolved_at", { withTimezone: true }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [index("reports_status_idx").on(table.status)]);
+
+export const supportRequests = pgTable("support_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requesterId: uuid("requester_id").references(() => users.id, { onDelete: "set null" }),
+  email: text("email").notNull(),
+  category: text("category").$type<"account_access" | "profile_privacy" | "projects" | "safety" | "technical" | "other">().notNull(),
+  subject: text("subject").notNull(),
+  details: text("details").notNull(),
+  status: text("status").$type<"open" | "in_progress" | "resolved" | "dismissed">().notNull().default("open"),
+  assignedTo: uuid("assigned_to").references(() => users.id, { onDelete: "set null" }),
+  resolution: text("resolution"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("support_requests_status_idx").on(table.status, table.createdAt),
+  index("support_requests_requester_idx").on(table.requesterId, table.createdAt),
+]);
 
 export const blocks = pgTable("blocks", {
   blockerId: uuid("blocker_id").notNull().references(() => users.id, { onDelete: "cascade" }), blockedId: uuid("blocked_id").notNull().references(() => users.id, { onDelete: "cascade" }), reason: text("reason"), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

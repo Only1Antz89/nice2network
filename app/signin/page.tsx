@@ -8,6 +8,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowRight, Check, Mail } from "lucide-react";
 import PasswordInput from "@/components/password-input";
 import N2Select from "@/components/n2-select";
+import ActionDialog from "@/components/action-dialog";
 
 function SignInContent() {
   const searchParams=useSearchParams();
@@ -16,8 +17,11 @@ function SignInContent() {
   const [busy,setBusy]=useState(false);
   const [photo,setPhoto]=useState("");
   const [pendingEmail,setPendingEmail]=useState("");
+  const [pendingReactivation,setPendingReactivation]=useState<{email:string;password:string}|null>(null);
+  const [reactivationError,setReactivationError]=useState("");
   const accountDeleted=searchParams.get("account")==="deleted";
   const accountDeactivated=searchParams.get("account")==="deactivated";
+  const deletionScheduled=searchParams.get("account")==="deletion-scheduled";
 
   async function choosePhoto(file?:File){if(!file)return;if(file.size>500_000){setError("Choose a photo smaller than 500 KB.");return}const reader=new FileReader();reader.onload=()=>setPhoto(String(reader.result));reader.readAsDataURL(file)}
   async function submit(event:FormEvent<HTMLFormElement>){
@@ -32,13 +36,25 @@ function SignInContent() {
       }
       const resumeResponse=await fetch("/api/auth/onboarding/resume",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})}),resume=await resumeResponse.json().catch(()=>({resume:false}));if(resume.resume){window.location.href="/onboarding?resume=1";return}
       const result=await signIn("credentials",{email,password,redirect:false});
-      if(result?.error){setError(result.code==="rate_limit"?"Too many sign-in attempts. Please wait 15 minutes and try again.":"Check your email and password. If registration is unfinished, use the password you created to resume your profile setup.");return}
+      if(result?.error){if(result.code==="account_deactivated"){setPendingReactivation({email,password});setReactivationError("");return}setError(result.code==="rate_limit"?"Too many sign-in attempts. Please wait 15 minutes and try again.":"Check your email and password. If registration is unfinished, use the password you created to resume your profile setup.");return}
       const session=await fetch("/api/auth/session").then(response=>response.json()).catch(()=>null);if(session?.user?.forcePasswordChange){window.location.href="/change-password";return}const next=new URLSearchParams(window.location.search).get("next");window.location.href=next?.startsWith("/")?next:"/";
     } catch {
       setError("Sign in is temporarily unavailable. Please refresh the page and try again.");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function reactivate(){
+    if(!pendingReactivation)return false;
+    setReactivationError("");
+    try{
+      const response=await fetch("/api/account/reactivate",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(pendingReactivation)}),result=await response.json().catch(()=>({}));
+      if(!response.ok){setReactivationError(result.error??"Your account could not be reactivated.");return false}
+      const signedIn=await signIn("credentials",{...pendingReactivation,redirect:false});
+      if(signedIn?.error){setReactivationError("Your account is active, but sign-in did not complete. Close this message and sign in again.");return false}
+      const next=new URLSearchParams(window.location.search).get("next");window.location.href=next?.startsWith("/")?next:"/";
+    }catch{setReactivationError("Reactivation is temporarily unavailable. Please try again.");return false}
   }
 
   return <main className="auth-page auth-shell">
@@ -55,7 +71,8 @@ function SignInContent() {
         <h1>{mode==="signin"?"Welcome back to your community.":"Join the community."}</h1>
         <p>{mode==="signin"?"Sign in to reconnect, join projects, encourage others and keep ideas moving.":"Create your account, share what interests you and discover ways to take part."}</p>
         {accountDeleted&&mode==="signin"&&<p className="form-success" role="status"><Check size={14}/> Your account has been deleted.</p>}
-        {accountDeactivated&&mode==="signin"&&<p className="form-success" role="status"><Check size={14}/> Your account is deactivated. You can recover it for 30 days.</p>}
+        {accountDeactivated&&mode==="signin"&&<p className="form-success" role="status"><Check size={14}/> Your account is deactivated. Sign in whenever you’re ready to reactivate it.</p>}
+        {deletionScheduled&&mode==="signin"&&<p className="form-success" role="status"><Check size={14}/> Your account is closed and scheduled for permanent deletion in 30 days.</p>}
         <form onSubmit={submit}>
           {mode==="register"&&<><div className="signup-grid"><label>Title<N2Select name="title" defaultValue="Ms" required ariaLabel="Title" options={["Mr", "Ms", "Mrs", "Miss", "Mx", "Dr", "Prof"].map(value => ({ value, label: value }))}/></label><label>Date of birth<input name="dateOfBirth" type="date" max={new Date(new Date().setFullYear(new Date().getFullYear()-16)).toISOString().slice(0,10)} required/></label><label>First name<input name="firstName" autoComplete="given-name" required minLength={2}/></label><label>Surname<input name="lastName" autoComplete="family-name" required minLength={2}/></label></div><label className="photo-field">Profile photo <small>Optional — n2 is your default.</small><span className="photo-picker">{photo?<img src={photo} alt="Profile preview"/>:<span className="default-photo-preview">n2</span>}<span><strong>{photo?"Photo ready":"Use n2 or choose a photo"}</strong><small>JPG, PNG or WebP · up to 500 KB</small></span><input aria-label="Profile photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>choosePhoto(event.target.files?.[0])}/></span></label></>}
           <label>Email<input name="email" type="email" autoComplete="email" required/></label>
@@ -64,9 +81,12 @@ function SignInContent() {
           <button className="primary-button wide" disabled={busy}>{busy?"One moment…":mode==="signin"?"Sign in":<>Create account <ArrowRight size={16}/></>}</button>
         </form>
         <button className="auth-switch" onClick={()=>{setError("");setMode(mode==="signin"?"register":"signin")}}>{mode==="signin"?"New here? Create an account":"Already a member? Sign in"}</button>
-        {mode==="signin"&&<Link className="recovery-text-link" href="/recover-account">Recover a deactivated account</Link>}
+        {mode==="signin"&&<Link className="recovery-text-link" href="/help">Need help?</Link>}
       </section>}
     </section>
+    {pendingReactivation && (
+      <ActionDialog eyebrow="ACCOUNT DEACTIVATED" title="Reactivate your account?" description="Your details are still available. Reactivating restores account access and cancels any scheduled deletion. Cancelled meets and completed project ownership transfers are not automatically reversed." confirmLabel="Reactivate and sign in" cancelLabel="Not now" error={reactivationError} onClose={()=>{setPendingReactivation(null);setReactivationError("")}} onConfirm={reactivate}/>
+    )}
   </main>;
 }
 

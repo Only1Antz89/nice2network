@@ -652,7 +652,7 @@ html[data-colour-theme="dark"] .open-person:hover > svg {
   color: var(--ink);
   border-color: #8e4a40;
 }
-.account-danger-zone{background:var(--danger-soft);border-color:#8e4a40}.account-danger-zone strong{color:#ffc2b7}
+.account-danger-zone{background:#11110f;border-color:#fff;color:#fff}.account-danger-zone strong{color:#fff}.account-danger-zone small{color:#d8d8d2}
 .system-notification-denied,
 .role-fit.warning,
 .meet-not-ready {
@@ -786,3 +786,8 @@ html[data-colour-theme="dark"] .person-suggest > .follow-person-button:focus-vis
 .avatar-ring {
   outline-color: var(--surface);
 }
+
+html[data-colour-theme="dark"] .account-danger-zone:not(.delete-account-zone){background:var(--surface);border-color:var(--line);color:var(--ink)}
+html[data-colour-theme="dark"] .account-danger-zone:not(.delete-account-zone) strong{color:var(--ink)}
+html[data-colour-theme="dark"] .account-danger-zone:not(.delete-account-zone) small{color:var(--muted)}
+html[data-colour-theme="dark"] .account-danger-zone:not(.delete-account-zone) .secondary-button,html[data-colour-theme="dark"] .support-request-form input,html[data-colour-theme="dark"] .support-request-form textarea,html[data-colour-theme="dark"] .help-contact,html[data-colour-theme="dark"] .help-contact>button,html[data-colour-theme="dark"] .admin-filter-tabs button{background:var(--surface);border-color:var(--line);color:var(--ink)}

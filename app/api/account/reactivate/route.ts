@@ -17,28 +17,27 @@ const schema = z.object({
 export async function POST(request: Request) {
   try {
     const input = schema.parse(await request.json());
-    enforceRateLimit(`account-recover:${input.email}`, 5, 60 * 60_000);
-    await enforceDistributedRateLimit(`account-recover:${input.email}`, 5, 60 * 60_000);
+    enforceRateLimit(`account-reactivate:${input.email}`, 5, 60 * 60_000);
+    await enforceDistributedRateLimit(`account-reactivate:${input.email}`, 5, 60 * 60_000);
     const db = getDb();
     const now = new Date();
-    const [account] = await db.select({ id: users.id, passwordHash: users.passwordHash }).from(users).where(and(
+    const [account] = await db.select({ id: users.id, passwordHash: users.passwordHash, deletionRequestedAt: users.deletionRequestedAt }).from(users).where(and(
       eq(users.email, input.email),
       eq(users.status, "deactivated"),
       gt(users.recoveryDeadline, now),
     )).limit(1);
-    if (!account?.passwordHash || !(await compare(input.password, account.passwordHash))) {
-      throw new ApiError(400, "Those previous account details could not be verified, or the recovery window has ended.");
-    }
+    if (!account?.passwordHash || !(await compare(input.password, account.passwordHash))) throw new ApiError(400, "Those account details could not be verified, or the reactivation window has ended.");
     const retainedProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.ownerId, account.id));
     await db.transaction(async tx => {
       await tx.update(users).set({
         status: "active",
         availability: "open",
         deactivatedAt: null,
+        deletionRequestedAt: null,
         recoveryDeadline: null,
         sessionVersion: sql`${users.sessionVersion} + 1`,
         updatedAt: now,
-      }).where(and(eq(users.id, account.id), eq(users.status, "deactivated")));
+      }).where(and(eq(users.id, account.id), eq(users.status, "deactivated"), gt(users.recoveryDeadline, now)));
       await tx.update(projectLeadershipElections).set({ status: "cancelled", completedAt: now }).where(and(
         eq(projectLeadershipElections.formerOwnerId, account.id),
         eq(projectLeadershipElections.status, "open"),
@@ -48,8 +47,8 @@ export async function POST(request: Request) {
         inArray(projectMembers.projectId, retainedProjects.map(project => project.id)),
       ));
     });
-    await audit(account.id, "account.recovered", "user", account.id, { pendingLeadershipElectionsCancelled: true }, { severity: "high" });
-    return NextResponse.json({ success: true, message: "Your account is active again. Completed ownership transfers and cancelled meets are not automatically reversed." });
+    await audit(account.id, "account.reactivated", "user", account.id, { deletionCancelled: Boolean(account.deletionRequestedAt), pendingLeadershipElectionsCancelled: true }, { severity: "high" });
+    return NextResponse.json({ success: true, message: "Your account is active again. Cancelled meets and completed ownership transfers are not automatically reversed." });
   } catch (error) {
     return apiError(error);
   }

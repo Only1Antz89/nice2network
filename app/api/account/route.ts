@@ -8,7 +8,7 @@ import {
   users,
 } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
-import { initiateAccountDeactivation } from "@/lib/account-lifecycle";
+import { initiateAccountDeletion } from "@/lib/account-lifecycle";
 import { audit } from "@/lib/audit";
 import { enforceDistributedRateLimit } from "@/lib/distributed-rate-limit";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -36,8 +36,8 @@ export async function DELETE(request: Request) {
       throw new ApiError(400, "Your current password is incorrect.");
     }
 
-    const result = await initiateAccountDeactivation(member.id);
-    await audit(member.id, "account.deactivated", "user", member.id, {
+    const result = await initiateAccountDeletion(member.id);
+    await audit(member.id, "account.deletion_scheduled", "user", member.id, {
       recoveryDeadline: result.recoveryDeadline.toISOString(),
       ownershipTransfers: result.transferred,
       leadershipElections: result.elections,

@@ -8,6 +8,7 @@ import { createNotifications } from "@/lib/notifications";
 import { resolveMentionedUsers } from "@/lib/mentions";
 import { trackProductEvent } from "@/lib/analytics";
 import { requirePostView } from "@/lib/content-access";
+import { unavailableIdentity } from "@/lib/member-identity";
 
 const replySchema = z.object({ body: z.string().trim().min(1).max(2000) });
 
@@ -23,8 +24,9 @@ export async function GET(_request:Request,{params}:{params:Promise<{postId:stri
       liked:sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId}=${timelinePosts.id} and ${postLikes.userId}=${member.id})`,reposted:sql<boolean>`exists(select 1 from ${postReposts} where ${postReposts.postId}=${timelinePosts.id} and ${postReposts.userId}=${member.id})`,
     }).from(timelinePosts).innerJoin(users,eq(users.id,timelinePosts.authorId)).leftJoin(adminAssignments,and(eq(adminAssignments.userId,users.id),eq(adminAssignments.status,"active"))).where(and(eq(timelinePosts.id,postId),eq(timelinePosts.status,"visible"))).limit(1);
     if(!post)return NextResponse.json({error:"Post not found"},{status:404});
-    const replies=await db.select({id:postReplies.id,body:postReplies.body,createdAt:postReplies.createdAt,editedAt:sql<Date|null>`case when ${postReplies.updatedAt} > ${postReplies.createdAt} then ${postReplies.updatedAt} else null end`,authorId:users.id,authorName:users.name,authorImage:users.image,authorProfession:users.profession,authorStatus:users.status,isDemo:postReplies.isDemo,authorIsAdmin:sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`}).from(postReplies).innerJoin(users,eq(users.id,postReplies.authorId)).leftJoin(adminAssignments,and(eq(adminAssignments.userId,users.id),eq(adminAssignments.status,"active"))).where(and(eq(postReplies.postId,postId),eq(postReplies.status,"visible"),inArray(users.status,["active","deactivated","deleted"]))).orderBy(asc(postReplies.createdAt));
-    return NextResponse.json({post,replies});
+    const replies=await db.select({id:postReplies.id,body:postReplies.body,createdAt:postReplies.createdAt,editedAt:sql<Date|null>`case when ${postReplies.updatedAt} > ${postReplies.createdAt} then ${postReplies.updatedAt} else null end`,authorId:users.id,authorName:users.name,authorImage:users.image,authorProfession:users.profession,authorStatus:users.status,isDemo:postReplies.isDemo,authorIsAdmin:sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`}).from(postReplies).innerJoin(users,eq(users.id,postReplies.authorId)).leftJoin(adminAssignments,and(eq(adminAssignments.userId,users.id),eq(adminAssignments.status,"active"))).where(and(eq(postReplies.postId,postId),eq(postReplies.status,"visible"),inArray(users.status,["active","deactivated","suspended","pending_admin_deletion","deleted"]))).orderBy(asc(postReplies.createdAt));
+    const redact=<T extends {authorStatus:string;authorName:string|null;authorImage:string|null;authorProfession:string|null;authorIsAdmin:boolean}>(row:T)=>{const identity=unavailableIdentity(row.authorStatus,{name:row.authorName,image:row.authorImage,profession:row.authorProfession,isAdmin:row.authorIsAdmin});return{...row,authorName:identity.name,authorImage:identity.image,authorProfession:identity.profession,authorIsAdmin:identity.isAdmin}};
+    return NextResponse.json({post:redact(post),replies:replies.map(reply=>redact(reply))});
   } catch(error){return apiError(error)}
 }
 

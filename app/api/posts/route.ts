@@ -9,6 +9,7 @@ import { trackProductEvent } from "@/lib/analytics";
 import { createNotifications } from "@/lib/notifications";
 import { auth } from "@/auth";
 import { resolveMentionedUsers } from "@/lib/mentions";
+import { unavailableIdentity } from "@/lib/member-identity";
 
 const imageData = z.string().max(2_900_000).refine(value => /^data:image\/(jpeg|png|webp|gif);base64,/i.test(value), "Choose a JPEG, PNG, WebP or GIF image");
 const videoData = z.string().max(3_500_000).refine(value => /^data:video\/(mp4|webm|quicktime);base64,/i.test(value), "Choose an MP4, WebM or QuickTime video");
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
       reposted: viewerId ? sql<boolean>`exists(select 1 from ${postReposts} where ${postReposts.postId} = ${timelinePosts.id} and ${postReposts.userId} = ${viewerId})` : sql<boolean>`false`,
     }).from(timelinePosts).innerJoin(users, eq(users.id, timelinePosts.authorId))
       .leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active")))
-      .where(and(eq(timelinePosts.status, "visible"), eq(timelinePosts.visibility, "network"), inArray(users.status, ["active", "deactivated", "deleted"])))
+      .where(and(eq(timelinePosts.status, "visible"), eq(timelinePosts.visibility, "network"), inArray(users.status, ["active", "deactivated", "suspended", "pending_admin_deletion", "deleted"])))
       .orderBy(desc(timelinePosts.createdAt)).limit(60);
     if(scope==="following") rows=rows.filter(row=>followedIds.includes(row.authorId));
     const announcementCutoff=Date.now()-24*60*60*1000;
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
     const ids = [...new Set(rows.flatMap(row => row.linkedProjectIds))];
     const linked = ids.length ? await db.select({ id: projects.id, title: projects.title, status: projects.status }).from(projects).where(inArray(projects.id, ids)) : [];
     const byId = new Map(linked.map(project => [project.id, project]));
-    return NextResponse.json({ posts: rows.map(row => ({ ...row, linkedProjects: row.linkedProjectIds.map(id => byId.get(id)).filter(Boolean) })) });
+    return NextResponse.json({ posts: rows.map(row => { const identity = unavailableIdentity(row.authorStatus, { name: row.authorName, image: row.authorImage, profession: row.authorProfession, isAdmin: row.authorIsAdmin }); return { ...row, authorName: identity.name, authorImage: identity.image, authorProfession: identity.profession, authorIsAdmin: identity.isAdmin, linkedProjects: row.linkedProjectIds.map(id => byId.get(id)).filter(Boolean) }; }) });
   } catch (error) { return apiError(error); }
 }
 

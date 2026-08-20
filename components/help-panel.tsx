@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, ChevronDown, CircleHelp, Search, ShieldCheck, X } from "lucide-react";
+import { ArrowUpRight, ChevronDown, CircleHelp, MessageSquarePlus, Search, ShieldCheck, X } from "lucide-react";
+import SupportRequestForm from "@/components/support-request-form";
 
 type HelpDestination = "feed" | "projects" | "messages" | "meet" | "settings";
 
@@ -13,7 +14,8 @@ export default function HelpPanel({
   onNavigate: (view: HelpDestination) => void;
 }) {
   const [query, setQuery] = useState(""),
-    [open, setOpen] = useState<string | null>(null);
+    [open, setOpen] = useState<string | null>(null),
+    [contactOpen, setContactOpen] = useState(false);
   const topics = [
     {
       id: "projects",
@@ -125,6 +127,10 @@ export default function HelpPanel({
             </div>
           )}
         </div>
+        <section className="help-contact">
+          <button type="button" onClick={() => setContactOpen(value => !value)} aria-expanded={contactOpen}><MessageSquarePlus size={16}/><span><strong>Still need help?</strong><small>Send your issue privately to the n2 support inbox.</small></span><ChevronDown size={16}/></button>
+          {contactOpen && <SupportRequestForm compact/>}
+        </section>
         <footer>
           <ShieldCheck size={16} />
           <p>

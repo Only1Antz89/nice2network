@@ -70,6 +70,8 @@ test("profile shares use a branded large social preview with identity fallbacks"
   assert.match(image, /profile\.headline \|\| profile\.profession \|\| "n2 member"/);
   assert.match(image, />@\{profile\.username\}</);
   assert.match(image, /On nice 2 network/);
-  assert.match(profile, /inArray\(users\.status, \["active", "deactivated"\]\)/);
+  assert.match(profile, /inArray\(users\.status, \["active", "deactivated", "suspended", "pending_admin_deletion"\]\)/);
+  assert.match(profile, /isTemporarilyUnavailable\(profile\.status\)/);
+  assert.match(profile, /name: "Unavailable member", image: null/);
   assert.match(profile, /isNotNull\(users\.emailVerified\)/);
 });

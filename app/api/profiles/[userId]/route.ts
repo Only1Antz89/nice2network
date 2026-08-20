@@ -11,6 +11,7 @@ import { sanitizeRichText } from "@/lib/rich-text";
 import { canonicalIndustry, canonicalProfession, isMeaningfulOtherHeadline, OTHER_PROFESSION } from "@/lib/professional-profile";
 import { getPlatformSettings } from "@/lib/platform-settings";
 import { isAvailableUsernameFormat } from "@/lib/usernames";
+import { isTemporarilyUnavailable } from "@/lib/member-identity";
 
 const profileSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -42,10 +43,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
     const [row] = await db.select({ id: users.id, username: users.username, name: users.name, image: users.image, coverImage: users.coverImage, profession: users.profession, headline: users.headline, bio: users.bio, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, location: users.location, city: users.city, country: users.country, timezone: users.timezone, workMode: users.workMode, ageBand: users.ageBand, status: users.status, visibility: privacySettings.profileVisibility, showLocation: privacySettings.showLocation, isN2Admin: adminAssignments.id, isFounder: sql<boolean>`${users.role} = 'founder'`, isDemo: sql<boolean>`${users.role} = 'demo_member'` })
       .from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active"))).where(eq(users.id, userId)).limit(1);
     if (!row) throw new ApiError(404, "Profile not found");
-    if (row.status === "deactivated") return NextResponse.json({ profile: {
-      id: row.id, username: row.username, name: row.name, image: null, coverImage: null,
+    if (row.status === "deactivated" || isTemporarilyUnavailable(row.status)) return NextResponse.json({ profile: {
+      id: row.id, username: row.username, name: isTemporarilyUnavailable(row.status) ? "Unavailable member" : row.name, image: null, coverImage: null,
       profession: null, headline: null, bio: null, industry: null, rankedSkills: [], interests: [], location: null,
-      status: row.status, deactivated: true, isN2Admin: false, isFounder: false, isDemo: false, isCurrent: false,
+      status: row.status, deactivated: true, unavailable: isTemporarilyUnavailable(row.status), isN2Admin: false, isFounder: false, isDemo: false, isCurrent: false,
       projectCount: 0, involvedCount: 0, followers: 0, following: 0, isFollowing: false, isMutual: false,
       posts: [], projects: [], career: [], education: [],
     } }, { headers: { "Cache-Control": "private, no-store" } });

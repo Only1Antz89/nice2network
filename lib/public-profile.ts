@@ -3,6 +3,7 @@ import { cache } from "react";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { getDb, isDatabaseConfigured } from "@/db";
 import { privacySettings, users } from "@/db/schema";
+import { isTemporarilyUnavailable } from "@/lib/member-identity";
 
 export const getSharedProfileIdentity = cache(async (username: string) => {
   if (!isDatabaseConfigured()) return null;
@@ -21,8 +22,11 @@ export const getSharedProfileIdentity = cache(async (username: string) => {
     status: users.status,
   }).from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).where(and(
     eq(users.username, username.toLowerCase()),
-    inArray(users.status, ["active", "deactivated"]),
+    inArray(users.status, ["active", "deactivated", "suspended", "pending_admin_deletion"]),
     isNotNull(users.emailVerified),
   )).limit(1);
-  return profile ?? null;
+  if (!profile) return null;
+  return isTemporarilyUnavailable(profile.status)
+    ? { ...profile, name: "Unavailable member", image: null, profession: null, headline: null, bio: null, location: null, showLocation: false }
+    : profile;
 });

@@ -19,7 +19,7 @@ const getSharedProfile = cache(async function getSharedProfile(username: string)
   const profile = await getSharedProfileIdentity(username);
   if (!profile) return null;
 
-  if (profile.status === "deactivated") return { profile, posts: [], projects: [], replies: [], comments: [], activity: { likes: [], watching: [], reposts: [] }, restricted: false as const, deactivated: true as const };
+  if (profile.status !== "active") return { profile, posts: [], projects: [], replies: [], comments: [], activity: { likes: [], watching: [], reposts: [] }, restricted: false as const, deactivated: true as const };
 
   if (profile.visibility !== "public") return { profile, posts: [], projects: [], replies: [], comments: [], activity: { likes: [], watching: [], reposts: [] }, restricted: true as const, deactivated: false as const };
 
@@ -47,7 +47,7 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   const result = await getSharedProfile(username);
   if (!result) return { title: "Profile unavailable — nice 2 network", robots: { index: false, follow: false } };
   const title = `${result.profile.name ?? `@${result.profile.username}`} (@${result.profile.username}) — nice 2 network`;
-  const description = result.deactivated ? `This nice 2 network account is deactivated.` : result.restricted ? `Request to follow @${result.profile.username} on nice 2 network.` : result.profile.headline ?? result.profile.profession ?? `See @${result.profile.username}'s public posts and projects on nice 2 network.`;
+  const description = result.deactivated ? `This nice 2 network account is unavailable.` : result.restricted ? `Request to follow @${result.profile.username} on nice 2 network.` : result.profile.headline ?? result.profile.profession ?? `See @${result.profile.username}'s public posts and projects on nice 2 network.`;
   const canonical = `${publicOrigin}/${result.profile.username}`;
   const image = `${canonical}/opengraph-image`;
   return {
@@ -98,7 +98,7 @@ export default async function PublicProfilePage({ params, searchParams }: { para
     <main className={styles.main}>
       <section className={`${styles.profile} ${restricted || deactivated ? styles.restrictedProfile : ""}`}>
         <Image className={styles.avatar} src={avatar} alt={profile.name ?? profile.username} width={192} height={192} unoptimized/>
-        <div className={styles.identity}><small>@{profile.username}</small><h1>{profile.name ?? profile.username}</h1>{deactivated ? <p className={styles.privateCopy}><UserX size={15} /> Account deactivated</p> : restricted ? <p className={styles.privateCopy}><LockKeyhole size={15} /> This profile is private. Send a follow request to ask for access.</p> : <><p>{profile.headline ?? profile.profession ?? "n2 member"}</p>{profile.bio&&<p className={styles.bio}>{profile.bio}</p>}{profile.showLocation&&profile.location&&<p className={styles.location}>{profile.location}</p>}</>}</div>
+        <div className={styles.identity}><small>@{profile.username}</small><h1>{profile.name ?? profile.username}</h1>{deactivated ? <p className={styles.privateCopy}><UserX size={15} /> Account unavailable</p> : restricted ? <p className={styles.privateCopy}><LockKeyhole size={15} /> This profile is private. Send a follow request to ask for access.</p> : <><p>{profile.headline ?? profile.profession ?? "n2 member"}</p>{profile.bio&&<p className={styles.bio}>{profile.bio}</p>}{profile.showLocation&&profile.location&&<p className={styles.location}>{profile.location}</p>}</>}</div>
         {!deactivated && <PublicProfileAction kind={restricted ? "request" : "follow"} targetId={restricted ? profile.id : undefined} authenticatedHref={`/?profile=${profile.id}`} />}
       </section>
       {deactivated ? <section className={styles.privatePanel}><UserX size={22} /><strong>This account is no longer active.</strong><p>Its previous posts may remain visible with a deactivated-account label so conversations keep their context.</p></section> : restricted ? <section className={styles.privatePanel}><LockKeyhole size={22} /><strong>Shared with permission.</strong><p>Once the profile owner accepts your request, sign in to view the profile through n2.</p></section> : <><nav className={styles.tabs} aria-label="Public profile content">

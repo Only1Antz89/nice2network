@@ -58,6 +58,22 @@ export async function sendMeetingCancellationEmail(input: { email: string; name?
   return { delivered: true };
 }
 
+export async function sendSupportResolutionEmail(input: { email: string; subject: string; resolution: string; requestId: string }) {
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) throw new Error("Email delivery is not configured");
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      from: process.env.EMAIL_FROM,
+      to: [input.email],
+      subject: `Your nice 2 network support request: ${input.subject}`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;color:#111"><div style="width:38px;height:38px;border-radius:50%;background:#111;color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px">n2</div><h1 style="font-size:28px;letter-spacing:-1px;margin:28px 0 10px">We’ve reviewed your request.</h1><p style="color:#666;line-height:1.6">${escapeHtml(input.resolution).replaceAll("\n", "<br>")}</p><p style="font-size:12px;color:#888;margin-top:28px">Reference ${input.requestId.slice(0, 8).toUpperCase()}</p></div>`,
+      text: `${input.resolution}\n\nReference ${input.requestId.slice(0, 8).toUpperCase()}`,
+    }),
+  });
+  if (!response.ok) throw new Error(`Email delivery failed (${response.status})`);
+}
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 }

@@ -10,9 +10,14 @@ import { getDb, isDatabaseConfigured } from "@/db";
 import { accounts, adminAssignments, authenticators, sessions, users, verificationTokens } from "@/db/schema";
 import { enforceRateLimit, RateLimitError, requestIp } from "@/lib/rate-limit";
 import { enforceDistributedRateLimit } from "@/lib/distributed-rate-limit";
+import { reconcileExpiredSuspension } from "@/lib/admin-account-lifecycle";
 
 class SignInRateLimited extends CredentialsSignin {
   code = "rate_limit";
+}
+
+class AccountDeactivated extends CredentialsSignin {
+  code = "account_deactivated";
 }
 
 function authVersion(passwordHash: string | null, sessionVersion: number) {
@@ -27,13 +32,18 @@ providers.push(Credentials({
   async authorize(credentials, request) {
     if (!isDatabaseConfigured() || typeof credentials.email !== "string" || typeof credentials.password !== "string") return null;
     const email = credentials.email.trim().toLowerCase();
-    const [member] = await getDb().select().from(users).where(eq(users.email, email)).limit(1);
-    const passwordMatches = Boolean(member?.passwordHash && member.status === "active" && await compare(credentials.password, member.passwordHash));
-    if (passwordMatches && member) {
+    let [member] = await getDb().select().from(users).where(eq(users.email, email)).limit(1);
+    if (member?.status === "suspended" && member.suspendedUntil && member.suspendedUntil <= new Date()) {
+      await reconcileExpiredSuspension(member.id);
+      [member] = await getDb().select().from(users).where(eq(users.id, member.id)).limit(1);
+    }
+    const passwordMatches = Boolean(member?.passwordHash && await compare(credentials.password, member.passwordHash));
+    if (passwordMatches && member?.status === "active") {
       // Profile images can be embedded data URLs and are far too large for a JWT
       // session cookie. Profile APIs remain the source of truth for member media.
       return { id: member.id, email: member.email, name: member.name };
     }
+    if (passwordMatches && member?.status === "deactivated" && member.recoveryDeadline && member.recoveryDeadline > new Date()) throw new AccountDeactivated();
 
     // Count failed credentials only. A correct password must remain usable after
     // repeated failures, otherwise an attacker can lock another member out.
@@ -67,10 +77,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const userId = String(token.userId ?? token.sub ?? "");
       if (userId && isDatabaseConfigured()) {
         const now = new Date();
-        const [[member], [admin]] = await Promise.all([
-          getDb().select({ forcePasswordChange: users.forcePasswordChange, passwordHash: users.passwordHash, sessionVersion: users.sessionVersion, status: users.status }).from(users).where(eq(users.id, userId)).limit(1),
+        const [memberRows, adminRows] = await Promise.all([
+          getDb().select({ forcePasswordChange: users.forcePasswordChange, passwordHash: users.passwordHash, sessionVersion: users.sessionVersion, status: users.status, suspendedUntil: users.suspendedUntil }).from(users).where(eq(users.id, userId)).limit(1),
           getDb().select({ id: adminAssignments.id }).from(adminAssignments).where(and(eq(adminAssignments.userId, userId), eq(adminAssignments.status, "active"), or(isNull(adminAssignments.expiresAt), gt(adminAssignments.expiresAt, now)))).limit(1),
         ]);
+        let [member] = memberRows;
+        const [admin] = adminRows;
+        if (member?.status === "suspended" && member.suspendedUntil && member.suspendedUntil <= now) {
+          await reconcileExpiredSuspension(userId, now);
+          [member] = await getDb().select({ forcePasswordChange: users.forcePasswordChange, passwordHash: users.passwordHash, sessionVersion: users.sessionVersion, status: users.status, suspendedUntil: users.suspendedUntil }).from(users).where(eq(users.id, userId)).limit(1);
+        }
         const currentVersion = member ? authVersion(member.passwordHash, member.sessionVersion) : "";
         if (user?.id) token.authVersion = currentVersion;
         token.authValid = Boolean(member?.status === "active" && token.authVersion === currentVersion);
