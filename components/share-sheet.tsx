@@ -184,7 +184,7 @@ export default function ShareSheet({
                 <ArrowLeft size={15} /> Back
               </button>
             )}
-            <span className="eyebrow">BRING IN USEFUL PEOPLE</span>
+            <span className="eyebrow">SHARE AND SPARK SUPPORT</span>
             <h2>
               {panel === "messages"
                 ? "Share in messages"

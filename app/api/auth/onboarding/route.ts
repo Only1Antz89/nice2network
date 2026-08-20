@@ -8,11 +8,14 @@ import { privacySettings, projectRoles, projects, users, verificationTokens } fr
 import { trackProductEvent } from "@/lib/analytics";
 import { ONBOARDING_BIO_MIN_LENGTH, hasUniqueValues, isMeaningfulOnboardingBio, isMeaningfulOnboardingValue } from "@/lib/onboarding-profile";
 import { recommendPeople } from "@/lib/people-recommendations";
+import { canonicalIndustry, canonicalProfession, isMeaningfulOtherHeadline, OTHER_PROFESSION } from "@/lib/professional-profile";
+import { getPlatformSettings } from "@/lib/platform-settings";
 import { isAvailableUsernameFormat } from "@/lib/usernames";
 
 const schema = z.object({
   username: z.string().trim().toLowerCase().refine(isAvailableUsernameFormat, "Use 3–30 lowercase letters, numbers, underscores or hyphens. The username cannot be a reserved n2 page."),
   profession: z.string().trim().min(2, "Choose a suggestion or enter a specific profession.").max(100, "Profession must be 100 characters or fewer.").refine(isMeaningfulOnboardingValue, "Choose a suggestion or enter a specific profession."),
+  headline: z.string().trim().max(160, "Professional headline must be 160 characters or fewer.").optional(),
   industry: z.string().trim().min(2, "Choose a suggestion or enter a specific industry.").max(100, "Industry must be 100 characters or fewer.").refine(isMeaningfulOnboardingValue, "Choose a suggestion or enter a specific industry."),
   bio: z.string().trim().min(ONBOARDING_BIO_MIN_LENGTH, `Short bio must be at least ${ONBOARDING_BIO_MIN_LENGTH} characters.`).max(600, "Short bio must be 600 characters or fewer.").refine(isMeaningfulOnboardingBio, "Write at least 6 words about your experience and what you want to contribute."),
   primarySkill: z.string().trim().min(2, "Choose a suggestion or enter a specific primary skill.").max(80, "Primary skill must be 80 characters or fewer.").refine(isMeaningfulOnboardingValue, "Choose a suggestion or enter a specific primary skill."),
@@ -38,10 +41,11 @@ export async function GET(request: Request) {
     const [member] = await db.select({ id: users.id, username: users.username }).from(users).where(eq(users.email, email)).limit(1);
     if (!member) return NextResponse.json({ error: "Member not found." }, { status: 404 });
     const candidate = new URL(request.url).searchParams.get("username")?.trim().toLowerCase();
-    if (!candidate) return NextResponse.json({ username: member.username });
-    if (!isAvailableUsernameFormat(candidate)) return NextResponse.json({ username: member.username, available: false, reason: "format" });
+    const { profileTaxonomySafeguardsEnabled } = await getPlatformSettings();
+    if (!candidate) return NextResponse.json({ username: member.username, profileTaxonomySafeguardsEnabled });
+    if (!isAvailableUsernameFormat(candidate)) return NextResponse.json({ username: member.username, available: false, reason: "format", profileTaxonomySafeguardsEnabled });
     const [owner] = await db.select({ id: users.id }).from(users).where(and(eq(users.username, candidate), ne(users.id, member.id))).limit(1);
-    return NextResponse.json({ username: member.username, available: !owner });
+    return NextResponse.json({ username: member.username, available: !owner, profileTaxonomySafeguardsEnabled });
   } catch {
     return NextResponse.json({ error: "Could not check that username." }, { status: 400 });
   }
@@ -52,6 +56,20 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Check your profile details and try again." }, { status: 400 });
     const input = parsed.data;
+    const { profileTaxonomySafeguardsEnabled } = await getPlatformSettings();
+    let profession = input.profession, industry = input.industry, headline = input.profession;
+    if (profileTaxonomySafeguardsEnabled) {
+      const canonicalProfessionValue = canonicalProfession(input.profession);
+      if (!canonicalProfessionValue) return NextResponse.json({ error: "Choose a profession from the list." }, { status: 400 });
+      const canonicalIndustryValue = canonicalIndustry(input.industry);
+      if (!canonicalIndustryValue) return NextResponse.json({ error: "Choose an industry from the list." }, { status: 400 });
+      profession = canonicalProfessionValue;
+      industry = canonicalIndustryValue;
+      if (profession === OTHER_PROFESSION) {
+        if (!input.headline || !isMeaningfulOtherHeadline(input.headline)) return NextResponse.json({ error: "Describe your unlisted profession using at least two meaningful words." }, { status: 400 });
+        headline = input.headline.trim();
+      }
+    }
     const rawToken = (await cookies()).get("n2_onboarding")?.value;
     if (!rawToken) return NextResponse.json({ error: "Your onboarding link has expired." }, { status: 401 });
     const tokenHash = createHash("sha256").update(rawToken).digest("hex");
@@ -65,7 +83,7 @@ export async function POST(request: Request) {
     if (usernameOwner) return NextResponse.json({ error: "That username is already taken. Choose another one." }, { status: 409 });
     const teen = existing?.ageBand === "teen_16_17";
     const rankedSkills = [input.primarySkill, input.secondarySkill, input.tertiarySkill];
-    const [member] = await db.update(users).set({ username: input.username, profession: input.profession, headline: input.profession, industry: input.industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: rankedSkills, interests: input.interests, location: teen ? null : input.location, workMode: input.workMode, status: "active", onboardingCompletedAt: new Date(), updatedAt: new Date() }).where(eq(users.email, email)).returning({ id: users.id, ageBand: users.ageBand });
+    const [member] = await db.update(users).set({ username: input.username, profession, headline, industry, bio: input.bio, primarySkill: input.primarySkill, secondarySkill: input.secondarySkill, tertiarySkill: input.tertiarySkill, skills: rankedSkills, interests: input.interests, location: teen ? null : input.location, workMode: input.workMode, status: "active", onboardingCompletedAt: new Date(), updatedAt: new Date() }).where(eq(users.email, email)).returning({ id: users.id, ageBand: users.ageBand });
     if (!member) return NextResponse.json({ error: "Member not found." }, { status: 404 });
 
     await db.insert(privacySettings).values({ userId: member.id, shareNetworkConnections: input.shareNetworkConnections, allowIntroductions: input.allowIntroductions }).onConflictDoUpdate({ target: privacySettings.userId, set: { shareNetworkConnections: input.shareNetworkConnections, allowIntroductions: input.allowIntroductions, updatedAt: new Date() } });
@@ -83,11 +101,11 @@ export async function POST(request: Request) {
       const projectText = `${project.title} ${project.summary} ${project.industry} ${roleText}`.toLowerCase();
       const matchedSkills = rankedSkills.filter(skill => projectText.includes(norm(skill)));
       const matchedInterests = input.interests.filter(interest => projectText.includes(norm(interest)));
-      const industryFit = norm(project.industry) === norm(input.industry);
+      const industryFit = norm(project.industry) === norm(industry);
       const workModeFit = project.workMode === input.workMode || project.workMode === "remote";
       const locationFit = Boolean(project.location && norm(project.location) === norm(input.location));
       const score = matchedSkills.length * 4 + matchedInterests.length * 2 + (industryFit ? 5 : 0) + (workModeFit ? 1 : 0) + (locationFit ? 1 : 0);
-      const reasons = [...matchedSkills.slice(0, 2), ...matchedInterests.slice(0, 1), ...(industryFit ? [`${input.industry} project`] : []), ...(workModeFit ? [`${project.workMode} fit`] : [])].slice(0, 3);
+      const reasons = [...matchedSkills.slice(0, 2), ...matchedInterests.slice(0, 1), ...(industryFit ? [`${industry} project`] : []), ...(workModeFit ? [`${project.workMode} fit`] : [])].slice(0, 3);
       return { ...project, score, reasons };
     }).sort((a, b) => b.score - a.score || b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 6);
 

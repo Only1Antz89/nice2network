@@ -2,8 +2,9 @@
 
 import { useId, useMemo, useRef, useState } from "react";
 import { CAREER_SECTORS, type CareerSector } from "@/lib/career-sectors";
+import { OTHER_PROFESSION } from "@/lib/professional-profile";
 
-type Match = { sector: CareerSector; career?: string };
+type Match = { sector: CareerSector; career?: string; value: string };
 
 const normalise = (value: string) => value.trim().toLocaleLowerCase();
 
@@ -22,6 +23,8 @@ export default function CareerIndustryInput({
   ariaLabel,
   ariaDescribedBy,
   name,
+  mode = "industry",
+  strict = false,
 }: {
   id: string;
   value: string;
@@ -31,6 +34,8 @@ export default function CareerIndustryInput({
   ariaLabel?: string;
   ariaDescribedBy?: string;
   name?: string;
+  mode?: "profession" | "industry";
+  strict?: boolean;
 }) {
   const generatedId = useId();
   const listId = `${id || generatedId}-career-sectors`;
@@ -40,20 +45,27 @@ export default function CareerIndustryInput({
   const query = value.trim();
 
   const matches = useMemo<Match[]>(() => {
-    if (!query) return CAREER_SECTORS.map((sector) => ({ sector }));
+    if (!query) {
+      if (mode === "industry") return CAREER_SECTORS.map((sector) => ({ sector, value: sector.sector }));
+      const other = { sector: CAREER_SECTORS[CAREER_SECTORS.length - 1], career: OTHER_PROFESSION, value: OTHER_PROFESSION };
+      const professions = CAREER_SECTORS.flatMap(sector => sector.careers.map(career => ({ sector, career, value: career }))).sort((a, b) => a.value.localeCompare(b.value));
+      return [other, ...professions.slice(0, 35)];
+    }
     const needle = normalise(query);
     const ranked: Array<Match & { score: number }> = [];
     for (const sector of CAREER_SECTORS) {
       const sectorName = normalise(sector.sector);
       const keywordHit = sector.keywords?.some((keyword) => normalise(keyword).includes(needle));
-      if (sectorName.includes(needle) || keywordHit) ranked.push({ sector, score: sectorName.startsWith(needle) ? 0 : 2 });
+      if (mode === "industry" && (sectorName.includes(needle) || keywordHit)) ranked.push({ sector, value: sector.sector, score: sectorName.startsWith(needle) ? 0 : 2 });
       for (const career of sector.careers) {
         const careerName = normalise(career);
-        if (careerName.includes(needle)) ranked.push({ sector, career, score: careerName.startsWith(needle) ? 1 : 3 });
+        if (careerName.includes(needle)) ranked.push({ sector, career, value: mode === "industry" ? sector.sector : career, score: careerName.startsWith(needle) ? 1 : 3 });
       }
     }
-    return ranked.sort((a, b) => a.score - b.score || (a.career ?? a.sector.sector).localeCompare(b.career ?? b.sector.sector)).slice(0, 36);
-  }, [query]);
+    if (mode === "profession" && normalise(OTHER_PROFESSION).includes(needle)) ranked.push({ sector: CAREER_SECTORS[CAREER_SECTORS.length - 1], career: OTHER_PROFESSION, value: OTHER_PROFESSION, score: 4 });
+    const unique = new Map(ranked.sort((a, b) => a.score - b.score || a.value.localeCompare(b.value)).map(match => [match.value, match]));
+    return [...unique.values()].slice(0, 36);
+  }, [mode, query]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, { sector: CareerSector; matches: Match[] }>();
@@ -66,7 +78,7 @@ export default function CareerIndustryInput({
   }, [matches]);
 
   function choose(match: Match) {
-    onChange(match.sector.sector);
+    onChange(match.value);
     setOpen(false);
   }
 
@@ -106,8 +118,8 @@ export default function CareerIndustryInput({
         />
       </div>
       {open && (
-        <div id={listId} className="career-industry-list" role="listbox" aria-label="Industries grouped by sector and matching careers">
-          {!matches.length && <p>No close match. You can use “{value.trim()}” as a custom industry.</p>}
+        <div id={listId} className="career-industry-list" role="listbox" aria-label={`${mode === "profession" ? "Professions" : "Industries"} grouped by sector`}>
+          {!matches.length && <p>{strict ? `Choose a listed ${mode}.` : `No close match. You can use “${value.trim()}” as a custom ${mode}.`}</p>}
           {grouped.map(({ sector, matches: sectorMatches }) => {
             const sectorMatch = sectorMatches.find((match) => !match.career);
             const careerMatches = sectorMatches.filter((match) => match.career);
@@ -119,10 +131,10 @@ export default function CareerIndustryInput({
                   id={`${listId}-option-${sectorIndex}`}
                   className="career-industry-sector"
                   role="option"
-                  aria-selected={sector.sector === value}
+                  aria-selected={sectorMatch.value === value}
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => sectorIndex >= 0 && setActiveIndex(sectorIndex)}
-                  onClick={() => choose({ sector })}
+                  onClick={() => choose(sectorMatch)}
                 >
                   <strong>{highlighted(sector.sector, query)}</strong>
                   {!query && <small>{sector.careers.slice(0, 3).join(" · ")}</small>}
@@ -134,7 +146,7 @@ export default function CareerIndustryInput({
                     id={`${listId}-option-${index}`}
                     className="career-industry-career"
                     role="option"
-                    aria-selected={index === activeIndex}
+                  aria-selected={match.value === value}
                     key={match.career}
                     onMouseDown={(event) => event.preventDefault()}
                     onMouseEnter={() => setActiveIndex(index)}

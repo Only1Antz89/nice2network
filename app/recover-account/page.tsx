@@ -44,7 +44,7 @@ export default function RecoverAccountPage() {
         <p>Within 30 days of deactivation, enter the email address and password previously attached to your account.</p>
         <form onSubmit={submit}>
           <label>Email address<input type="email" name="email" autoComplete="email" required/></label>
-          <label>Previous password<PasswordInput id="recovery-password" name="password" autoComplete="current-password" required/></label>
+          <label htmlFor="recovery-password">Previous password<PasswordInput id="recovery-password" name="password" autoComplete="current-password" required/></label>
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="primary-button wide" disabled={busy}>{busy ? "Recovering…" : <><RotateCcw size={16}/> Recover account</>}</button>
         </form>

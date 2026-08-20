@@ -16,6 +16,7 @@ function SignInContent() {
   const [busy,setBusy]=useState(false);
   const [photo,setPhoto]=useState("");
   const [pendingEmail,setPendingEmail]=useState("");
+  const accountDeleted=searchParams.get("account")==="deleted";
   const accountDeactivated=searchParams.get("account")==="deactivated";
 
   async function choosePhoto(file?:File){if(!file)return;if(file.size>500_000){setError("Choose a photo smaller than 500 KB.");return}const reader=new FileReader();reader.onload=()=>setPhoto(String(reader.result));reader.readAsDataURL(file)}
@@ -43,7 +44,7 @@ function SignInContent() {
   return <main className="auth-page auth-shell">
     <section className="auth-story">
       <Link className="auth-logo light" href="/"><span>n2</span>nice 2 network</Link>
-      <div><span className="eyebrow">USEFUL PEOPLE, BROUGHT TOGETHER</span><h1>Start with what you know.<br/>Grow through who you meet.</h1><p>Build a profile around your real experience, then let n2 introduce the projects and people where you can make a difference.</p><div className="auth-proof"><span><Check size={14}/> Your expertise shapes every match</span><span><Check size={14}/> Small rooms, practical projects</span><span><Check size={14}/> You control your visibility</span></div></div>
+      <div><span className="eyebrow">CONNECT, CREATE AND SUPPORT</span><h1>Bring your ideas.<br/>Find your community.</h1><p>Meet people, start or join projects, share encouragement and help each other turn ideas into action.</p><div className="auth-proof"><span><Check size={14}/> Everyone has something to bring</span><span><Check size={14}/> Create projects or get involved</span><span><Check size={14}/> You control your visibility</span></div></div>
       <small>© 2026 nice 2 network</small>
     </section>
     <section className="auth-side">
@@ -51,8 +52,9 @@ function SignInContent() {
       {mode==="check-email"?<div className="auth-card verification-card"><span className="verification-icon"><Mail size={23}/></span><span className="eyebrow">CHECK YOUR INBOX</span><h1>Verify your email.</h1><p>We sent a secure link to <strong>{pendingEmail}</strong>. Use it within 60 minutes to add your profession, skills, interests and location.</p><div className="verification-path"><span className="done">1</span><i/><span>2</span><i/><span>3</span></div><small>Account created</small><small>Email verification</small><small>Build your network</small><button className="secondary-button" onClick={()=>setMode("signin")}>Back to sign in</button></div>:
       <section className={`auth-card ${mode==="register"?"register-card":"signin-card"}`}>
         <span className="eyebrow">{mode==="signin"?"WELCOME BACK":"CREATE YOUR ACCOUNT"}</span>
-        <h1>{mode==="signin"?"Good people are waiting.":"First, the essentials."}</h1>
-        <p>{mode==="signin"?"Sign in to see the projects and people relevant to you.":"Create your account, then add your profession, skills, interests and location."}</p>
+        <h1>{mode==="signin"?"Welcome back to your community.":"Join the community."}</h1>
+        <p>{mode==="signin"?"Sign in to reconnect, join projects, encourage others and keep ideas moving.":"Create your account, share what interests you and discover ways to take part."}</p>
+        {accountDeleted&&mode==="signin"&&<p className="form-success" role="status"><Check size={14}/> Your account has been deleted.</p>}
         {accountDeactivated&&mode==="signin"&&<p className="form-success" role="status"><Check size={14}/> Your account is deactivated. You can recover it for 30 days.</p>}
         <form onSubmit={submit}>
           {mode==="register"&&<><div className="signup-grid"><label>Title<N2Select name="title" defaultValue="Ms" required ariaLabel="Title" options={["Mr", "Ms", "Mrs", "Miss", "Mx", "Dr", "Prof"].map(value => ({ value, label: value }))}/></label><label>Date of birth<input name="dateOfBirth" type="date" max={new Date(new Date().setFullYear(new Date().getFullYear()-16)).toISOString().slice(0,10)} required/></label><label>First name<input name="firstName" autoComplete="given-name" required minLength={2}/></label><label>Surname<input name="lastName" autoComplete="family-name" required minLength={2}/></label></div><label className="photo-field">Profile photo <small>Optional — n2 is your default.</small><span className="photo-picker">{photo?<img src={photo} alt="Profile preview"/>:<span className="default-photo-preview">n2</span>}<span><strong>{photo?"Photo ready":"Use n2 or choose a photo"}</strong><small>JPG, PNG or WebP · up to 500 KB</small></span><input aria-label="Profile photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>choosePhoto(event.target.files?.[0])}/></span></label></>}

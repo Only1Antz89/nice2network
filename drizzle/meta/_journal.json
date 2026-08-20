@@ -253,6 +253,13 @@
       "when": 1787230787787,
       "tag": "0035_broad_victor_mancha",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787232210452,
+      "tag": "0036_dark_iron_lad",
+      "breakpoints": true
     }
   ]
 }

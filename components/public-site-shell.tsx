@@ -19,7 +19,7 @@ export function PublicSiteShell({ children, tone = "light" }: { children: ReactN
       </header>
       {children}
       <footer className="public-footer">
-        <div><Link className="public-brand" href="/"><span>n2</span><strong>nice 2 network</strong></Link><p>Useful people, brought together.</p></div>
+        <div><Link className="public-brand" href="/"><span>n2</span><strong>nice 2 network</strong></Link><p>Connect, create and support each other.</p></div>
         <nav aria-label="Footer links">{navigation.map(([href, label]) => <Link href={href} key={href}>{label}</Link>)}</nav>
         <div className="public-credit">
           <small>© 2026 nice 2 network</small>

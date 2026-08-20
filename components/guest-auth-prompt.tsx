@@ -105,8 +105,8 @@ export default function GuestAuthPrompt({
           </h2>
           <p>
             {mode === "register"
-              ? "Create an account to view projects, comment, share ideas, start projects and meet useful people."
-              : "Sign in to interact with projects and your network."}
+              ? "Create an account to meet people, share ideas, start or join projects and encourage others."
+              : "Sign in to reconnect, take part in projects and support your network."}
           </p>
         </div>
         <form onSubmit={submit}>

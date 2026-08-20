@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 };
 
 export default function TermsPage() {
-  return <LegalPage eyebrow="TERMS / THE AGREEMENT" title="Clear terms for useful work." summary="These Terms explain the agreement between you and nice 2 network, the standards that protect the community, and the responsibilities that remain with members when they work together.">
+  return <LegalPage eyebrow="TERMS / THE AGREEMENT" title="Clear terms for working together." summary="These Terms explain the agreement between you and nice 2 network, the standards that protect the community, and the responsibilities that remain with members when they work together.">
     <section><h2>1. Accepting these Terms</h2><p>These Terms apply when you visit, create an account or use nice 2 network. By using the service, you agree to these Terms, the Privacy notice and the Community Code. If you do not agree, do not use the service.</p><p>If you use the network on behalf of a company, charity, school or other organisation, you confirm that you have authority to agree to these Terms for that organisation. “You” then includes both you and that organisation where the context requires it.</p></section>
 
     <section><h2>2. Eligibility and age</h2><p>You must be legally able to enter this agreement and meet the minimum age required for an online service where you live. Do not create an account for another person without authority or misrepresent your age, identity, affiliation or professional status.</p><p>Additional visibility, contact and safety restrictions may apply to younger members. You must not bypass, encourage someone else to bypass, or interfere with those safeguards.</p></section>

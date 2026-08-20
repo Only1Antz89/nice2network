@@ -30,7 +30,7 @@ test("a new member can register, onboard, sign in, and reach protected features"
   await activeSlide().getByLabel("Preferred working style").selectOption("hybrid");
   await activeSlide().getByRole("button", { name: "Continue" }).click();
 
-  await expect(page.getByRole("heading", { name: "Start with people who make sense." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start connecting with like-minded individuals." })).toBeVisible();
   await page.getByRole("button", { name: "See project suggestions" }).click();
   await page.getByRole("link", { name: /Complete sign up/ }).click();
 

@@ -605,6 +605,13 @@ export const algorithmSettings = pgTable("algorithm_settings", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("algorithm_settings_version_unique").on(table.version), index("algorithm_settings_status_idx").on(table.status)]);
 
+export const platformSettings = pgTable("platform_settings", {
+  id: text("id").primaryKey().default("global"),
+  profileTaxonomySafeguardsEnabled: boolean("profile_taxonomy_safeguards_enabled").notNull().default(true),
+  updatedBy: uuid("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const projectBlueprints = pgTable("project_blueprints", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),

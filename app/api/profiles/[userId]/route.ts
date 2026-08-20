@@ -8,6 +8,8 @@ import { audit } from "@/lib/audit";
 import { after } from "next/server";
 import { recomputeMemberRecommendations } from "@/lib/recommendations/service";
 import { sanitizeRichText } from "@/lib/rich-text";
+import { canonicalIndustry, canonicalProfession, isMeaningfulOtherHeadline, OTHER_PROFESSION } from "@/lib/professional-profile";
+import { getPlatformSettings } from "@/lib/platform-settings";
 import { isAvailableUsernameFormat } from "@/lib/usernames";
 
 const profileSchema = z.object({
@@ -49,6 +51,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
     } }, { headers: { "Cache-Control": "private, no-store" } });
     if (row.status !== "active") throw new ApiError(404, "Profile not found");
     const isCurrent = viewer.id === userId;
+    const profileTaxonomySafeguardsEnabled = isCurrent ? (await getPlatformSettings()).profileTaxonomySafeguardsEnabled : undefined;
     if (!isCurrent && (row.visibility === "private" || row.visibility === "connections")) {
       const directions=await db.select({followerId:follows.followerId,followingId:follows.followingId}).from(follows).where(or(and(eq(follows.followerId,viewer.id),eq(follows.followingId,userId)),and(eq(follows.followerId,userId),eq(follows.followingId,viewer.id))));
       const viewerFollows=directions.some(item=>item.followerId===viewer.id);
@@ -89,7 +92,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
       : [];
     const linkedProjectById = new Map(linkedProjects.map(project => [project.id, project]));
     return NextResponse.json(
-      { profile: { ...row, deactivated: false, location: isCurrent || row.showLocation ? row.location : null, isN2Admin: Boolean(row.isN2Admin), rankedSkills: fallbackSkills, career, education, projects:projectHistory, posts:profilePosts.map(post => ({ ...post, authorId: row.id, authorName: row.name, authorImage: row.image, authorProfession: row.profession, authorStatus: row.status, authorIsAdmin: Boolean(row.isN2Admin), isDemo: row.isDemo, linkedProjects: post.linkedProjectIds.map(id => linkedProjectById.get(id)).filter(Boolean) })), projectCount:ownedProjects.length, involvedCount:joinedProjects.length, followers:followerCount[0]?.value??0,following:followingCount[0]?.value??0,isFollowing:Boolean(viewerFollow[0]),isMutual:Boolean(viewerFollow[0]&&targetFollow[0]),isCurrent } },
+      { profile: { ...row, deactivated: false, location: isCurrent || row.showLocation ? row.location : null, isN2Admin: Boolean(row.isN2Admin), rankedSkills: fallbackSkills, career, education, projects:projectHistory, posts:profilePosts.map(post => ({ ...post, authorId: row.id, authorName: row.name, authorImage: row.image, authorProfession: row.profession, authorStatus: row.status, authorIsAdmin: Boolean(row.isN2Admin), isDemo: row.isDemo, linkedProjects: post.linkedProjectIds.map(id => linkedProjectById.get(id)).filter(Boolean) })), projectCount:ownedProjects.length, involvedCount:joinedProjects.length, followers:followerCount[0]?.value??0,following:followingCount[0]?.value??0,isFollowing:Boolean(viewerFollow[0]),isMutual:Boolean(viewerFollow[0]&&targetFollow[0]),isCurrent, profileTaxonomySafeguardsEnabled } },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) { return apiError(error); }
@@ -106,6 +109,9 @@ async function updateProfile(
     const input = (partial ? profilePatchSchema : profileSchema).parse(await request.json()), db = getDb();
     const [current] = await db.select({
       username: users.username,
+      profession: users.profession,
+      headline: users.headline,
+      industry: users.industry,
       primarySkill: users.primarySkill,
       secondarySkill: users.secondarySkill,
       tertiarySkill: users.tertiarySkill,
@@ -113,6 +119,25 @@ async function updateProfile(
       country: users.country,
     }).from(users).where(eq(users.id, userId)).limit(1);
     if (!current) throw new ApiError(404, "Profile not found");
+    const { profileTaxonomySafeguardsEnabled } = await getPlatformSettings();
+    if (profileTaxonomySafeguardsEnabled) {
+      if (input.profession !== undefined) {
+        const canonical = typeof input.profession === "string" ? canonicalProfession(input.profession) : null;
+        if (!canonical) throw new ApiError(400, "Choose a profession from the list.");
+        input.profession = canonical;
+      }
+      if (input.industry !== undefined) {
+        const canonical = typeof input.industry === "string" ? canonicalIndustry(input.industry) : null;
+        if (!canonical) throw new ApiError(400, "Choose an industry from the list.");
+        input.industry = canonical;
+      }
+      const effectiveProfession = input.profession ?? current.profession;
+      const headlineIsProtected = input.profession !== undefined || (input.headline !== undefined && effectiveProfession === OTHER_PROFESSION);
+      if (headlineIsProtected && effectiveProfession === OTHER_PROFESSION) {
+        const effectiveHeadline = input.headline ?? current.headline ?? "";
+        if (!isMeaningfulOtherHeadline(effectiveHeadline)) throw new ApiError(400, "Describe your unlisted profession using at least two meaningful words.");
+      }
+    }
     if (input.username !== undefined && input.username !== current.username) {
       const [usernameOwner] = await db.select({ id: users.id }).from(users).where(and(eq(users.username, input.username), ne(users.id, userId))).limit(1);
       if (usernameOwner) throw new ApiError(409, "That username is already taken. Choose another one.");

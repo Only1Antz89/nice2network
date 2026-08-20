@@ -2,25 +2,25 @@ export const ONBOARDING_BIO_MIN_LENGTH = 40;
 export const ONBOARDING_BIO_MIN_WORDS = 6;
 
 export const PROFESSION_SUGGESTIONS = [
-  "Founder / entrepreneur",
+  "Entrepreneur",
   "Product designer",
   "Software engineer",
   "Project manager",
   "Operations manager",
-  "Marketing strategist",
-  "Community manager",
+  "Marketing manager",
+  "Community organiser",
   "Consultant",
 ] as const;
 
 export const INDUSTRY_SUGGESTIONS = [
-  "Technology",
-  "Creative industries",
-  "Climate & sustainability",
-  "Healthcare",
-  "Education",
-  "Financial services",
-  "Professional services",
-  "Community & social impact",
+  "Technology, data & digital",
+  "Creative, design & crafts",
+  "Climate, energy & utilities",
+  "Healthcare & clinical care",
+  "Education & training",
+  "Finance, banking & insurance",
+  "Business, consulting & administration",
+  "Charity, community & social impact",
 ] as const;
 
 export const SKILL_SUGGESTIONS = [

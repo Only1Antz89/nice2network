@@ -203,7 +203,7 @@ export default function SearchOverlay({
                         <span>
                           <strong>{person.name ?? "n2 member"}</strong>
                           <small>{person.profession ?? "Member"}</small>
-                          <i>{person.reasons[0] ?? "Useful network connection"}</i>
+                          <i>{person.reasons[0] ?? "Shared interests and opportunities"}</i>
                         </span>
                       </button>
                       {onFollowSuggestion && (
@@ -222,7 +222,7 @@ export default function SearchOverlay({
                       )}
                     </article>
                   ))}
-                  {!suggestions.length && <p className="people-cold-start">Useful live members will appear as the network grows.</p>}
+                  {!suggestions.length && <p className="people-cold-start">More people to connect with will appear as the community grows.</p>}
                 </div>
               </section>
               <div className="search-prompts">

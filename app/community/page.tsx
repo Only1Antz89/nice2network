@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicSiteShell } from "@/components/public-site-shell";
 
-export const metadata: Metadata = { title: "Community — nice 2 network", description: "The principles that keep nice 2 network useful, generous and safe." };
+export const metadata: Metadata = { title: "Community — nice 2 network", description: "The principles that keep nice 2 network welcoming, generous and safe." };
 
 const principles = [
-  ["01", "Be useful before impressive", "Bring context, make thoughtful introductions and offer what you genuinely know. Clear help beats loud self-promotion."],
+  ["01", "Offer support generously", "Bring context, make thoughtful introductions and share what you know. Encouragement and practical help can move an idea forward."],
   ["02", "Treat people as people", "Respect boundaries, lived experience, identity and time. Disagreement is welcome; humiliation, harassment and hate are not."],
   ["03", "Build in the open, safely", "Share enough for others to contribute, but protect confidential information, personal data and work that is not yours to publish."],
   ["04", "Make the invitation honest", "Describe roles, expectations, ownership and compensation clearly. Do not disguise unpaid labour, recruitment or sales as community."],
@@ -17,7 +17,7 @@ export default function CommunityPage() {
   return (
     <PublicSiteShell>
       <main className="community-page">
-        <section className="community-hero"><span>THE COMMUNITY CODE</span><h1>Useful people.<br/><em>Good conduct.</em></h1><p>nice 2 network works when curiosity comes with care. These are the standards we expect from every member, project and conversation.</p></section>
+        <section className="community-hero"><span>THE COMMUNITY CODE</span><h1>Everyone is welcome.<br/><em>Care keeps us connected.</em></h1><p>nice 2 network works when people feel able to join in, share ideas and support one another. These are the standards that keep every interaction welcoming and safe.</p></section>
         <section className="principles-grid">{principles.map(([number, title, copy]) => <article key={number}><span>{number}</span><h2>{title}</h2><p>{copy}</p></article>)}</section>
         <section className="community-boundary">
           <div><span>THE LINE</span><h2>What does not belong here.</h2></div>

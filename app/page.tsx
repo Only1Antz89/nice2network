@@ -78,6 +78,7 @@ import N2Select from "@/components/n2-select";
 import { AppLoadingShell, LoadingState } from "@/components/loading-state";
 import { PROJECT_ACCENT } from "@/lib/content-accents";
 import { PROJECT_INDUSTRIES } from "@/lib/career-sectors";
+import { canonicalIndustry, canonicalProfession, isMeaningfulOtherHeadline, OTHER_PROFESSION } from "@/lib/professional-profile";
 import {
   getBrowserNotificationPreferences,
   playBrowserNotificationSound,
@@ -2124,10 +2125,10 @@ function ProjectCard({
         )}
         {project?.recommendationId && (
           <div className="recommendation-feedback">
-            <span>Was this useful?</span>
+            <span>Was this suggestion helpful?</span>
             <button onClick={() => feedback("not_now")}>Not now</button>
             <button onClick={() => feedback("not_relevant")}>
-              <ThumbsDown size={13} /> Not relevant
+              <ThumbsDown size={13} /> Show me something else
             </button>
           </div>
         )}
@@ -3445,7 +3446,7 @@ function TimelinePostCard({
       <ActionDialog
         eyebrow="REPORT POST"
         title="Tell the n2 team what happened."
-        description="Reports are reviewed privately. Choose the closest reason and add useful context if needed."
+        description="Reports are reviewed privately. Choose the closest reason and add any context that may help."
         confirmLabel="Submit report"
         fields={[
           { name: "reason", label: "Reason", kind: "select", defaultValue: "spam", required: true, options: [
@@ -4399,12 +4400,12 @@ function Feed({
           <h1>
             {authenticated
               ? `${clock ? localGreeting(clock) : "Hello"}, ${currentMember.name.split(" ")[0]}.`
-              : "See what useful people are building."}
+              : "See what the community is creating."}
           </h1>
           <p>
             {authenticated
-              ? "Projects across the network are looking for someone like you today."
-              : "Explore real ideas, open roles and collaborations growing across n2."}
+              ? "Explore projects, share encouragement and find new ways to take part today."
+              : "Explore ideas, meet people and join collaborations growing across n2."}
           </p>
         </div>
         <button
@@ -4609,7 +4610,7 @@ function Feed({
           disabled={loadingMore}
           onClick={loadMore}
         >
-          {loadingMore ? "Loading useful projects…" : "Load more projects"}
+          {loadingMore ? "Loading more community projects…" : "Load more projects"}
         </button>
       )}
       {!contentLoading && !liveProjects.length && (
@@ -5405,7 +5406,7 @@ function ContributionDialog({
               <span>
                 <strong>Offer another contribution</strong>
                 <small>
-                  Suggest useful experience or services not listed above.
+                  Share experience, ideas or support not listed above.
                 </small>
               </span>
             </button>
@@ -5459,7 +5460,7 @@ function ContributionDialog({
                   <strong>
                     {mismatch
                       ? "Your profile may not closely match this contribution"
-                      : "Your profile shows a relevant match"}
+                      : "Your profile shows shared experience"}
                   </strong>
                   <small>
                     {mismatch
@@ -5499,12 +5500,12 @@ function ContributionDialog({
               </div>
             )}
             {!blocked && <label>
-                Why are you a useful fit?
+                How would you like to get involved?
                 <textarea
                   name="message"
                   minLength={20}
                   maxLength={1200}
-                  placeholder="Describe relevant skills, experience and what you would contribute."
+                  placeholder="Share your interests, experience and how you would like to help."
                   required
                 />
               </label>}
@@ -5700,7 +5701,7 @@ function RequestProfessionDialog({
             <div className="recruitment-intro">
               <span className="eyebrow">MANUAL REQUEST</span>
               <h3>Create an open role</h3>
-              <p>Give people enough context to recognise where they can be useful.</p>
+              <p>Give people enough context to see how they can get involved.</p>
             </div>
             <div className="n2-editor-fields recruitment-fields">
               <div className="field-row">
@@ -5748,7 +5749,7 @@ function RequestProfessionDialog({
                 <textarea
                   value={draft.description}
                   onChange={(event) => updateDraft("description", event.target.value)}
-                  placeholder="Describe the challenge and the first useful outcome."
+                  placeholder="Describe the challenge and the first outcome you hope to achieve."
                   maxLength={500}
                 />
               </label>
@@ -5764,7 +5765,7 @@ function RequestProfessionDialog({
                   <small>Separate skills with commas.</small>
                 </label>
                 <label>
-                  Useful skills
+                  Additional skills
                   <input
                     value={draft.usefulSkills}
                     onChange={(event) => updateDraft("usefulSkills", event.target.value)}
@@ -5787,7 +5788,7 @@ function RequestProfessionDialog({
             </div>
             {error && <div className="recruitment-error"><CircleAlert size={16} /> {error}</div>}
             <footer>
-              <p>This creates an open role and lets relevant members discover it.</p>
+              <p>This creates an open role and helps people discover a new way to take part.</p>
               <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
               <button className="primary-button" disabled={busy}>
                 {busy ? "Publishing…" : "Publish role request"} <ArrowUpRight size={14} />
@@ -5867,7 +5868,7 @@ function AiAssistDialog({
             <div className="ai-review-start">
               <N2OrbitMark />
               <span className="eyebrow">AI PROJECT ADVISER</span>
-              <h3>Find the most useful next teammate.</h3>
+              <h3>Find someone to join you next.</h3>
               <p>AI will assess the project brief, stage, current team and owner expertise. It recommends abstract roles only—never named people.</p>
               <div className="ai-review-scope">
                 <span><b>01</b> Project clarity</span>
@@ -6191,7 +6192,7 @@ function ProjectDetailView({
                     ? "These are the open roles you’re recruiting for."
                     : project.isMember
                       ? "These roles are open to new contributors."
-                      : "Apply for a listed role or offer another useful contribution."}
+                      : "Apply for a listed role or suggest another way to contribute."}
                 </p>
               </div>
               {canApplyToProject && (
@@ -6271,8 +6272,8 @@ function ProjectDetailView({
                 (role) => role.status === "open" && role.filled < role.capacity,
               ) && (
                 <p>
-                  No listed roles right now. You can still offer another useful
-                  contribution.
+                  No listed roles right now. You can still suggest another way
+                  to get involved.
                 </p>
               )}
             </div>
@@ -6425,7 +6426,7 @@ function ProjectDetailView({
           <N2OrbitMark />
           <span className="eyebrow">AI PROJECT ADVISER</span>
           <h2>Work out what this project needs next.</h2>
-          <p>Ai Assist reviews the project brief, stage, current team and your expertise to recommend the most useful next roles and milestones.</p>
+          <p>Ai Assist reviews the project brief, stage, current team and your experience to suggest roles and milestones that could help the project move forward.</p>
           <div className="ai-review-scope">
             <span><b>01</b> Project clarity</span>
             <span><b>02</b> Capability gaps</span>
@@ -6579,7 +6580,7 @@ function ProjectDetailView({
                 <label>Description<textarea name="description" defaultValue={selectedRole.description ?? ""} maxLength={500} /></label>
                 <div className="field-row"><label>Professions<input name="professions" defaultValue={(selectedRole.professions ?? []).join(", ")} placeholder="Product designer, UX researcher" /></label><label>Capacity<input name="capacity" type="number" min={Math.max(1, selectedRole.filled)} max={10} defaultValue={selectedRole.capacity} /></label></div>
                 <label>Required skills<input name="requiredSkills" defaultValue={(selectedRole.requiredSkills ?? []).join(", ")} /></label>
-                <label>Useful skills<input name="usefulSkills" defaultValue={(selectedRole.usefulSkills ?? []).join(", ")} /></label>
+                <label>Additional skills<input name="usefulSkills" defaultValue={(selectedRole.usefulSkills ?? []).join(", ")} /></label>
                 <div className="field-row"><label>Timing<N2Select name="phase" defaultValue={selectedRole.phase} ariaLabel="Timing" options={[{value:"now",label:"Now"},{value:"next",label:"Next"},{value:"later",label:"Later"}]}/></label><label>Priority<N2Select name="criticality" defaultValue={selectedRole.criticality} ariaLabel="Priority" options={[{value:"critical",label:"Critical"},{value:"important",label:"Important"},{value:"useful",label:"Useful"}]}/></label></div>
                 <label>Working style<N2Select name="workMode" defaultValue={selectedRole.workMode ?? "remote"} ariaLabel="Working style" options={[{value:"remote",label:"Remote"},{value:"hybrid",label:"Hybrid"},{value:"in_person",label:"In person"}]}/></label>
                 <footer><button type="button" className="danger-button" disabled={busy} onClick={() => setRemoveRoleRequested(true)}>Remove role</button><button type="submit" className="primary-button" disabled={busy}>{busy ? "Saving…" : "Save role"}</button></footer>
@@ -7516,7 +7517,7 @@ function NetworkView({
           {!loading && !data.nodes.length && (
             <div className="network-map-status network-cold-start">
               <NetworkGraphIcon size={28} />
-              <strong>Your network starts with one useful connection</strong>
+              <strong>Your community starts with one connection</strong>
               <p>
                 Connect with a member from their profile. They will appear
                 around you here.
@@ -7583,7 +7584,7 @@ function NetworkView({
           )}
         </div>
       </div>
-      {introTarget && <ActionDialog eyebrow="WARM INTRODUCTION" title={`Ask for an introduction to ${introTarget.name ?? "this member"}?`} description="Your mutual connection can accept or decline. If they accept, n2 creates a three-person conversation." confirmLabel="Send request" fields={[{ name: "context", label: "Why would this introduction be useful?", placeholder: "Share enough context for your connection to decide…", required: true, minLength: 20, maxLength: 500, multiline: true }]} onClose={() => setIntroTarget(null)} onConfirm={requestIntroduction} />}
+      {introTarget && <ActionDialog eyebrow="WARM INTRODUCTION" title={`Ask for an introduction to ${introTarget.name ?? "this member"}?`} description="Your mutual connection can accept or decline. If they accept, n2 creates a three-person conversation." confirmLabel="Send request" fields={[{ name: "context", label: "What would you like to explore together?", placeholder: "Share a little context for your connection to consider…", required: true, minLength: 20, maxLength: 500, multiline: true }]} onClose={() => setIntroTarget(null)} onConfirm={requestIntroduction} />}
       {incomingIntroduction && <div className="modal-backdrop action-dialog-backdrop" role="presentation"><section className="n2-editor-modal action-dialog network-introduction-review" role="dialog" aria-modal="true" aria-labelledby="network-introduction-title"><header><div><span className="eyebrow">WARM INTRODUCTION</span><h2 id="network-introduction-title">Would you introduce these members?</h2></div><button className="icon-button" onClick={() => setIncomingIntroduction(null)} aria-label="Close request"><X size={18}/></button></header><div className="network-introduction-people"><Avatar person={{ name: incomingIntroduction.requester_name ?? "n2 member", role: incomingIntroduction.requester_profession ?? "Member", img: incomingIntroduction.requester_image }} size="lg"/><span><strong>{incomingIntroduction.requester_name}</strong><small>would like to meet</small><strong>{incomingIntroduction.target_name}</strong></span><Avatar person={{ name: incomingIntroduction.target_name ?? "n2 member", role: incomingIntroduction.target_profession ?? "Member", img: incomingIntroduction.target_image }} size="lg"/></div><blockquote>{incomingIntroduction.context}</blockquote><p>Accepting creates a named three-person conversation. Declining shares no private reason.</p><footer><button className="secondary-button" onClick={() => respondToIntroduction("decline")}>Decline</button><button className="primary-button" onClick={() => respondToIntroduction("accept")}>Accept and introduce</button></footer></section></div>}
     </div>
   );
@@ -9200,7 +9201,7 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
               .toUpperCase()}
           </span>
           <h1>Meet</h1>
-          <p>Small rooms, useful conversations.</p>
+          <p>Small rooms, open conversations.</p>
         </div>
         <div className="meet-head-actions">
           <div className="view-toggle">
@@ -9373,7 +9374,7 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
             <header className="meet-flow-header">
               <div>
                 <span className="eyebrow">{editing ? "EDIT MEET" : "NEW MEET"}</span>
-                <h2>{meetStep === 1 ? (editing ? "Update the room" : "Bring a small room together") : "Invite useful people"}</h2>
+                <h2>{meetStep === 1 ? (editing ? "Update the room" : "Bring people together") : "Invite people to join"}</h2>
               </div>
               <div className="meet-flow-header-actions">
                 <div className="meet-flow-progress" aria-label={`Step ${meetStep} of 2`}>
@@ -10422,7 +10423,7 @@ function PostThread({
             <div className="comment-empty">
               <MessageCircle size={20} />
               <strong>Start the conversation</strong>
-              <p>Reply with a question, perspective or useful offer.</p>
+              <p>Reply with a question, perspective, encouragement or offer of support.</p>
             </div>
           )}
         </div>
@@ -10634,7 +10635,7 @@ function ProjectComments({
             <div className="comment-empty">
               <MessageCircle size={20} />
               <strong>Start the project conversation</strong>
-              <p>Ask a useful question or offer a contribution.</p>
+              <p>Ask a question, share encouragement or offer a contribution.</p>
             </div>
           )}
         </div>
@@ -10943,12 +10944,13 @@ function SettingsView({
   const [leadershipElections, setLeadershipElections] = useState<LeadershipElectionView[]>([]);
   const [leadershipVoteStatus, setLeadershipVoteStatus] = useState("");
   const [profileUserId, setProfileUserId] = useState("");
+  const [profileSafeguardsEnabled, setProfileSafeguardsEnabled] = useState(true);
   const [profile, setProfile] = useState({
     name: "",
     username: "",
     headline: "",
     profession: "",
-    industry: "Technology",
+    industry: "Technology, data & digital",
     bio: "",
     primarySkill: "",
     secondarySkill: "",
@@ -11093,6 +11095,7 @@ function SettingsView({
           const response = await fetch(`/api/profiles/${session.user.id}`);
           if (!response.ok) return;
           const { profile: record } = await response.json();
+          if (typeof record.profileTaxonomySafeguardsEnabled === "boolean") setProfileSafeguardsEnabled(record.profileTaxonomySafeguardsEnabled);
           setProfileImage(record.image ?? "");
           setCoverImage(record.coverImage ?? "");
           const loadedProfile = {
@@ -11100,7 +11103,7 @@ function SettingsView({
             username: record.username ?? "",
             headline: record.headline ?? "",
             profession: record.profession ?? "",
-            industry: record.industry ?? "Technology",
+            industry: record.industry ?? "Technology, data & digital",
             bio: record.bio ?? "",
             primarySkill: record.rankedSkills?.[0] ?? "",
             secondarySkill: record.rankedSkills?.[1] ?? "",
@@ -11231,6 +11234,18 @@ function SettingsView({
         }
         if (updates.username !== undefined && !/^[a-z0-9][a-z0-9_-]{2,29}$/.test(profile.username)) {
           setSaveStatus({ busy: false, error: "Use 3–30 lowercase letters, numbers, underscores or hyphens for your username." });
+          return;
+        }
+        if (profileSafeguardsEnabled && updates.profession !== undefined && !canonicalProfession(profile.profession)) {
+          setSaveStatus({ busy: false, error: "Choose a profession from the list before saving." });
+          return;
+        }
+        if (profileSafeguardsEnabled && updates.industry !== undefined && !canonicalIndustry(profile.industry)) {
+          setSaveStatus({ busy: false, error: "Choose an industry from the list before saving." });
+          return;
+        }
+        if (profileSafeguardsEnabled && updates.profession !== undefined && canonicalProfession(profile.profession) === OTHER_PROFESSION && !isMeaningfulOtherHeadline(profile.headline)) {
+          setSaveStatus({ busy: false, error: "Describe your unlisted profession using at least two meaningful words." });
           return;
         }
         const skillsChanged = ["primarySkill", "secondarySkill", "tertiarySkill"].some(
@@ -11500,7 +11515,7 @@ function SettingsView({
     const titles = {
       profile: [
         "Profile and expertise",
-        "Help useful people understand what you bring.",
+        "Share what you care about and how you would like to take part.",
       ],
       notifications: [
         "Messages and notifications",
@@ -11653,14 +11668,21 @@ function SettingsView({
                   {profile.username ? <>Public address: <a href={`/${profile.username}`} target="_blank" rel="noreferrer">/{profile.username}</a>{privacy.visibility !== "Public" && " · Set profile visibility to Public before sharing."}</> : "Choose the address for your public profile."}
                 </small>
               </label>
-              <label>
+              <label htmlFor="profile-profession">
                 Profession
-                <input
+                {profileSafeguardsEnabled ? <CareerIndustryInput
+                  id="profile-profession"
+                  mode="profession"
+                  strict
                   value={profile.profession}
-                  onChange={(e) =>
-                    setProfile({ ...profile, profession: e.target.value })
-                  }
-                />
+                  onChange={(profession) => setProfile({ ...profile, profession })}
+                  placeholder="Search professions"
+                /> : <input
+                  id="profile-profession"
+                  value={profile.profession}
+                  onChange={(e) => setProfile({ ...profile, profession: e.target.value })}
+                />}
+                {profileSafeguardsEnabled && <small>Use your genuine profession so discovery and recommendations stay useful.</small>}
               </label>
               <label className="full">
                 Professional headline
@@ -11670,6 +11692,7 @@ function SettingsView({
                     setProfile({ ...profile, headline: e.target.value })
                   }
                 />
+                {profileSafeguardsEnabled && profile.profession === OTHER_PROFESSION && <small>Required for “Other”. Use at least two words to describe your professional role.</small>}
               </label>
               <label htmlFor="profile-industry">
                 Industry
@@ -11678,6 +11701,7 @@ function SettingsView({
                   value={profile.industry}
                   onChange={(industry) => setProfile({ ...profile, industry })}
                   placeholder="Type an industry or career"
+                  strict={profileSafeguardsEnabled}
                 />
               </label>
               <label>
@@ -12078,7 +12102,7 @@ function SettingsView({
               ],
               [
                 "Recommended matches",
-                "High-quality people and project suggestions",
+                "People and project suggestions based on your interests",
                 "matches",
               ],
               [
@@ -12201,7 +12225,7 @@ function SettingsView({
               ],
               [
                 "Show interests",
-                "Use interests to make useful connections visible",
+                "Use interests to discover people and ideas you share",
                 "showInterests",
               ],
               [
@@ -12533,7 +12557,7 @@ function SettingsView({
             <span>
               <strong>Smart project recommendations</strong>
               <small>
-                Use skills, interests and activity to find relevant projects.
+                Use skills, interests and activity to discover projects you may enjoy.
               </small>
             </span>
           </span>
@@ -12551,7 +12575,7 @@ function SettingsView({
             <span>
               <strong>Show that I’m available</strong>
               <small>
-                Let project owners know you’re open to relevant asks.
+                Let project owners know you’re open to invitations to get involved.
               </small>
             </span>
           </span>
@@ -13113,7 +13137,7 @@ export default function HomePage() {
             </>
           ) : (
             <div className="public-sidebar-auth">
-              <p>Have a skill, idea or useful introduction?</p>
+              <p>Have a skill, idea, introduction or words of encouragement?</p>
               <Link href="/signin">Sign in</Link>
               <Link className="join" href="/signin?mode=register">
                 Join n2
@@ -13291,7 +13315,7 @@ export default function HomePage() {
               ))}
               {!peopleSuggestionsLoading && !peopleSuggestions.length && (
                 <p className="people-cold-start">
-                  Useful live members will appear as the network grows.
+                  More people to connect with will appear as the community grows.
                 </p>
               )}
             </section>
@@ -13299,7 +13323,7 @@ export default function HomePage() {
           <NetworkPulse onProjects={() => go("projects")} />
           <footer>
             <Logo />
-            <p>Useful people, brought together.</p>
+            <p>Connect, create and support each other.</p>
             <div>
               <Link href="/about">About</Link>
               <Link href="/privacy">Privacy</Link>
@@ -13345,7 +13369,7 @@ export default function HomePage() {
           onClose={() => { setCreateOpen(false); setProjectDraftToResume(null); }}
           onPublish={(project) => {
             setLatestProject(project);
-            setToast("Project published — useful matches are being notified.");
+            setToast("Project published — people with shared interests are being notified.");
             go("projects");
           }}
         />
