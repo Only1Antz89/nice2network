@@ -40,6 +40,24 @@ export async function sendPasswordResetEmail(input: { email: string; firstName: 
   if (!response.ok) throw new Error(`Email delivery failed (${response.status})`);
 }
 
+export async function sendMeetingCancellationEmail(input: { email: string; name?: string; title: string }) {
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) return { delivered: false };
+  const greeting = input.name ? `Hi ${escapeHtml(input.name)},` : "Hello,";
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      from: process.env.EMAIL_FROM,
+      to: [input.email],
+      subject: `${input.title} has been cancelled`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:32px;color:#111"><div style="width:38px;height:38px;border-radius:50%;background:#111;color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px">n2</div><h1 style="font-size:28px;letter-spacing:-1px;margin:28px 0 10px">This meet has been cancelled.</h1><p style="color:#666;line-height:1.6">${greeting} <strong>${escapeHtml(input.title)}</strong> will not take place because the host account is no longer active.</p></div>`,
+      text: `${input.name ? `Hi ${input.name}, ` : ""}${input.title} has been cancelled because the host account is no longer active.`,
+    }),
+  });
+  if (!response.ok) throw new Error(`Email delivery failed (${response.status})`);
+  return { delivered: true };
+}
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 }

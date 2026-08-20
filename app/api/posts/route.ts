@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       id: timelinePosts.id, body: timelinePosts.body, linkedProjectIds: timelinePosts.linkedProjectIds,
       attachmentType: timelinePosts.attachmentType, attachmentUrl: timelinePosts.attachmentUrl, videoUrl: timelinePosts.videoUrl,
       visibility: timelinePosts.visibility, createdAt: timelinePosts.createdAt, authorId: users.id, authorName: users.name,
-      authorImage: users.image, authorProfession: users.profession,
+      authorImage: users.image, authorProfession: users.profession, authorStatus: users.status,
       authorIsAdmin: sql<boolean>`case when ${adminAssignments.status} = 'active' then true else false end`,
       isDemo: sql<boolean>`${users.role} = 'demo_member'`,
       replyCount: sql<number>`(select count(*)::int from ${postReplies} where ${postReplies.postId} = ${timelinePosts.id} and ${postReplies.status} = 'visible')`,
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
       reposted: viewerId ? sql<boolean>`exists(select 1 from ${postReposts} where ${postReposts.postId} = ${timelinePosts.id} and ${postReposts.userId} = ${viewerId})` : sql<boolean>`false`,
     }).from(timelinePosts).innerJoin(users, eq(users.id, timelinePosts.authorId))
       .leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active")))
-      .where(and(eq(timelinePosts.status, "visible"), eq(timelinePosts.visibility, "network"), eq(users.status, "active")))
+      .where(and(eq(timelinePosts.status, "visible"), eq(timelinePosts.visibility, "network"), inArray(users.status, ["active", "deactivated", "deleted"])))
       .orderBy(desc(timelinePosts.createdAt)).limit(60);
     if(scope==="following") rows=rows.filter(row=>followedIds.includes(row.authorId));
     const announcementCutoff=Date.now()-24*60*60*1000;
@@ -83,6 +83,6 @@ export async function POST(request: Request) {
     }
     await audit(member.id, "timeline.post_created", "post", post.id, { linkedProjectCount: input.linkedProjectIds.length, hasMedia: Boolean(input.attachmentUrl || input.videoUrl) });
     await trackProductEvent({ actorId: member.id, event: "timeline_post_created", properties: { linkedProjects: input.linkedProjectIds.length, media: input.attachmentType ?? (input.videoUrl ? "video_link" : "none") } });
-    return NextResponse.json({ post: { ...post, authorId: member.id, authorName: member.name, authorImage: member.image, authorProfession: null, authorIsAdmin: member.isN2Admin, linkedProjects: [], replyCount:0, likeCount:0, repostCount:0, liked:false, reposted:false } }, { status: 201 });
+    return NextResponse.json({ post: { ...post, authorId: member.id, authorName: member.name, authorImage: member.image, authorProfession: null, authorStatus: "active", authorIsAdmin: member.isN2Admin, linkedProjects: [], replyCount:0, likeCount:0, repostCount:0, liked:false, reposted:false } }, { status: 201 });
   } catch (error) { return apiError(error); }
 }

@@ -51,6 +51,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   UserRound,
+  UserX,
   UserPlus,
   UsersRound,
   ThumbsDown,
@@ -267,6 +268,8 @@ type ProfileRecord = {
   isN2Admin: boolean;
   isFounder: boolean;
   isDemo?: boolean;
+  status?: string;
+  deactivated?: boolean;
   isCurrent: boolean;
   projectCount: number;
   involvedCount: number;
@@ -345,6 +348,7 @@ type TimelinePost = {
   authorName: string | null;
   authorImage: string | null;
   authorProfession?: string | null;
+  authorStatus?: string;
   authorIsAdmin?: boolean;
   isDemo?: boolean;
   isPinned?: boolean;
@@ -355,6 +359,15 @@ type TimelinePost = {
   liked?: boolean;
   reposted?: boolean;
   linkedProjects: Array<{ id: string; title: string }>;
+};
+type LeadershipElectionView = {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  electorate: "co_owners" | "members";
+  deadline: string;
+  selectedCandidateId: string | null;
+  candidates: Array<{ id: string; name: string | null; image: string | null; profession: string | null; membershipRole: string }>;
 };
 type ProfileActivityPost = {
   id: string;
@@ -3249,6 +3262,7 @@ function TimelinePostCard({
             {post.authorName ?? "n2 member"}{" "}
             {post.authorIsAdmin && <N2AdminBadge />}{" "}
             {post.isDemo && <DemoBadge />}
+            {post.authorStatus && post.authorStatus !== "active" && <small className="account-state-badge">Account no longer active</small>}
           </button>
           <span>
             {post.authorProfession ?? "n2 member"} ·{" "}
@@ -7589,6 +7603,7 @@ type ConversationRecord = {
     name: string | null;
     image: string | null;
     profession: string | null;
+    status?: string;
   }>;
   lastMessage?: { body: string; created_at: string } | null;
 };
@@ -7603,6 +7618,7 @@ type ChatMessage = {
   senderId: string;
   senderName: string | null;
   senderImage: string | null;
+  senderStatus?: string;
 };
 function isNudgeMessage(message: ChatMessage) {
   return message.body === "User has been nudged" || message.body.startsWith("⚡ Nudge —");
@@ -8131,6 +8147,7 @@ function MessagesView({
   }
   if (selected) {
     const showsMessageSenders = Boolean(selected.projectId) || selected.members.length > 2;
+    const inactiveMembers = selected.members.filter(member => member.userId !== currentMember.id && member.status && member.status !== "active");
     const speakingMessage = messagesList.find((message) => message.id === speakingMessageId);
     const status = speakingMessage
       ? `${speakingMessage.senderId === currentMember.id ? "You are" : `${speakingMessage.senderName ?? "Someone"} is`} speaking…`
@@ -8138,7 +8155,9 @@ function MessagesView({
       ? `${typingNames.join(", ")} ${typingNames.length === 1 ? "is" : "are"} typing…`
       : selected.members.length > 2
         ? `${selected.members.length} members`
-        : "Direct conversation";
+        : inactiveMembers.length
+          ? "Account deactivated"
+          : "Direct conversation";
     const visibleMessages = chatQuery.trim()
       ? messagesList.filter((message) => message.body.toLowerCase().includes(chatQuery.trim().toLowerCase()))
       : messagesList;
@@ -8211,8 +8230,10 @@ function MessagesView({
                   expandable={false}
                 />
                 <strong>{message.senderName ?? "n2 member"}</strong>
+                {message.senderStatus && message.senderStatus !== "active" && <small className="account-state-badge">Account no longer active</small>}
               </div>
             )}
+            {!showsMessageSenders && message.senderStatus && message.senderStatus !== "active" && <span className="message-account-state">Account no longer active</span>}
             <div
               className={`bubble ${message.senderId === currentMember.id ? "mine" : "theirs"} ${message.status === "deleted" ? "deleted" : ""}`}
             >
@@ -8330,7 +8351,7 @@ function MessagesView({
           <label className="media-change"><ImageIcon size={14}/> Change chat picture<input type="file" accept="image/*" onChange={(event)=>changeChatImage(event.target.files?.[0])}/></label>
         </div>
         <form className="chat-name-form" onSubmit={async event=>{event.preventDefault();const data=new FormData(event.currentTarget);await updateConversation("rename",{name:data.get("name")});}}><label>Chat name<input name="name" defaultValue={selected.name??""} placeholder={title(selected)} maxLength={100}/></label><button className="secondary-button">Save</button></form>
-        <section className="chat-details-section"><div className="chat-details-heading"><strong>Members</strong><span>{selected.members.length}</span></div><div className="chat-member-list">{selected.members.map(member=><article key={member.userId}><Avatar person={{name:member.name??"n2 member",role:member.profession??"Member",img:member.image}} size="sm"/><span><strong>{member.name??"n2 member"}</strong><small>{member.userId===currentMember.id?"You":member.profession??"Member"}</small></span></article>)}</div>
+        <section className="chat-details-section"><div className="chat-details-heading"><strong>Members</strong><span>{selected.members.length}</span></div><div className="chat-member-list">{selected.members.map(member=><article key={member.userId}><Avatar person={{name:member.name??"n2 member",role:member.profession??"Member",img:member.image}} size="sm"/><span><strong>{member.name??"n2 member"}</strong><small>{member.status&&member.status!=="active"?"Account no longer active":member.userId===currentMember.id?"You":member.profession??"Member"}</small></span></article>)}</div>
           <div className="message-search compact"><UserPlus size={15}/><input value={memberSearch} onChange={event=>setMemberSearch(event.target.value)} placeholder="Add a member"/></div>
           {memberSearch.trim().length>=2&&<div className="chat-add-results">{memberResults.filter(person=>person.canMessage!==false&&!selected.members.some(member=>member.userId===String(person.id))).slice(0,4).map(person=><button key={String(person.id)} onClick={()=>updateConversation("add_member",{userId:String(person.id)})}><Avatar person={{name:String(person.name),role:String(person.profession??"Member"),img:person.image as string|null}} size="sm"/><span><strong>{String(person.name)}</strong><small>{String(person.profession??"Member")}</small></span><Plus size={15}/></button>)}</div>}
         </section>
@@ -8413,6 +8434,7 @@ function MessagesView({
             />
             <span>
               <strong className={conversationTitleClass(row)}>{title(row)}</strong>
+              {row.members.some(member => member.userId !== currentMember.id && member.status && member.status !== "active") && <span className="account-state-badge">Account no longer active</span>}
               <small>
                 {row.snoozedUntil ? "Snoozed · " : ""}
                 {row.lastMessage?.body ?? "Start the conversation"}
@@ -8556,6 +8578,8 @@ type MeetingRecord = {
   startsAt: string;
   endsAt: string;
   endedAt?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
   timezone: string;
   joinUrl?: string | null;
   location?: string | null;
@@ -9164,8 +9188,8 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
       ...new Set(meets.map((meet) => new Date(meet.startsAt).getDate())),
     ],
     today = new Date(),
-    upcomingMeets = clockNow ? meets.filter(meet => !meet.endedAt && new Date(meet.endsAt).getTime() >= clockNow) : meets,
-    pastMeets = clockNow ? meets.filter(meet => Boolean(meet.endedAt) || new Date(meet.endsAt).getTime() < clockNow) : [];
+    upcomingMeets = clockNow ? meets.filter(meet => !meet.cancelledAt && !meet.endedAt && new Date(meet.endsAt).getTime() >= clockNow) : meets.filter(meet => !meet.cancelledAt),
+    pastMeets = clockNow ? meets.filter(meet => Boolean(meet.cancelledAt) || Boolean(meet.endedAt) || new Date(meet.endsAt).getTime() < clockNow) : meets.filter(meet => Boolean(meet.cancelledAt));
   return (
     <div className="subpage">
       <div className="subpage-head">
@@ -9333,10 +9357,10 @@ function MeetView({ initialMeetingId = null }: { initialMeetingId?: string | nul
               <div>
                 <div className="meet-card-meta">
                   <span className={`tag ${meet.provider === "in_person" ? "dark" : ""}`}>{meet.mode === "audio" ? <Mic size={11}/> : meet.provider === "in_person" ? <MapPin size={11}/> : <Video size={11}/>} {meet.mode === "audio" ? "PODCAST" : meet.provider === "in_person" ? "IN PERSON" : "VIDEO"}</span>
-                  <span className="meet-history-status">ENDED</span>
+                  <span className={`meet-history-status ${meet.cancelledAt ? "cancelled" : ""}`}>{meet.cancelledAt ? "CANCELLED" : "ENDED"}</span>
                 </div>
                 <button className="meet-title-button" onClick={() => setDetail(meet)}>{meet.title}</button>
-                <p>{meet.description || meet.location || "Open meeting details"}</p>
+                <p>{meet.cancelledAt ? meet.cancellationReason ?? "The host account is no longer active." : meet.description || meet.location || "Open meeting details"}</p>
               </div>
               <button className="meet-history-detail" onClick={() => setDetail(meet)}>Details</button>
             </div>;
@@ -9809,6 +9833,17 @@ function ProfileView({
       : member,
     skills = profile?.rankedSkills?.slice(0, 3) ?? [];
   if (profileLoading) return <LoadingState label="Loading profile" count={2} />;
+  if (profile?.deactivated) return (
+    <div className="subpage profile-page deactivated-profile">
+      <div className="profile-cover"><span>n2</span></div>
+      <div className="profile-main">
+        <Avatar person={{ name: profile.name ?? "n2 member", role: "Account deactivated" }} size="xl" ring />
+        <h1>{profile.name ?? "n2 member"}</h1>
+        <span className="profile-username">@{profile.username}</span>
+        <div className="deactivated-profile-notice"><UserX size={22}/><div><strong>Account deactivated</strong><p>This member is no longer active. Their previous posts and messages remain labelled to preserve conversation history.</p></div></div>
+      </div>
+    </div>
+  );
   return (
     <div className="subpage profile-page">
       {unfollowOpen && (
@@ -10162,6 +10197,7 @@ type PostReply = {
   authorName: string | null;
   authorImage: string | null;
   authorProfession?: string | null;
+  authorStatus?: string;
   authorIsAdmin?: boolean;
   isDemo?: boolean;
 };
@@ -10313,6 +10349,7 @@ function PostThread({
                 {post.authorName ?? "n2 member"}{" "}
                 {post.authorIsAdmin && <N2AdminBadge />}{" "}
                 {post.isDemo && <DemoBadge />}
+                {post.authorStatus && post.authorStatus !== "active" && <small className="account-state-badge">Account no longer active</small>}
               </button>
               <span>
                 {post.authorProfession ?? "n2 member"} ·{" "}
@@ -10363,6 +10400,7 @@ function PostThread({
                       {reply.authorName ?? "n2 member"}{" "}
                       {reply.authorIsAdmin && <N2AdminBadge />}{" "}
                       {reply.isDemo && <DemoBadge />}
+                      {reply.authorStatus && reply.authorStatus !== "active" && <small className="account-state-badge">Account no longer active</small>}
                     </button>
                     <span className="post-reply-meta">
                       <time>{new Date(reply.createdAt).toLocaleString()}</time>
@@ -10900,7 +10938,10 @@ function SettingsView({
     success: false,
   });
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deleteWarningsAccepted, setDeleteWarningsAccepted] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState("");
+  const [leadershipElections, setLeadershipElections] = useState<LeadershipElectionView[]>([]);
+  const [leadershipVoteStatus, setLeadershipVoteStatus] = useState("");
   const [profileUserId, setProfileUserId] = useState("");
   const [profile, setProfile] = useState({
     name: "",
@@ -11151,6 +11192,10 @@ function SettingsView({
           if (data && persistence !== "local") setAccessibility(normaliseAccessibilityPreferences(data));
         })
         .catch(() => undefined);
+      fetch("/api/projects/leadership-elections", { cache: "no-store" })
+        .then(response => response.ok ? response.json() : { items: [] })
+        .then(result => setLeadershipElections(result.items ?? []))
+        .catch(() => undefined);
     });
     return () => cancelAnimationFrame(frame);
   }, []);
@@ -11369,7 +11414,7 @@ function SettingsView({
       const response = await fetch("/api/account", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ confirmation: values.confirmation, password: values.password || undefined }),
+        body: JSON.stringify({ confirmation: values.confirmation, consequencesAccepted: true, password: values.password || undefined }),
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) {
@@ -11378,11 +11423,26 @@ function SettingsView({
       }
       localStorage.removeItem("n2-settings");
       localStorage.removeItem(ACCESSIBILITY_STORAGE_KEY);
-      await signOut({ redirectTo: "/signin?account=deleted" });
+      await signOut({ redirectTo: "/signin?account=deactivated" });
     } catch {
       setDeleteAccountError("We couldn't delete your account. Check your connection and try again.");
       return false;
     }
+  }
+  async function castLeadershipVote(electionId: string, candidateId: string) {
+    setLeadershipVoteStatus("");
+    const response = await fetch("/api/projects/leadership-elections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ electionId, candidateId }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setLeadershipVoteStatus(result.error ?? "Your vote could not be saved.");
+      return;
+    }
+    setLeadershipElections(items => items.map(item => item.id === electionId ? { ...item, selectedCandidateId: candidateId } : item));
+    setLeadershipVoteStatus("Your leadership vote is saved. You can change it until the deadline.");
   }
   async function toggleBrowserPopups() {
     setBrowserNotificationStatus("");
@@ -12400,20 +12460,32 @@ function SettingsView({
             <div className="account-danger-zone">
               <span>
                 <strong>Delete account</strong>
-                <small>This signs you out, removes your profile and personal details, disconnects integrations, and archives projects you own. Shared messages and safety records may be retained in anonymised form.</small>
+                <small>This deactivates your account immediately, starts a 30-day recovery window, and begins any required project leadership handovers.</small>
               </span>
-              <button type="button" className="secondary-button danger" onClick={() => { setDeleteAccountError(""); setDeleteAccountOpen(true); }}>
+              <button type="button" className="secondary-button danger" onClick={() => { setDeleteAccountError(""); setDeleteWarningsAccepted(false); setDeleteAccountOpen(true); }}>
                 <Trash2 size={15} /> Delete account
               </button>
             </div>
           </div>
         )}
-        {deleteAccountOpen && (
+        {deleteAccountOpen && !deleteWarningsAccepted && (
+          <ActionDialog
+            eyebrow="BEFORE YOU DELETE"
+            title="Review what happens next"
+            description="Your account becomes deactivated immediately. A sole co-owner takes ownership at once; otherwise eligible co-owners or members have 24 hours to vote before n2 selects the strongest project match. Future meets you host are cancelled and attendees are notified. Your posts, messages and profile are labelled as deactivated. You can recover within 30 days using your previous email and password, but completed transfers and cancelled meets are not automatically reversed."
+            confirmLabel="I understand, continue"
+            cancelLabel="Keep my account"
+            danger
+            onClose={() => { setDeleteAccountOpen(false); setDeleteWarningsAccepted(false); setDeleteAccountError(""); }}
+            onConfirm={() => { setDeleteWarningsAccepted(true); return false; }}
+          />
+        )}
+        {deleteAccountOpen && deleteWarningsAccepted && (
           <ActionDialog
             eyebrow="DELETE ACCOUNT"
-            title="Permanently delete your account?"
-            description="This cannot be undone. Type DELETE to confirm. If you sign in with a password, enter your current password too."
-            confirmLabel="Delete my account"
+            title="Deactivate and schedule deletion?"
+            description="This is the final confirmation. Type DELETE below. Your permanent deletion is scheduled for 30 days from now."
+            confirmLabel="Deactivate my account"
             cancelLabel="Keep my account"
             danger
             error={deleteAccountError}
@@ -12421,7 +12493,7 @@ function SettingsView({
               { name: "confirmation", label: "Type DELETE", kind: "input", required: true, placeholder: "DELETE", maxLength: 6 },
               { name: "password", label: "Current password (if you use one)", kind: "input", inputType: "password", autoComplete: "current-password", trim: false, maxLength: 128 },
             ]}
-            onClose={() => { setDeleteAccountOpen(false); setDeleteAccountError(""); }}
+            onClose={() => { setDeleteAccountOpen(false); setDeleteWarningsAccepted(false); setDeleteAccountError(""); }}
             onConfirm={deleteAccount}
           />
         )}
@@ -12437,6 +12509,20 @@ function SettingsView({
           <p>Control how the network works for you.</p>
         </div>
       </div>
+      {leadershipElections.length > 0 && <div className="settings-group">
+          <div className="settings-label">PROJECT LEADERSHIP</div>
+          {leadershipElections.map(election => <div className="leadership-election" key={election.id}>
+            <div><strong>Choose the next lead for {election.projectTitle}</strong><small>{election.electorate === "co_owners" ? "Co-owners" : "Project members"} can vote until {new Date(election.deadline).toLocaleString()}. If there is no clear winner, n2 will select the strongest project match.</small></div>
+            <div className="leadership-candidates">
+              {election.candidates.map(candidate => <button type="button" className={election.selectedCandidateId === candidate.id ? "selected" : ""} key={candidate.id} onClick={() => castLeadershipVote(election.id, candidate.id)}>
+                <Avatar person={{ name: candidate.name ?? "n2 member", role: candidate.profession ?? candidate.membershipRole, img: candidate.image }} size="sm" expandable={false}/>
+                <span><strong>{candidate.name ?? "n2 member"}</strong><small>{candidate.profession ?? candidate.membershipRole.replaceAll("_", " ")}</small></span>
+                {election.selectedCandidateId === candidate.id && <Check size={15}/>}
+              </button>)}
+            </div>
+          </div>)}
+          {leadershipVoteStatus && <p className="settings-inline-status" role="status">{leadershipVoteStatus}</p>}
+      </div>}
       <div className="settings-group">
         <div className="settings-label">MATCHING</div>
         <div className="settings-row">

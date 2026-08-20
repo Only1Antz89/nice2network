@@ -16,6 +16,7 @@ function SignInContent() {
   const [busy,setBusy]=useState(false);
   const [photo,setPhoto]=useState("");
   const [pendingEmail,setPendingEmail]=useState("");
+  const accountDeactivated=searchParams.get("account")==="deactivated";
 
   async function choosePhoto(file?:File){if(!file)return;if(file.size>500_000){setError("Choose a photo smaller than 500 KB.");return}const reader=new FileReader();reader.onload=()=>setPhoto(String(reader.result));reader.readAsDataURL(file)}
   async function submit(event:FormEvent<HTMLFormElement>){
@@ -52,6 +53,7 @@ function SignInContent() {
         <span className="eyebrow">{mode==="signin"?"WELCOME BACK":"CREATE YOUR ACCOUNT"}</span>
         <h1>{mode==="signin"?"Good people are waiting.":"First, the essentials."}</h1>
         <p>{mode==="signin"?"Sign in to see the projects and people relevant to you.":"Create your account, then add your profession, skills, interests and location."}</p>
+        {accountDeactivated&&mode==="signin"&&<p className="form-success" role="status"><Check size={14}/> Your account is deactivated. You can recover it for 30 days.</p>}
         <form onSubmit={submit}>
           {mode==="register"&&<><div className="signup-grid"><label>Title<N2Select name="title" defaultValue="Ms" required ariaLabel="Title" options={["Mr", "Ms", "Mrs", "Miss", "Mx", "Dr", "Prof"].map(value => ({ value, label: value }))}/></label><label>Date of birth<input name="dateOfBirth" type="date" max={new Date(new Date().setFullYear(new Date().getFullYear()-16)).toISOString().slice(0,10)} required/></label><label>First name<input name="firstName" autoComplete="given-name" required minLength={2}/></label><label>Surname<input name="lastName" autoComplete="family-name" required minLength={2}/></label></div><label className="photo-field">Profile photo <small>Optional — n2 is your default.</small><span className="photo-picker">{photo?<img src={photo} alt="Profile preview"/>:<span className="default-photo-preview">n2</span>}<span><strong>{photo?"Photo ready":"Use n2 or choose a photo"}</strong><small>JPG, PNG or WebP · up to 500 KB</small></span><input aria-label="Profile photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={event=>choosePhoto(event.target.files?.[0])}/></span></label></>}
           <label>Email<input name="email" type="email" autoComplete="email" required/></label>
@@ -60,6 +62,7 @@ function SignInContent() {
           <button className="primary-button wide" disabled={busy}>{busy?"One moment…":mode==="signin"?"Sign in":<>Create account <ArrowRight size={16}/></>}</button>
         </form>
         <button className="auth-switch" onClick={()=>{setError("");setMode(mode==="signin"?"register":"signin")}}>{mode==="signin"?"New here? Create an account":"Already a member? Sign in"}</button>
+        {mode==="signin"&&<Link className="recovery-text-link" href="/recover-account">Recover a deactivated account</Link>}
       </section>}
     </section>
   </main>;

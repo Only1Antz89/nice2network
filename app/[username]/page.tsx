@@ -5,7 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
-import { LockKeyhole } from "lucide-react";
+import { LockKeyhole, UserX } from "lucide-react";
 import { getDb } from "@/db";
 import { postReplies, projectComments, projects, timelinePosts, users } from "@/db/schema";
 import PublicProfileAction from "@/components/public-profile-actions";
@@ -19,7 +19,9 @@ const getSharedProfile = cache(async function getSharedProfile(username: string)
   const profile = await getSharedProfileIdentity(username);
   if (!profile) return null;
 
-  if (profile.visibility !== "public") return { profile, posts: [], projects: [], replies: [], comments: [], activity: { likes: [], watching: [], reposts: [] }, restricted: true as const };
+  if (profile.status === "deactivated") return { profile, posts: [], projects: [], replies: [], comments: [], activity: { likes: [], watching: [], reposts: [] }, restricted: false as const, deactivated: true as const };
+
+  if (profile.visibility !== "public") return { profile, posts: [], projects: [], replies: [], comments: [], activity: { likes: [], watching: [], reposts: [] }, restricted: true as const, deactivated: false as const };
 
   const db = getDb();
   const [posts, ownedProjects, activity] = await Promise.all([
@@ -37,7 +39,7 @@ const getSharedProfile = cache(async function getSharedProfile(username: string)
     postIds.length ? db.select({ id: postReplies.id, parentId: postReplies.postId, body: postReplies.body, createdAt: postReplies.createdAt, authorName: users.name, authorImage: users.image }).from(postReplies).innerJoin(users, eq(users.id, postReplies.authorId)).where(and(inArray(postReplies.postId, postIds), eq(postReplies.status, "visible"), eq(users.status, "active"))).orderBy(asc(postReplies.createdAt)) : [],
     projectIds.length ? db.select({ id: projectComments.id, parentId: projectComments.projectId, body: projectComments.body, createdAt: projectComments.createdAt, authorName: users.name, authorImage: users.image }).from(projectComments).innerJoin(users, eq(users.id, projectComments.authorId)).where(and(inArray(projectComments.projectId, projectIds), eq(projectComments.status, "visible"), eq(users.status, "active"))).orderBy(asc(projectComments.createdAt)) : [],
   ]);
-  return { profile, posts, projects: ownedProjects, replies, comments, activity, restricted: false as const };
+  return { profile, posts, projects: ownedProjects, replies, comments, activity, restricted: false as const, deactivated: false as const };
 });
 
 export async function generateMetadata({ params }: { params: Promise<{ username: string }> }): Promise<Metadata> {
@@ -45,12 +47,12 @@ export async function generateMetadata({ params }: { params: Promise<{ username:
   const result = await getSharedProfile(username);
   if (!result) return { title: "Profile unavailable — nice 2 network", robots: { index: false, follow: false } };
   const title = `${result.profile.name ?? `@${result.profile.username}`} (@${result.profile.username}) — nice 2 network`;
-  const description = result.restricted ? `Request to follow @${result.profile.username} on nice 2 network.` : result.profile.headline ?? result.profile.profession ?? `See @${result.profile.username}'s public posts and projects on nice 2 network.`;
+  const description = result.deactivated ? `This nice 2 network account is deactivated.` : result.restricted ? `Request to follow @${result.profile.username} on nice 2 network.` : result.profile.headline ?? result.profile.profession ?? `See @${result.profile.username}'s public posts and projects on nice 2 network.`;
   const canonical = `${publicOrigin}/${result.profile.username}`;
   const image = `${canonical}/opengraph-image`;
   return {
     title, description,
-    robots: result.restricted ? { index: false, follow: false } : undefined,
+    robots: result.restricted || result.deactivated ? { index: false, follow: false } : undefined,
     alternates: { canonical },
     openGraph: { type: "profile", siteName: "nice 2 network", title, description, url: canonical, images: [{ url: image, width: 1200, height: 630, alt: `${result.profile.name ?? `@${result.profile.username}`} on nice 2 network` }] },
     twitter: { card: "summary_large_image", title, description, images: [image] },
@@ -84,7 +86,7 @@ export default async function PublicProfilePage({ params, searchParams }: { para
   const { tab, projectView: requestedProjectView } = await searchParams;
   const result = await getSharedProfile(username);
   if (!result) notFound();
-  const { profile, posts, projects: publicProjects, replies, comments, activity, restricted } = result;
+  const { profile, posts, projects: publicProjects, replies, comments, activity, restricted, deactivated } = result;
   const activeTab = (["posts", "projects", "likes", "reposts"] as const).find(item => item === tab) ?? (tab === "watching" ? "projects" : "posts");
   const projectView = requestedProjectView === "watching" || tab === "watching" ? "watching" : "history";
   const avatar = profile.image || "/brand/nice-2-network-mark.svg";
@@ -94,12 +96,12 @@ export default async function PublicProfilePage({ params, searchParams }: { para
   return <div className={styles.page}>
     <header className={styles.header}><Link className={styles.brand} href="/"><span>n2</span><strong>nice 2 network</strong></Link><PublicProfileAction kind="signin" authenticatedHref="/" /></header>
     <main className={styles.main}>
-      <section className={`${styles.profile} ${restricted ? styles.restrictedProfile : ""}`}>
+      <section className={`${styles.profile} ${restricted || deactivated ? styles.restrictedProfile : ""}`}>
         <Image className={styles.avatar} src={avatar} alt={profile.name ?? profile.username} width={192} height={192} unoptimized/>
-        <div className={styles.identity}><small>@{profile.username}</small><h1>{profile.name ?? profile.username}</h1>{restricted ? <p className={styles.privateCopy}><LockKeyhole size={15} /> This profile is private. Send a follow request to ask for access.</p> : <><p>{profile.headline ?? profile.profession ?? "n2 member"}</p>{profile.bio&&<p className={styles.bio}>{profile.bio}</p>}{profile.showLocation&&profile.location&&<p className={styles.location}>{profile.location}</p>}</>}</div>
-        <PublicProfileAction kind={restricted ? "request" : "follow"} targetId={restricted ? profile.id : undefined} authenticatedHref={`/?profile=${profile.id}`} />
+        <div className={styles.identity}><small>@{profile.username}</small><h1>{profile.name ?? profile.username}</h1>{deactivated ? <p className={styles.privateCopy}><UserX size={15} /> Account deactivated</p> : restricted ? <p className={styles.privateCopy}><LockKeyhole size={15} /> This profile is private. Send a follow request to ask for access.</p> : <><p>{profile.headline ?? profile.profession ?? "n2 member"}</p>{profile.bio&&<p className={styles.bio}>{profile.bio}</p>}{profile.showLocation&&profile.location&&<p className={styles.location}>{profile.location}</p>}</>}</div>
+        {!deactivated && <PublicProfileAction kind={restricted ? "request" : "follow"} targetId={restricted ? profile.id : undefined} authenticatedHref={`/?profile=${profile.id}`} />}
       </section>
-      {restricted ? <section className={styles.privatePanel}><LockKeyhole size={22} /><strong>Shared with permission.</strong><p>Once the profile owner accepts your request, sign in to view the profile through n2.</p></section> : <><nav className={styles.tabs} aria-label="Public profile content">
+      {deactivated ? <section className={styles.privatePanel}><UserX size={22} /><strong>This account is no longer active.</strong><p>Its previous posts may remain visible with a deactivated-account label so conversations keep their context.</p></section> : restricted ? <section className={styles.privatePanel}><LockKeyhole size={22} /><strong>Shared with permission.</strong><p>Once the profile owner accepts your request, sign in to view the profile through n2.</p></section> : <><nav className={styles.tabs} aria-label="Public profile content">
         <Link className={activeTab === "posts" ? styles.activeTab : ""} href={`/${profile.username}?tab=posts`} aria-current={activeTab === "posts" ? "page" : undefined}>Posts <small>{posts.length}</small></Link>
         <Link className={activeTab === "projects" ? styles.activeTab : ""} href={`/${profile.username}?tab=projects`} aria-current={activeTab === "projects" ? "page" : undefined}>Projects <small>{publicProjects.length}</small></Link>
         <Link className={activeTab === "likes" ? styles.activeTab : ""} href={`/${profile.username}?tab=likes`} aria-current={activeTab === "likes" ? "page" : undefined}>Likes <small>{activity.likes.length}</small></Link>

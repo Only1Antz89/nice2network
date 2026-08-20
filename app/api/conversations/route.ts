@@ -25,7 +25,7 @@ export async function GET() {
       .from(conversationMembers).innerJoin(conversations,eq(conversations.id,conversationMembers.conversationId)).where(and(eq(conversationMembers.userId,member.id),ne(conversations.status,"deleted"))).orderBy(desc(conversations.updatedAt));
     const ids=rows.map(row=>row.id);if(!ids.length)return NextResponse.json({conversations:[]});
     const [members,lastMessages,unreadMessages]=await Promise.all([
-      db.select({conversationId:conversationMembers.conversationId,userId:users.id,username:users.username,name:users.name,image:users.image,profession:users.profession}).from(conversationMembers).innerJoin(users,eq(users.id,conversationMembers.userId)).where(inArray(conversationMembers.conversationId,ids)),
+      db.select({conversationId:conversationMembers.conversationId,userId:users.id,username:users.username,name:users.name,image:users.image,profession:users.profession,status:users.status}).from(conversationMembers).innerJoin(users,eq(users.id,conversationMembers.userId)).where(inArray(conversationMembers.conversationId,ids)),
       db.execute(sql`select distinct on (conversation_id) conversation_id,id,body,created_at from messages where conversation_id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}) and status='visible' order by conversation_id,created_at desc`),
       db.select({conversationId:notifications.entityId,value:count()}).from(notifications).where(and(eq(notifications.userId,member.id),eq(notifications.type,"message"),eq(notifications.entityType,"conversation"),isNull(notifications.readAt),inArray(notifications.entityId,ids))).groupBy(notifications.entityId),
     ]);

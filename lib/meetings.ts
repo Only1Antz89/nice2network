@@ -22,6 +22,7 @@ export async function requireMeetingAccess(meetingId: string, userId: string) {
   const db = getDb();
   const [meeting] = await db.select().from(meetings).where(eq(meetings.id, meetingId)).limit(1);
   if (!meeting) throw new ApiError(404, "Meet not found");
+  if (meeting.cancelledAt) throw new ApiError(410, meeting.cancellationReason ?? "This meet was cancelled because the host account is no longer active.");
   if (meeting.createdBy === userId || meeting.visibility === "public") return meeting;
 
   const [invite] = await db.select({ userId: meetingParticipants.userId })

@@ -42,7 +42,7 @@ test("requires verified email before professional onboarding", async () => {
   assert.match(verify, /emailVerified/);
   assert.match(verify, /n2_onboarding/);
   assert.match(onboarding, /onboardingCompletedAt/);
-  assert.match(credentials, /member\.status !== "active"/);
+  assert.match(credentials, /member\.status === "active"/);
 });
 
 test("onboarding bio communicates and enforces the server character limits", async () => {

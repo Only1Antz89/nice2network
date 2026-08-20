@@ -37,9 +37,17 @@ const profilePatchSchema = profileSchema.partial().refine(
 export async function GET(_: Request, { params }: { params: Promise<{ userId: string }> }) {
   try {
     const viewer = await requireMember(), { userId } = await params, db = getDb();
-    const [row] = await db.select({ id: users.id, username: users.username, name: users.name, image: users.image, coverImage: users.coverImage, profession: users.profession, headline: users.headline, bio: users.bio, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, location: users.location, city: users.city, country: users.country, timezone: users.timezone, workMode: users.workMode, ageBand: users.ageBand, visibility: privacySettings.profileVisibility, showLocation: privacySettings.showLocation, isN2Admin: adminAssignments.id, isFounder: sql<boolean>`${users.role} = 'founder'`, isDemo: sql<boolean>`${users.role} = 'demo_member'` })
-      .from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active"))).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
+    const [row] = await db.select({ id: users.id, username: users.username, name: users.name, image: users.image, coverImage: users.coverImage, profession: users.profession, headline: users.headline, bio: users.bio, industry: users.industry, primarySkill: users.primarySkill, secondarySkill: users.secondarySkill, tertiarySkill: users.tertiarySkill, skills: users.skills, interests: users.interests, location: users.location, city: users.city, country: users.country, timezone: users.timezone, workMode: users.workMode, ageBand: users.ageBand, status: users.status, visibility: privacySettings.profileVisibility, showLocation: privacySettings.showLocation, isN2Admin: adminAssignments.id, isFounder: sql<boolean>`${users.role} = 'founder'`, isDemo: sql<boolean>`${users.role} = 'demo_member'` })
+      .from(users).leftJoin(privacySettings, eq(privacySettings.userId, users.id)).leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active"))).where(eq(users.id, userId)).limit(1);
     if (!row) throw new ApiError(404, "Profile not found");
+    if (row.status === "deactivated") return NextResponse.json({ profile: {
+      id: row.id, username: row.username, name: row.name, image: null, coverImage: null,
+      profession: null, headline: null, bio: null, industry: null, rankedSkills: [], interests: [], location: null,
+      status: row.status, deactivated: true, isN2Admin: false, isFounder: false, isDemo: false, isCurrent: false,
+      projectCount: 0, involvedCount: 0, followers: 0, following: 0, isFollowing: false, isMutual: false,
+      posts: [], projects: [], career: [], education: [],
+    } }, { headers: { "Cache-Control": "private, no-store" } });
+    if (row.status !== "active") throw new ApiError(404, "Profile not found");
     const isCurrent = viewer.id === userId;
     if (!isCurrent && (row.visibility === "private" || row.visibility === "connections")) {
       const directions=await db.select({followerId:follows.followerId,followingId:follows.followingId}).from(follows).where(or(and(eq(follows.followerId,viewer.id),eq(follows.followingId,userId)),and(eq(follows.followerId,userId),eq(follows.followingId,viewer.id))));
@@ -81,7 +89,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ userId: st
       : [];
     const linkedProjectById = new Map(linkedProjects.map(project => [project.id, project]));
     return NextResponse.json(
-      { profile: { ...row, location: isCurrent || row.showLocation ? row.location : null, isN2Admin: Boolean(row.isN2Admin), rankedSkills: fallbackSkills, career, education, projects:projectHistory, posts:profilePosts.map(post => ({ ...post, authorId: row.id, authorName: row.name, authorImage: row.image, authorProfession: row.profession, authorIsAdmin: Boolean(row.isN2Admin), isDemo: row.isDemo, linkedProjects: post.linkedProjectIds.map(id => linkedProjectById.get(id)).filter(Boolean) })), projectCount:ownedProjects.length, involvedCount:joinedProjects.length, followers:followerCount[0]?.value??0,following:followingCount[0]?.value??0,isFollowing:Boolean(viewerFollow[0]),isMutual:Boolean(viewerFollow[0]&&targetFollow[0]),isCurrent } },
+      { profile: { ...row, deactivated: false, location: isCurrent || row.showLocation ? row.location : null, isN2Admin: Boolean(row.isN2Admin), rankedSkills: fallbackSkills, career, education, projects:projectHistory, posts:profilePosts.map(post => ({ ...post, authorId: row.id, authorName: row.name, authorImage: row.image, authorProfession: row.profession, authorStatus: row.status, authorIsAdmin: Boolean(row.isN2Admin), isDemo: row.isDemo, linkedProjects: post.linkedProjectIds.map(id => linkedProjectById.get(id)).filter(Boolean) })), projectCount:ownedProjects.length, involvedCount:joinedProjects.length, followers:followerCount[0]?.value??0,following:followingCount[0]?.value??0,isFollowing:Boolean(viewerFollow[0]),isMutual:Boolean(viewerFollow[0]&&targetFollow[0]),isCurrent } },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) { return apiError(error); }

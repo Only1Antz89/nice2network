@@ -10,6 +10,7 @@ export async function sendDueMeetingReminders() {
   const horizon = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   const pending = await db.select().from(meetings).where(and(
     isNull(meetings.reminderSentAt),
+    isNull(meetings.cancelledAt),
     gt(meetings.startsAt, now),
     lte(meetings.startsAt, horizon),
   )).limit(100);
@@ -23,7 +24,7 @@ export async function sendDueMeetingReminders() {
     // create duplicates. A failed delivery releases the claim for a retry.
     const [claimed] = await db.update(meetings)
       .set({ reminderSentAt: now })
-      .where(and(eq(meetings.id, meeting.id), isNull(meetings.reminderSentAt)))
+      .where(and(eq(meetings.id, meeting.id), isNull(meetings.reminderSentAt), isNull(meetings.cancelledAt)))
       .returning({ id: meetings.id });
     if (!claimed) continue;
 

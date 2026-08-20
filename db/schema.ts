@@ -37,6 +37,8 @@ export const users = pgTable("users", {
   forcePasswordChange: boolean("force_password_change").notNull().default(false),
   mfaEnrolledAt: timestamp("mfa_enrolled_at", { withTimezone: true }),
   onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
+  deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+  recoveryDeadline: timestamp("recovery_deadline", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [uniqueIndex("users_email_unique").on(table.email), uniqueIndex("users_username_unique").on(table.username)]);
@@ -87,6 +89,30 @@ export const projectRoles = pgTable("project_roles", {
 export const projectMembers = pgTable("project_members", {
   projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }), userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), roleId: uuid("role_id").references(() => projectRoles.id), membershipRole: text("membership_role").notNull().default("contributor"), department: text("department"), joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [primaryKey({ columns: [table.projectId, table.userId] })]);
+
+export const projectLeadershipElections = pgTable("project_leadership_elections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  formerOwnerId: uuid("former_owner_id").notNull().references(() => users.id),
+  electorate: text("electorate").$type<"co_owners" | "members">().notNull(),
+  status: text("status").$type<"open" | "completed" | "cancelled">().notNull().default("open"),
+  deadline: timestamp("deadline", { withTimezone: true }).notNull(),
+  selectedUserId: uuid("selected_user_id").references(() => users.id),
+  selectionMethod: text("selection_method").$type<"single_co_owner" | "vote" | "fit" | "no_candidate">(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("project_leadership_open_unique").on(table.projectId).where(sql`${table.status} = 'open'`),
+  index("project_leadership_deadline_idx").on(table.status, table.deadline),
+]);
+
+export const projectLeadershipVotes = pgTable("project_leadership_votes", {
+  electionId: uuid("election_id").notNull().references(() => projectLeadershipElections.id, { onDelete: "cascade" }),
+  voterId: uuid("voter_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  candidateId: uuid("candidate_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.electionId, table.voterId] }), index("project_leadership_votes_candidate_idx").on(table.electionId, table.candidateId)]);
 
 export const projectFollows = pgTable("project_follows", {
   projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
@@ -264,7 +290,7 @@ export const integrationAccounts = pgTable("integration_accounts", {
 }, (table) => [uniqueIndex("integration_user_provider_unique").on(table.userId, table.provider)]);
 
 export const meetings = pgTable("meetings", {
-  id: uuid("id").defaultRandom().primaryKey(), projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }), createdBy: uuid("created_by").notNull().references(() => users.id), provider: text("provider").notNull(), providerEventId: text("provider_event_id"), mode: text("mode").notNull().default("video"), maxParticipants: integer("max_participants").notNull().default(8), title: text("title").notNull(), description: text("description"), visibility: text("visibility").notNull().default("public"), startsAt: timestamp("starts_at", { withTimezone: true }).notNull(), endsAt: timestamp("ends_at", { withTimezone: true }).notNull(), endedAt: timestamp("ended_at", { withTimezone: true }), timezone: text("timezone").notNull().default("Europe/London"), joinUrl: text("join_url"), location: text("location"), thumbnailUrl: text("thumbnail_url"), attendees: jsonb("attendees").$type<Array<{ email: string; name?: string }>>().default([]), reminderMinutes: integer("reminder_minutes").notNull().default(30), reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  id: uuid("id").defaultRandom().primaryKey(), projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }), createdBy: uuid("created_by").notNull().references(() => users.id), provider: text("provider").notNull(), providerEventId: text("provider_event_id"), mode: text("mode").notNull().default("video"), maxParticipants: integer("max_participants").notNull().default(8), title: text("title").notNull(), description: text("description"), visibility: text("visibility").notNull().default("public"), startsAt: timestamp("starts_at", { withTimezone: true }).notNull(), endsAt: timestamp("ends_at", { withTimezone: true }).notNull(), endedAt: timestamp("ended_at", { withTimezone: true }), cancelledAt: timestamp("cancelled_at", { withTimezone: true }), cancellationReason: text("cancellation_reason"), timezone: text("timezone").notNull().default("Europe/London"), joinUrl: text("join_url"), location: text("location"), thumbnailUrl: text("thumbnail_url"), attendees: jsonb("attendees").$type<Array<{ email: string; name?: string }>>().default([]), reminderMinutes: integer("reminder_minutes").notNull().default(30), reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const meetingParticipants = pgTable("meeting_participants", {
