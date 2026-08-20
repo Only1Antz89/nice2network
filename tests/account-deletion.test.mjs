@@ -5,12 +5,13 @@ import test from "node:test";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("members can deactivate, recover, and schedule permanent account deletion", async () => {
-  const [page, route, recoveryRoute, lifecycle, privacy] = await Promise.all([
+  const [page, route, recoveryRoute, lifecycle, privacy, vercel] = await Promise.all([
     read("app/page.tsx"),
     read("app/api/account/route.ts"),
     read("app/api/account/recover/route.ts"),
     read("lib/account-lifecycle.ts"),
     read("app/privacy/page.tsx"),
+    read("vercel.json"),
   ]);
   assert.match(page, /Delete account/);
   assert.match(page, /Type DELETE/);
@@ -26,4 +27,5 @@ test("members can deactivate, recover, and schedule permanent account deletion",
   assert.match(recoveryRoute, /export async function POST/);
   assert.match(recoveryRoute, /status: "active"/);
   assert.match(privacy, /30 days to recover/);
+  assert.match(vercel, /"path": "\/api\/cron\/account-transitions", "schedule": "0 4 \* \* \*"/);
 });
