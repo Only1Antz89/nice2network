@@ -652,6 +652,7 @@ html[data-colour-theme="dark"] .open-person:hover > svg {
   color: var(--ink);
   border-color: #8e4a40;
 }
+.account-danger-zone{background:var(--danger-soft);border-color:#8e4a40}.account-danger-zone strong{color:#ffc2b7}
 .system-notification-denied,
 .role-fit.warning,
 .meet-not-ready {

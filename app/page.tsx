@@ -10899,6 +10899,8 @@ function SettingsView({
     error: "",
     success: false,
   });
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState("");
   const [profileUserId, setProfileUserId] = useState("");
   const [profile, setProfile] = useState({
     name: "",
@@ -11360,6 +11362,27 @@ function SettingsView({
     }
     form.reset();
     setPasswordStatus({ busy: false, error: "", success: true });
+  }
+  async function deleteAccount(values: Record<string, string>) {
+    setDeleteAccountError("");
+    try {
+      const response = await fetch("/api/account", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmation: values.confirmation, password: values.password || undefined }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        setDeleteAccountError(result?.error ?? "We couldn't delete your account. Please try again.");
+        return false;
+      }
+      localStorage.removeItem("n2-settings");
+      localStorage.removeItem(ACCESSIBILITY_STORAGE_KEY);
+      await signOut({ redirectTo: "/signin?account=deleted" });
+    } catch {
+      setDeleteAccountError("We couldn't delete your account. Check your connection and try again.");
+      return false;
+    }
   }
   async function toggleBrowserPopups() {
     setBrowserNotificationStatus("");
@@ -12374,7 +12397,33 @@ function SettingsView({
                 </small>
               </span>
             </div>
+            <div className="account-danger-zone">
+              <span>
+                <strong>Delete account</strong>
+                <small>This signs you out, removes your profile and personal details, disconnects integrations, and archives projects you own. Shared messages and safety records may be retained in anonymised form.</small>
+              </span>
+              <button type="button" className="secondary-button danger" onClick={() => { setDeleteAccountError(""); setDeleteAccountOpen(true); }}>
+                <Trash2 size={15} /> Delete account
+              </button>
+            </div>
           </div>
+        )}
+        {deleteAccountOpen && (
+          <ActionDialog
+            eyebrow="DELETE ACCOUNT"
+            title="Permanently delete your account?"
+            description="This cannot be undone. Type DELETE to confirm. If you sign in with a password, enter your current password too."
+            confirmLabel="Delete my account"
+            cancelLabel="Keep my account"
+            danger
+            error={deleteAccountError}
+            fields={[
+              { name: "confirmation", label: "Type DELETE", kind: "input", required: true, placeholder: "DELETE", maxLength: 6 },
+              { name: "password", label: "Current password (if you use one)", kind: "input", inputType: "password", autoComplete: "current-password", trim: false, maxLength: 128 },
+            ]}
+            onClose={() => { setDeleteAccountOpen(false); setDeleteAccountError(""); }}
+            onConfirm={deleteAccount}
+          />
         )}
       </div>
     );

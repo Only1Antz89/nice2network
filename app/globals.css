@@ -967,6 +967,7 @@ img,video,canvas,svg{max-width:100%}
   outline-offset:0!important;
   box-shadow:none!important;
 }
+.account-danger-zone{display:flex;align-items:center;justify-content:space-between;gap:22px;border:1px solid #e3b3ae;border-radius:12px;background:#fff8f7;padding:17px 18px;margin-top:18px}.account-danger-zone>span{display:grid;gap:5px}.account-danger-zone strong{font-size:11px;color:#8f211c}.account-danger-zone small{max-width:520px;color:var(--muted);font-size:8px;line-height:1.55}.account-danger-zone .secondary-button{flex:none;display:flex;align-items:center;gap:6px}@media(max-width:620px){.account-danger-zone{align-items:stretch;flex-direction:column}.account-danger-zone .secondary-button{justify-content:center}}
 
 .timeline-post>.post-thread-trigger{display:block;width:calc(100% - 32px);border:0;background:none;padding:0;text-align:left;font-family:inherit;color:inherit;font-size:12px;line-height:1.6;white-space:pre-wrap;margin:9px 16px 12px}
 
