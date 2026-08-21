@@ -33,7 +33,10 @@ test("Feed renders new joiners through the same unified newest timeline", async 
   assert.match(route, /projectRoles\.title/);
   assert.match(route, /activityType: sql<"project_join">/);
   assert.match(source, /person\.roleTitle \?\? "Project contributor"/);
-  assert.match(source, /joined \$\{person\.projectTitle\}/);
+  assert.match(source, /className="project-join-name">\{person\.projectTitle\}/);
+  assert.match(source, /Joining as \$\{person\.roleTitle \?\? "Project contributor"\}/);
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(styles, /\.project-join-name\{color:var\(--orange\)\}/);
 });
 
 test("a newly published project is handed directly into the feed and survives refresh", async () => {

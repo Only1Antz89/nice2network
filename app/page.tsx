@@ -4546,11 +4546,11 @@ function Feed({
               <span>
                 <strong>
                   {person.name ?? "New n2 member"}
-                  {joinedProject ? ` joined ${person.projectTitle}` : " joined n2"}
+                  {joinedProject ? <> joined <span className="project-join-name">{person.projectTitle}</span></> : " joined n2"}
                 </strong>
                 <small>
                   {joinedProject
-                    ? `${person.roleTitle ?? "Project contributor"} · ${person.profession ?? "n2 member"}`
+                    ? `Joining as ${person.roleTitle ?? "Project contributor"} · ${person.profession ?? "n2 member"}`
                     : person.profession ?? "Completing their profile"} · {" "}
                   {new Date(person.createdAt).toLocaleDateString()}
                 </small>

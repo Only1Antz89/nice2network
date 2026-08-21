@@ -1837,3 +1837,6 @@ html[data-colour-theme="dark"] .deleted-account-summary{background:#1b1b18;borde
 
 /* Official notice management actions. */
 .notice-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.notice-actions button,.notice-form-buttons button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;padding:0 12px;border-radius:999px;font-size:8px}.notice-delete-button{border:1px solid #efc9c9;background:#fff5f5;color:#982d2d}.notice-delete-button:disabled{opacity:.5}.notice-form-buttons{display:flex;justify-content:flex-end;gap:7px}
+
+/* Newest-feed project membership identity. */
+.project-join-name{color:var(--orange)}
