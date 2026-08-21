@@ -30,7 +30,8 @@ async function ownedPost(postId: string, userId: string) {
 export async function PATCH(request: Request, { params }: { params: Promise<{ postId: string }> }) {
   try {
     const member = await requireMember(), { postId } = await params, input = updateSchema.parse(await request.json()), db = getDb();
-    await ownedPost(postId, member.id);
+    const owned = await ownedPost(postId, member.id);
+    if (owned.kind === "birthday" && input.visibility !== undefined) throw new ApiError(400, "Birthday post audience is managed by your birthday privacy setting");
     if (input.linkedProjectIds?.length) {
       const visible = await db.select({ id: projects.id }).from(projects).where(and(inArray(projects.id, input.linkedProjectIds), eq(projects.status, "active"), eq(projects.visibility, "network")));
       if (visible.length !== input.linkedProjectIds.length) return NextResponse.json({ error: "One of the linked projects is no longer available" }, { status: 400 });

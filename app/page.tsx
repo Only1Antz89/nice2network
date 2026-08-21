@@ -339,6 +339,7 @@ type PeopleSuggestionRecord = {
 };
 type TimelinePost = {
   id: string;
+  kind?: "standard" | "birthday";
   body: string;
   attachmentType?: "image" | "video" | null;
   attachmentUrl?: string | null;
@@ -3280,7 +3281,7 @@ function TimelinePostCard({
               day: "numeric",
               month: "short",
             })}
-            {post.visibility === "connections" ? " · Connections only" : ""}
+            {post.kind === "birthday" ? " · Birthday circle" : post.visibility === "connections" ? " · Connections only" : ""}
           </span>
         </div>
         <div className="project-menu-wrap" ref={menuRef}>
@@ -3305,10 +3306,12 @@ function TimelinePostCard({
                 />
                 {post.isBookmarked ? "Remove bookmark" : "Bookmark"}
               </button>
-              <button onClick={share}>
-                <Share2 size={15} />
-                Share
-              </button>
+              {post.kind !== "birthday" && (
+                <button onClick={share}>
+                  <Share2 size={15} />
+                  Share
+                </button>
+              )}
               {owner ? (
                 <>
                   <hr />
@@ -3316,17 +3319,19 @@ function TimelinePostCard({
                     <Pencil size={15} />
                     Edit post
                   </button>
-                  <button onClick={visibility}>
-                    {post.visibility === "connections" ? (
-                      <Globe2 size={15} />
-                    ) : (
-                      <ShieldCheck size={15} />
-                    )}
-                    Make{" "}
-                    {post.visibility === "connections"
-                      ? "public"
-                      : "connections only"}
-                  </button>
+                  {post.kind !== "birthday" && (
+                    <button onClick={visibility}>
+                      {post.visibility === "connections" ? (
+                        <Globe2 size={15} />
+                      ) : (
+                        <ShieldCheck size={15} />
+                      )}
+                      Make{" "}
+                      {post.visibility === "connections"
+                        ? "public"
+                        : "connections only"}
+                    </button>
+                  )}
                   <button
                     className="danger"
                     onClick={() => {
@@ -3372,7 +3377,7 @@ function TimelinePostCard({
         <img
           className="post-media"
           src={post.attachmentUrl}
-          alt="Post attachment"
+          alt={post.kind === "birthday" ? "n2 Birthday Project celebration" : "Post attachment"}
           loading="lazy"
           decoding="async"
         />
@@ -11043,6 +11048,7 @@ function SettingsView({
     showFollowing: true,
     muteFollowNotifications: false,
     birthdayCelebrationsEnabled: true,
+    birthdayFeedPostsEnabled: false,
     messages: "Connections and project members",
   });
   const [networking, setNetworking] = useState({
@@ -11207,6 +11213,7 @@ function SettingsView({
             showFollowing: settings.showFollowing ?? current.showFollowing,
             muteFollowNotifications: settings.muteFollowNotifications ?? current.muteFollowNotifications,
             birthdayCelebrationsEnabled: settings.birthdayCelebrationsEnabled ?? current.birthdayCelebrationsEnabled,
+            birthdayFeedPostsEnabled: settings.birthdayFeedPostsEnabled ?? false,
           }));
           setNetworking({
             shareNetworkConnections: settings.shareNetworkConnections ?? true,
@@ -11362,6 +11369,7 @@ function SettingsView({
           showFollowing: privacy.showFollowing,
           muteFollowNotifications: privacy.muteFollowNotifications,
           birthdayCelebrationsEnabled: privacy.birthdayCelebrationsEnabled,
+          birthdayFeedPostsEnabled: privacy.birthdayFeedPostsEnabled,
           messagePermission:
             privacy.messages === "No one" ? "nobody" : "connections",
         }),
@@ -12292,6 +12300,11 @@ function SettingsView({
                 "Birthday celebrations",
                 "Let mutual connections receive a private n2 birthday celebration without sharing your age or birth year",
                 "birthdayCelebrationsEnabled",
+              ],
+              [
+                "Birthday feed post",
+                "Automatically share a birthday post from your account with your followers. This is off until you opt in",
+                "birthdayFeedPostsEnabled",
               ],
             ].map(([title, copy, key]) => (
               <div className="preference-row" key={key}>

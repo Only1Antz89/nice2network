@@ -33,9 +33,14 @@ export async function requireProjectView(userId: string, projectId: string) {
 }
 
 export async function requirePostView(userId: string, postId: string) {
-  const [post] = await getDb().select({ id: timelinePosts.id, authorId: timelinePosts.authorId, status: timelinePosts.status, visibility: timelinePosts.visibility }).from(timelinePosts).where(eq(timelinePosts.id, postId)).limit(1);
+  const db = getDb();
+  const [post] = await db.select({ id: timelinePosts.id, authorId: timelinePosts.authorId, kind: timelinePosts.kind, status: timelinePosts.status, visibility: timelinePosts.visibility }).from(timelinePosts).where(eq(timelinePosts.id, postId)).limit(1);
   if (!post || post.status !== "visible") throw new ApiError(404, "Post not found");
   if (post.authorId === userId || post.visibility === "network") return post;
+  if (post.kind === "birthday") {
+    const [following] = await db.select({ followerId: follows.followerId }).from(follows).where(and(eq(follows.followerId, userId), eq(follows.followingId, post.authorId))).limit(1);
+    if (following) return post;
+  }
   if (post.visibility === "connections" && await areMutualConnections(userId, post.authorId)) return post;
   throw new ApiError(404, "Post not found");
 }

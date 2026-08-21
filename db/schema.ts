@@ -197,6 +197,7 @@ export const projectComments = pgTable("project_comments", {
 export const timelinePosts = pgTable("timeline_posts", {
   id: uuid("id").defaultRandom().primaryKey(),
   authorId: uuid("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<"standard" | "birthday">().notNull().default("standard"),
   body: text("body").notNull(),
   linkedProjectIds: uuid("linked_project_ids").array().notNull().default(sql`ARRAY[]::uuid[]`),
   attachmentType: text("attachment_type"),
@@ -298,6 +299,7 @@ export const birthdayEvents = pgTable("birthday_events", {
   subjectUserId: uuid("subject_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   celebrationYear: integer("celebration_year").notNull(),
   celebrationDate: date("celebration_date", { mode: "string" }).notNull(),
+  postId: uuid("post_id").references(() => timelinePosts.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex("birthday_events_subject_year_unique").on(table.subjectUserId, table.celebrationYear),
@@ -431,7 +433,7 @@ export const memberRecommendationFeedback = pgTable("member_recommendation_feedb
 }, (table) => [index("member_recommendation_feedback_idx").on(table.userId, table.createdAt)]);
 
 export const privacySettings = pgTable("privacy_settings", {
-  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }), profileVisibility: text("profile_visibility").notNull().default("network"), messagePermission: text("message_permission").notNull().default("connections"), showLocation: boolean("show_location").notNull().default(true), showAvailability: boolean("show_availability").notNull().default(true), showFollowers: boolean("show_followers").notNull().default(true), showFollowing: boolean("show_following").notNull().default(true), shareNetworkConnections: boolean("share_network_connections").notNull().default(true), showNetworkKey: boolean("show_network_key").notNull().default(true), muteFollowNotifications: boolean("mute_follow_notifications").notNull().default(false), birthdayCelebrationsEnabled: boolean("birthday_celebrations_enabled").notNull().default(true), useActivityForMatching: boolean("use_activity_for_matching").notNull().default(true), allowIntroductions: boolean("allow_introductions").notNull().default(true), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }), profileVisibility: text("profile_visibility").notNull().default("network"), messagePermission: text("message_permission").notNull().default("connections"), showLocation: boolean("show_location").notNull().default(true), showAvailability: boolean("show_availability").notNull().default(true), showFollowers: boolean("show_followers").notNull().default(true), showFollowing: boolean("show_following").notNull().default(true), shareNetworkConnections: boolean("share_network_connections").notNull().default(true), showNetworkKey: boolean("show_network_key").notNull().default(true), muteFollowNotifications: boolean("mute_follow_notifications").notNull().default(false), birthdayCelebrationsEnabled: boolean("birthday_celebrations_enabled").notNull().default(true), birthdayFeedPostsEnabled: boolean("birthday_feed_posts_enabled").notNull().default(false), useActivityForMatching: boolean("use_activity_for_matching").notNull().default(true), allowIntroductions: boolean("allow_introductions").notNull().default(true), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const accessibilitySettings = pgTable("accessibility_settings", {

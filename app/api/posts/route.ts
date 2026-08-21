@@ -29,8 +29,21 @@ export async function GET(request: Request) {
   try {
     const db = getDb(), session = await auth(), viewerId = session?.user?.id, scope = new URL(request.url).searchParams.get("scope") ?? "for_you";
     const followedIds = viewerId ? (await db.select({ id: follows.followingId }).from(follows).where(eq(follows.followerId, viewerId))).map(row=>row.id) : [];
+    const visiblePost = scope === "newest"
+      ? and(eq(timelinePosts.kind, "standard"), eq(timelinePosts.visibility, "network"))
+      : or(
+          and(eq(timelinePosts.kind, "standard"), eq(timelinePosts.visibility, "network")),
+          viewerId ? and(
+            eq(timelinePosts.kind, "birthday"),
+            eq(timelinePosts.visibility, "connections"),
+            or(
+              eq(timelinePosts.authorId, viewerId),
+              sql`exists(select 1 from ${follows} birthday_follow where birthday_follow.follower_id = ${viewerId}::uuid and birthday_follow.following_id = ${timelinePosts.authorId})`,
+            ),
+          ) : sql`false`,
+        );
     let rows = await db.select({
-      id: timelinePosts.id, body: timelinePosts.body, linkedProjectIds: timelinePosts.linkedProjectIds,
+      id: timelinePosts.id, kind: timelinePosts.kind, body: timelinePosts.body, linkedProjectIds: timelinePosts.linkedProjectIds,
       attachmentType: timelinePosts.attachmentType, attachmentUrl: timelinePosts.attachmentUrl, videoUrl: timelinePosts.videoUrl,
       visibility: timelinePosts.visibility, createdAt: timelinePosts.createdAt, authorId: users.id, authorName: users.name,
       authorImage: users.image, authorProfession: users.profession, authorStatus: users.status,
@@ -44,12 +57,13 @@ export async function GET(request: Request) {
       officialNoticeTitle: sql<string | null>`null`,
     }).from(timelinePosts).innerJoin(users, eq(users.id, timelinePosts.authorId))
       .leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active")))
-      .where(and(eq(timelinePosts.status, "visible"), eq(timelinePosts.visibility, "network"), inArray(users.status, ["active", "deactivated", "suspended", "pending_admin_deletion", "deleted"])))
+      .where(and(eq(timelinePosts.status, "visible"), visiblePost, inArray(users.status, ["active", "deactivated", "suspended", "pending_admin_deletion", "deleted"])))
       .orderBy(desc(timelinePosts.createdAt)).limit(60);
     const announcementCutoff=Date.now()-24*60*60*1000;
     const announcementCutoffDate = new Date(announcementCutoff), now = new Date();
     const normalPriorityNotices = await db.select({
       id: officialNotices.id,
+      kind: sql<"standard">`'standard'`,
       body: officialNotices.body,
       linkedProjectIds: sql<string[]>`array[]::uuid[]`,
       attachmentType: sql<string | null>`null`,
