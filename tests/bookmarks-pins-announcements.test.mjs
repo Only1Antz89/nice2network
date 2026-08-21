@@ -41,11 +41,31 @@ test("only visible pins lead the profile content with a count-aware layout", asy
 });
 
 test("admin announcements only lead the feed for their first 24 hours", async () => {
-  const route = await read("app/api/posts/route.ts");
+  const [route, notices] = await Promise.all([
+    read("app/api/posts/route.ts"),
+    read("app/api/notices/route.ts"),
+  ]);
 
   assert.match(route, /announcementCutoff=Date\.now\(\)-24\*60\*60\*1000/);
   assert.match(route, /a\.authorIsAdmin&&new Date\(a\.createdAt\)\.getTime\(\)>=announcementCutoff/);
   assert.match(route, /new Date\(b\.createdAt\)\.getTime\(\)-new Date\(a\.createdAt\)\.getTime\(\)/);
+  assert.match(notices, /featuredSince = new Date\(now\.getTime\(\) - 24 \* 60 \* 60 \* 1000\)/);
+  assert.match(notices, /gt\(officialNotices\.publishedAt, featuredSince\)/);
+});
+
+test("official notices can be edited and deleted from the admin console", async () => {
+  const [route, consoleSource] = await Promise.all([
+    read("app/api/admin/notices/[noticeId]/route.ts"),
+    read("app/admin/admin-console.tsx"),
+  ]);
+
+  assert.match(route, /export async function PATCH/);
+  assert.match(route, /export async function DELETE/);
+  assert.match(route, /admin\.official_notice_updated/);
+  assert.match(route, /admin\.official_notice_deleted/);
+  assert.match(consoleSource, />Edit</);
+  assert.match(consoleSource, /Delete announcement/);
+  assert.match(consoleSource, /method: "POST" \| "PATCH" \| "DELETE"/);
 });
 
 test("saved posts and meets open their original destinations", async () => {

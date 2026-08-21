@@ -21,11 +21,19 @@ test("newest timeline interleaves members, posts and projects by timestamp", () 
 });
 
 test("Feed renders new joiners through the same unified newest timeline", async () => {
-  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const [source, route] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/feed/new-joiners/route.ts", import.meta.url), "utf8"),
+  ]);
 
   assert.match(source, /mergeNewestTimeline\(\{\s*members: newJoiners,\s*posts,\s*projects: liveProjects,/s);
   assert.match(source, /timelineFeed\.map\(\(entry\) => \{\s*if \(entry\.kind === "member"\)/s);
   assert.doesNotMatch(source, /filter === "Newest" &&\s*newJoiners\.map/);
+  assert.match(route, /projectMembers\.joinedAt/);
+  assert.match(route, /projectRoles\.title/);
+  assert.match(route, /activityType: sql<"project_join">/);
+  assert.match(source, /person\.roleTitle \?\? "Project contributor"/);
+  assert.match(source, /joined \$\{person\.projectTitle\}/);
 });
 
 test("a newly published project is handed directly into the feed and survives refresh", async () => {

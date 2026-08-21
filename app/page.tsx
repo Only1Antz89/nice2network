@@ -4195,9 +4195,14 @@ function Feed({
   const [newJoiners, setNewJoiners] = useState<
     Array<{
       id: string;
+      memberId: string;
       name: string | null;
       image: string | null;
       profession: string | null;
+      activityType: "network_join" | "project_join";
+      projectId: string | null;
+      projectTitle: string | null;
+      roleTitle: string | null;
       createdAt: string;
     }>
   >([]);
@@ -4523,24 +4528,30 @@ function Feed({
       {!contentLoading && timelineFeed.map((entry) => {
         if (entry.kind === "member") {
           const person = entry.item;
+          const joinedProject = person.activityType === "project_join" && person.projectTitle;
           return (
             <button
               className="new-joiner-card"
               key={`member-${person.id}`}
-              onClick={() => onProfile(person.id)}
+              onClick={() => onProfile(person.memberId)}
             >
               <Avatar
                 person={{
                   name: person.name ?? "n2 member",
-                  role: person.profession ?? "New member",
+                  role: person.roleTitle ?? person.profession ?? "New member",
                   img: person.image,
                 }}
                 size="md"
               />
               <span>
-                <strong>{person.name ?? "New n2 member"}</strong>
+                <strong>
+                  {person.name ?? "New n2 member"}
+                  {joinedProject ? ` joined ${person.projectTitle}` : " joined n2"}
+                </strong>
                 <small>
-                  {person.profession ?? "Completing their profile"} · joined{" "}
+                  {joinedProject
+                    ? `${person.roleTitle ?? "Project contributor"} · ${person.profession ?? "n2 member"}`
+                    : person.profession ?? "Completing their profile"} · {" "}
                   {new Date(person.createdAt).toLocaleDateString()}
                 </small>
               </span>
