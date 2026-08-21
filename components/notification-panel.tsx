@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Bell, CheckCheck, X } from "lucide-react";
 import { Avatar } from "@/components/network-brand";
 import { setBrowserNotificationPreference } from "@/lib/browser-notifications";
+import BirthdayNotificationCard from "@/components/birthday-notification-card";
+import ProjectJoinNotificationCard from "@/components/project-join-notification-card";
 
 export type NotificationRecord = {
   id: string;
@@ -17,6 +19,15 @@ export type NotificationRecord = {
   actorImage?: string | null;
   entityType?: string | null;
   entityId?: string | null;
+  birthday?: {
+    eventId: string;
+    subjectUserId: string;
+    artworkUrl: string;
+  } | null;
+  projectJoin?: {
+    projectId: string;
+    artworkUrl: string;
+  } | null;
 };
 
 export default function NotificationPanel({
@@ -133,7 +144,11 @@ export default function NotificationPanel({
           {loading ? (
             <p className="notification-empty">Loading notifications…</p>
           ) : items.length ? (
-            items.map((item) => (
+            items.map((item) => item.birthday ? (
+              <BirthdayNotificationCard key={item.id} item={item} compact onRead={() => read(item)} />
+            ) : item.projectJoin ? (
+              <ProjectJoinNotificationCard key={item.id} item={item} compact onRead={() => read(item)} />
+            ) : (
               <a
                 key={item.id}
                 className={item.readAt ? "" : "unread"}

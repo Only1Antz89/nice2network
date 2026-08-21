@@ -1109,6 +1109,27 @@ html[data-colour-theme="dark"] .form-error{color:#ff9b86!important}
 .notifications-page-empty strong{color:var(--ink);font-size:10px}
 .notifications-page-empty p{margin:0}
 .notification-group-empty{margin:0;padding:0 16px 16px;color:var(--muted);font-size:8px}
+.birthday-notification-card{position:relative;display:grid;overflow:hidden;border-top:1px solid var(--line);background:linear-gradient(145deg,color-mix(in srgb,var(--orange) 8%,var(--surface)),var(--surface));color:var(--ink)}
+.notifications-latest>.birthday-notification-card{border-top:0}.birthday-notification-card.unread{box-shadow:inset 4px 0 var(--orange)}
+.birthday-notification-art{position:relative;height:clamp(190px,26vw,300px);overflow:hidden;background:#17140f}
+.birthday-notification-art>img{width:100%;height:100%;object-fit:cover;object-position:center 56%;display:block}
+.birthday-notification-art>span{position:absolute;left:14px;top:14px;display:flex;align-items:center;gap:6px;border-radius:999px;background:rgba(17,17,15,.86);color:#fff;padding:7px 10px;font:800 7px var(--font-geist-mono);letter-spacing:.09em;backdrop-filter:blur(8px)}
+.birthday-notification-copy{display:grid;grid-template-columns:32px minmax(0,1fr) 6px;align-items:center;gap:11px;padding:15px 16px 10px}
+.birthday-notification-copy>span{min-width:0;display:grid;gap:4px}.birthday-notification-copy strong{font-size:12px}.birthday-notification-copy p{margin:0;color:var(--muted);font-size:9px;line-height:1.45}.birthday-notification-copy small{color:var(--muted);font-size:7px}.birthday-notification-copy>i{width:6px;height:6px;border-radius:50%;background:var(--orange)}
+.birthday-notification-card>button{justify-self:start;display:flex;align-items:center;gap:7px;margin:0 16px 16px 59px;border:0;border-radius:999px;background:var(--orange);color:#111;padding:10px 14px;font-size:9px;font-weight:800}
+.birthday-notification-card>button:hover{filter:brightness(.96);transform:translateY(-1px)}
+.birthday-notification-card>button:disabled{cursor:wait;opacity:.68}.birthday-notification-error{margin:-6px 16px 14px 59px;color:#a32924;font-size:8px}
+.notification-list>.birthday-notification-card{margin-top:10px;border:1px solid var(--line);border-radius:14px}
+.birthday-notification-card.compact .birthday-notification-art{height:148px}.birthday-notification-card.compact .birthday-notification-copy{padding:12px 12px 9px}.birthday-notification-card.compact .birthday-notification-copy strong{font-size:10px}.birthday-notification-card.compact>button{margin:0 12px 13px 55px;padding:9px 12px;font-size:8px}
+@media(max-width:560px){.birthday-notification-art{height:180px}.birthday-notification-card>button{margin-left:16px}.birthday-notification-error{margin-left:16px}.birthday-notification-card.compact .birthday-notification-art{height:138px}.birthday-notification-card.compact>button{margin-left:12px}}
+@media(prefers-reduced-motion:reduce){.birthday-notification-card>button:hover{transform:none}}
+.project-join-notification-card{position:relative;display:grid;overflow:hidden;border-top:1px solid var(--line);background:linear-gradient(145deg,color-mix(in srgb,var(--orange) 8%,var(--surface)),var(--surface));color:var(--ink)}
+.notifications-latest>.project-join-notification-card{border-top:0}.project-join-notification-card.unread{box-shadow:inset 4px 0 var(--orange)}
+.project-join-notification-art{position:relative;height:clamp(190px,26vw,300px);overflow:hidden;background:#17140f}.project-join-notification-art>img{width:100%;height:100%;object-fit:cover;object-position:center 48%;display:block}.project-join-notification-art>span{position:absolute;left:14px;top:14px;display:flex;align-items:center;gap:6px;border-radius:999px;background:rgba(17,17,15,.86);color:#fff;padding:7px 10px;font:800 7px var(--font-geist-mono);letter-spacing:.09em;backdrop-filter:blur(8px)}
+.project-join-notification-copy{display:grid;grid-template-columns:32px minmax(0,1fr) 6px;align-items:center;gap:11px;padding:15px 16px 10px}.project-join-notification-copy>span{min-width:0;display:grid;gap:4px}.project-join-notification-copy strong{font-size:12px}.project-join-notification-copy p{margin:0;color:var(--muted);font-size:9px;line-height:1.45}.project-join-notification-copy small{color:var(--muted);font-size:7px}.project-join-notification-copy>i{width:6px;height:6px;border-radius:50%;background:var(--orange)}
+.project-join-notification-card>a{justify-self:start;display:flex;align-items:center;gap:7px;margin:0 16px 16px 59px;border-radius:999px;background:var(--ink);color:var(--paper);padding:10px 14px;text-decoration:none;font-size:9px;font-weight:800}.project-join-notification-card>a:hover{background:var(--orange);color:#111;transform:translateY(-1px)}
+.notification-list>.project-join-notification-card{margin-top:10px;border:1px solid var(--line);border-radius:14px}.project-join-notification-card.compact .project-join-notification-art{height:148px}.project-join-notification-card.compact .project-join-notification-copy{padding:12px 12px 9px}.project-join-notification-card.compact .project-join-notification-copy strong{font-size:10px}.project-join-notification-card.compact>a{margin:0 12px 13px 55px;padding:9px 12px;font-size:8px}
+@media(max-width:560px){.project-join-notification-art{height:180px}.project-join-notification-card>a{margin-left:16px}.project-join-notification-card.compact .project-join-notification-art{height:138px}.project-join-notification-card.compact>a{margin-left:12px}}@media(prefers-reduced-motion:reduce){.project-join-notification-card>a:hover{transform:none}}
 .mobile-nav button{position:relative}
 .mobile-nav .nav-unread-count{position:absolute;top:6px;left:calc(50% + 8px);min-width:16px;height:16px;padding:0 4px;border:2px solid var(--surface);border-radius:999px;background:var(--orange);color:#111;display:grid;place-items:center;font:800 6px var(--font-geist-mono)}
 
@@ -1838,5 +1859,11 @@ html[data-colour-theme="dark"] .deleted-account-summary{background:#1b1b18;borde
 /* Official notice management actions. */
 .notice-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.notice-actions button,.notice-form-buttons button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;padding:0 12px;border-radius:999px;font-size:8px}.notice-delete-button{border:1px solid #efc9c9;background:#fff5f5;color:#982d2d}.notice-delete-button:disabled{opacity:.5}.notice-form-buttons{display:flex;justify-content:flex-end;gap:7px}
 
-/* Newest-feed project membership identity. */
+/* Newest-feed member and project-join celebrations. */
 .project-join-name{color:var(--orange)}
+.new-joiner-card.join-celebration-card{display:grid!important;grid-template-columns:auto minmax(0,1fr) auto;overflow:hidden;padding:0;background:var(--surface);text-align:left}
+.member-join-art{position:relative;grid-column:1/-1;width:100%;height:230px;overflow:hidden;background:#17140f}
+.member-join-art img{width:100%;height:100%;object-fit:cover;object-position:center 48%;display:block}
+.member-join-art b{position:absolute;left:14px;top:14px;border-radius:999px;background:rgba(17,17,15,.84);color:#fff;padding:7px 10px;font:800 7px var(--font-geist-mono);letter-spacing:.1em;backdrop-filter:blur(8px)}
+.join-celebration-card>.avatar{margin-left:14px}.join-celebration-card>span:not(.member-join-art){padding:13px 0}.join-celebration-card>svg{margin-right:14px}
+@media(max-width:700px){.member-join-art{height:180px}}

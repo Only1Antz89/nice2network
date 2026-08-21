@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     for (let suffix = 2; unavailable.has(username); suffix += 1) username = `${base.slice(0, 26)}${suffix}`;
     const [member] = await db.insert(users).values({ title: input.title, firstName: input.firstName, lastName: input.lastName, age, dateOfBirth: input.dateOfBirth, ageBand: memberAgeBand, name: `${input.firstName} ${input.lastName}`, username, image: input.image || null, email, passwordHash: await hash(input.password, 12), emailVerified: instantSignup ? new Date() : null, status: instantSignup ? "pending_onboarding" : "pending_verification" }).returning({ id: users.id });
     createdEmail = email;
-    await getDb().insert(privacySettings).values({ userId: member.id, ...(memberAgeBand === "teen_16_17" ? { profileVisibility: "connections", messagePermission: "connections", showLocation: false, useActivityForMatching: false } : {}) });
+    await getDb().insert(privacySettings).values({ userId: member.id, ...(memberAgeBand === "teen_16_17" ? { profileVisibility: "connections", messagePermission: "connections", showLocation: false, birthdayCelebrationsEnabled: false, useActivityForMatching: false } : {}) });
     await trackProductEvent({ actorId: member.id, ageBand: memberAgeBand, event: "registration_started", entityType: "user", entityId: member.id });
     if (instantSignup) {
       const onboardingToken = randomBytes(32).toString("base64url");

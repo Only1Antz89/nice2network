@@ -9,9 +9,9 @@ export async function GET() {
   try {
     const now = new Date();
     const featuredSince = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const notices = await getDb().select({
+    const rows = await getDb().select({
       id: officialNotices.id, title: officialNotices.title, body: officialNotices.body,
-      audience: officialNotices.audience, publishedAt: officialNotices.publishedAt,
+      audience: officialNotices.audience, createdAt: officialNotices.publishedAt,
       authorName: users.name,
     }).from(officialNotices)
       .innerJoin(users, eq(users.id, officialNotices.authorId))
@@ -22,6 +22,10 @@ export async function GET() {
         or(isNull(officialNotices.expiresAt), gt(officialNotices.expiresAt, now)),
       ))
       .orderBy(desc(officialNotices.publishedAt)).limit(3);
+    const notices = rows.map(notice => ({
+      ...notice,
+      featured: notice.createdAt.getTime() > featuredSince.getTime(),
+    }));
     return NextResponse.json({ notices });
   } catch (error) { return apiError(error); }
 }

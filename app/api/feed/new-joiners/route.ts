@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { privacySettings, projectMembers, projectRoles, projects, users } from "@/db/schema";
 import { apiError, requireMember } from "@/lib/api";
+import { NETWORK_JOIN_ARTWORK_URL, PROJECT_JOIN_ARTWORK_URL } from "@/lib/project-join-notifications";
 
 export async function GET() {
   try {
@@ -27,6 +28,7 @@ export async function GET() {
         projectId: sql<string | null>`null`,
         projectTitle: sql<string | null>`null`,
         roleTitle: sql<string | null>`null`,
+        celebrationImageUrl: sql<string>`${NETWORK_JOIN_ARTWORK_URL}`,
         createdAt: users.createdAt,
       }).from(users).leftJoin(privacySettings,eq(privacySettings.userId,users.id)).where(visibleMember).orderBy(desc(users.createdAt)).limit(8),
       db.select({
@@ -39,6 +41,7 @@ export async function GET() {
         projectId: projects.id,
         projectTitle: projects.title,
         roleTitle: sql<string>`coalesce(${projectRoles.title}, case when ${projectMembers.membershipRole} = 'co_owner' then 'Co-owner' else nullif(${projectMembers.department}, '') end, 'Project contributor')`,
+        celebrationImageUrl: sql<string>`${PROJECT_JOIN_ARTWORK_URL}`,
         createdAt: projectMembers.joinedAt,
       }).from(projectMembers)
         .innerJoin(users,eq(users.id,projectMembers.userId))

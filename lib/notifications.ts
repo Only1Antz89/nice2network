@@ -3,7 +3,7 @@ import { inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { notificationPreferences, notifications } from "@/db/schema";
 
-export type NotificationType = "message" | "project" | "application" | "invitation" | "match" | "meet" | "official" | "safety" | "account" | "following";
+export type NotificationType = "message" | "project" | "application" | "invitation" | "match" | "meet" | "official" | "safety" | "account" | "following" | "birthday";
 
 export async function createNotification(input: {
   userId: string; actorId?: string | null; type: NotificationType; title: string; body: string;

@@ -26,15 +26,20 @@ test("Feed renders new joiners through the same unified newest timeline", async 
     readFile(new URL("../app/api/feed/new-joiners/route.ts", import.meta.url), "utf8"),
   ]);
 
-  assert.match(source, /mergeNewestTimeline\(\{\s*members: newJoiners,\s*posts,\s*projects: liveProjects,/s);
+  assert.match(source, /mergeNewestTimeline\(\{\s*members: newJoiners,\s*posts: feedPosts,\s*projects: liveProjects,/s);
   assert.match(source, /timelineFeed\.map\(\(entry\) => \{\s*if \(entry\.kind === "member"\)/s);
   assert.doesNotMatch(source, /filter === "Newest" &&\s*newJoiners\.map/);
   assert.match(route, /projectMembers\.joinedAt/);
   assert.match(route, /projectRoles\.title/);
   assert.match(route, /activityType: sql<"project_join">/);
+  assert.match(route, /celebrationImageUrl/);
   assert.match(source, /person\.roleTitle \?\? "Project contributor"/);
   assert.match(source, /className="project-join-name">\{person\.projectTitle\}/);
   assert.match(source, /Joining as \$\{person\.roleTitle \?\? "Project contributor"\}/);
+  assert.match(route, /NETWORK_JOIN_ARTWORK_URL/);
+  assert.match(source, /className="member-join-art"/);
+  assert.match(source, /NEW PROJECT CHAPTER/);
+  assert.match(source, /WELCOME TO N2/);
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(styles, /\.project-join-name\{color:var\(--orange\)\}/);
 });

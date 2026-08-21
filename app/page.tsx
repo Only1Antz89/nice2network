@@ -360,6 +360,15 @@ type TimelinePost = {
   liked?: boolean;
   reposted?: boolean;
   linkedProjects: Array<{ id: string; title: string }>;
+  officialNoticeTitle?: string | null;
+};
+type OfficialNoticeRecord = {
+  id: string;
+  title: string;
+  body: string;
+  authorName: string | null;
+  createdAt: string;
+  featured: boolean;
 };
 type LeadershipElectionView = {
   id: string;
@@ -4135,6 +4144,15 @@ function MessageUnreadIndicator({ unread }: { unread: number }) {
   );
 }
 
+function OfficialNoticeCard({ notice }: { notice: OfficialNoticeRecord }) {
+  return <article className={`official-notice ${notice.featured ? "featured" : "timeline-notice"}`}>
+    <span className="official-badge"><b>n2</b> OFFICIAL NOTICE</span>
+    <h2>{notice.title}</h2>
+    <p>{notice.body}</p>
+    <small>{notice.authorName ?? "n2 team"} <N2AdminBadge /> · {formatNetworkDate(notice.createdAt, { day: "numeric", month: "short" })}</small>
+  </article>;
+}
+
 function Feed({
   onCreate,
   onDiscover,
@@ -4182,14 +4200,7 @@ function Feed({
       workMode: "",
       location: "",
     });
-  const [notices, setNotices] = useState<
-    Array<{
-      id: string;
-      title: string;
-      body: string;
-      authorName: string | null;
-    }>
-  >([]);
+  const [notices, setNotices] = useState<OfficialNoticeRecord[]>([]);
   const [liveProjects, setLiveProjects] = useState<ProjectRecord[]>([]);
   const [posts, setPosts] = useState<TimelinePost[]>([]);
   const [newJoiners, setNewJoiners] = useState<
@@ -4203,6 +4214,7 @@ function Feed({
       projectId: string | null;
       projectTitle: string | null;
       roleTitle: string | null;
+      celebrationImageUrl: string | null;
       createdAt: string;
     }>
   >([]);
@@ -4358,13 +4370,16 @@ function Feed({
     setLoadingMore(false);
   }
   const filterCount = Object.values(projectFilters).filter(Boolean).length;
+  const featuredNotices = notices.filter(notice => notice.featured);
+  const featuredNoticeIds = new Set(featuredNotices.map(notice => notice.id));
+  const feedPosts = posts.filter(post => !post.officialNoticeTitle || !featuredNoticeIds.has(post.id));
   const mixedFeed: Array<
     | { kind: "post"; item: TimelinePost }
     | { kind: "project"; item: ProjectRecord }
   > = [];
-  const mixedFeedLength = Math.max(posts.length, liveProjects.length);
+  const mixedFeedLength = Math.max(feedPosts.length, liveProjects.length);
   for (let index = 0; index < mixedFeedLength; index += 1) {
-    if (posts[index]) mixedFeed.push({ kind: "post", item: posts[index] });
+    if (feedPosts[index]) mixedFeed.push({ kind: "post", item: feedPosts[index] });
     if (liveProjects[index])
       mixedFeed.push({ kind: "project", item: liveProjects[index] });
   }
@@ -4372,7 +4387,7 @@ function Feed({
     filter === "Newest"
       ? mergeNewestTimeline({
           members: newJoiners,
-          posts,
+          posts: feedPosts,
           projects: liveProjects,
         })
       : mixedFeed;
@@ -4486,18 +4501,7 @@ function Feed({
       {contentLoading && (
         <LoadingState label="Loading your network feed" count={2} />
       )}
-      {!contentLoading && notices.map((notice) => (
-        <article className="official-notice" key={notice.id}>
-          <span className="official-badge">
-            <b>n2</b> OFFICIAL NOTICE
-          </span>
-          <h2>{notice.title}</h2>
-          <p>{notice.body}</p>
-          <small>
-            {notice.authorName ?? "n2 team"} <N2AdminBadge />
-          </small>
-        </article>
-      ))}
+      {!contentLoading && featuredNotices.map((notice) => <OfficialNoticeCard notice={notice} key={notice.id}/>)}
       {!contentLoading && authenticated && filter === "Following" && (
         <div className="feed-context">
           <UsersRound size={16} />
@@ -4531,10 +4535,23 @@ function Feed({
           const joinedProject = person.activityType === "project_join" && person.projectTitle;
           return (
             <button
-              className="new-joiner-card"
+              className={`new-joiner-card ${person.celebrationImageUrl ? "join-celebration-card" : ""}`}
               key={`member-${person.id}`}
               onClick={() => onProfile(person.memberId)}
             >
+              {person.celebrationImageUrl && (
+                <span className="member-join-art">
+                  <img
+                    src={person.celebrationImageUrl}
+                    alt={joinedProject
+                      ? `${person.name ?? "An n2 member"} being welcomed to ${person.projectTitle}`
+                      : `The n2 community welcoming ${person.name ?? "a new member"}`}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <b>{joinedProject ? "NEW PROJECT CHAPTER" : "WELCOME TO N2"}</b>
+                </span>
+              )}
               <Avatar
                 person={{
                   name: person.name ?? "n2 member",
@@ -4561,6 +4578,7 @@ function Feed({
         }
         if (entry.kind === "post") {
           const post = entry.item;
+          if (post.officialNoticeTitle) return <OfficialNoticeCard notice={{ id: post.id, title: post.officialNoticeTitle, body: post.body, authorName: post.authorName, createdAt: post.createdAt, featured: false }} key={`notice-${post.id}`}/>;
           return (
             <TimelinePostCard
               key={`post-${post.id}`}
@@ -11024,6 +11042,7 @@ function SettingsView({
     showFollowers: true,
     showFollowing: true,
     muteFollowNotifications: false,
+    birthdayCelebrationsEnabled: true,
     messages: "Connections and project members",
   });
   const [networking, setNetworking] = useState({
@@ -11187,6 +11206,7 @@ function SettingsView({
             showFollowers: settings.showFollowers ?? current.showFollowers,
             showFollowing: settings.showFollowing ?? current.showFollowing,
             muteFollowNotifications: settings.muteFollowNotifications ?? current.muteFollowNotifications,
+            birthdayCelebrationsEnabled: settings.birthdayCelebrationsEnabled ?? current.birthdayCelebrationsEnabled,
           }));
           setNetworking({
             shareNetworkConnections: settings.shareNetworkConnections ?? true,
@@ -11341,6 +11361,7 @@ function SettingsView({
           showFollowers: privacy.showFollowers,
           showFollowing: privacy.showFollowing,
           muteFollowNotifications: privacy.muteFollowNotifications,
+          birthdayCelebrationsEnabled: privacy.birthdayCelebrationsEnabled,
           messagePermission:
             privacy.messages === "No one" ? "nobody" : "connections",
         }),
@@ -12267,6 +12288,11 @@ function SettingsView({
                 "Share your city, never your precise location",
                 "showLocation",
               ],
+              [
+                "Birthday celebrations",
+                "Let mutual connections receive a private n2 birthday celebration without sharing your age or birth year",
+                "birthdayCelebrationsEnabled",
+              ],
             ].map(([title, copy, key]) => (
               <div className="preference-row" key={key}>
                 <span>
@@ -12932,11 +12958,13 @@ export default function HomePage() {
         const delivery = getBrowserNotificationPreferences();
         if (delivery.sound) await playBrowserNotificationSound();
         if (delivery.popups && typeof Notification !== "undefined") {
-          const notice = new Notification(notification.title, {
+          const noticeOptions: NotificationOptions & { image?: string } = {
             body: notification.body,
             icon: "/brand/nice-2-network-mark.svg",
+            image: notification.birthday?.artworkUrl ?? notification.projectJoin?.artworkUrl,
             tag: `n2-notification-${notification.id}`,
-          });
+          };
+          const notice = new Notification(notification.title, noticeOptions);
           notice.onclick = () => {
             window.focus();
             if (notification.href) window.location.assign(notification.href);

@@ -1,8 +1,8 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb, isDatabaseConfigured } from "@/db";
-import { adminAssignments, contentDrafts, follows, postLikes, postReplies, postReposts, projects, timelinePosts, users } from "@/db/schema";
+import { adminAssignments, contentDrafts, follows, officialNotices, postLikes, postReplies, postReposts, projects, timelinePosts, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { trackProductEvent } from "@/lib/analytics";
@@ -41,12 +41,46 @@ export async function GET(request: Request) {
       repostCount: sql<number>`(select count(*)::int from ${postReposts} where ${postReposts.postId} = ${timelinePosts.id})`,
       liked: viewerId ? sql<boolean>`exists(select 1 from ${postLikes} where ${postLikes.postId} = ${timelinePosts.id} and ${postLikes.userId} = ${viewerId})` : sql<boolean>`false`,
       reposted: viewerId ? sql<boolean>`exists(select 1 from ${postReposts} where ${postReposts.postId} = ${timelinePosts.id} and ${postReposts.userId} = ${viewerId})` : sql<boolean>`false`,
+      officialNoticeTitle: sql<string | null>`null`,
     }).from(timelinePosts).innerJoin(users, eq(users.id, timelinePosts.authorId))
       .leftJoin(adminAssignments, and(eq(adminAssignments.userId, users.id), eq(adminAssignments.status, "active")))
       .where(and(eq(timelinePosts.status, "visible"), eq(timelinePosts.visibility, "network"), inArray(users.status, ["active", "deactivated", "suspended", "pending_admin_deletion", "deleted"])))
       .orderBy(desc(timelinePosts.createdAt)).limit(60);
-    if(scope==="following") rows=rows.filter(row=>followedIds.includes(row.authorId));
     const announcementCutoff=Date.now()-24*60*60*1000;
+    const announcementCutoffDate = new Date(announcementCutoff), now = new Date();
+    const normalPriorityNotices = await db.select({
+      id: officialNotices.id,
+      body: officialNotices.body,
+      linkedProjectIds: sql<string[]>`array[]::uuid[]`,
+      attachmentType: sql<string | null>`null`,
+      attachmentUrl: sql<string | null>`null`,
+      videoUrl: sql<string | null>`null`,
+      visibility: sql<"network">`'network'`,
+      createdAt: officialNotices.publishedAt,
+      authorId: users.id,
+      authorName: users.name,
+      authorImage: users.image,
+      authorProfession: users.profession,
+      authorStatus: users.status,
+      authorIsAdmin: sql<boolean>`true`,
+      isDemo: sql<boolean>`false`,
+      replyCount: sql<number>`0`,
+      likeCount: sql<number>`0`,
+      repostCount: sql<number>`0`,
+      liked: sql<boolean>`false`,
+      reposted: sql<boolean>`false`,
+      officialNoticeTitle: officialNotices.title,
+    }).from(officialNotices)
+      .innerJoin(users,eq(users.id,officialNotices.authorId))
+      .innerJoin(adminAssignments,and(eq(adminAssignments.userId,officialNotices.authorId),eq(adminAssignments.status,"active")))
+      .where(and(
+        eq(officialNotices.status,"published"),
+        lte(officialNotices.publishedAt,announcementCutoffDate),
+        or(isNull(officialNotices.expiresAt),gt(officialNotices.expiresAt,now)),
+      ))
+      .orderBy(desc(officialNotices.publishedAt)).limit(50);
+    rows=[...rows,...normalPriorityNotices];
+    if(scope==="following") rows=rows.filter(row=>followedIds.includes(row.authorId));
     rows.sort((a,b)=>{
       const freshAdminA=Boolean(a.authorIsAdmin&&new Date(a.createdAt).getTime()>=announcementCutoff),freshAdminB=Boolean(b.authorIsAdmin&&new Date(b.createdAt).getTime()>=announcementCutoff);
       return Number(freshAdminB)-Number(freshAdminA)||(scope==="for_you"?Number(followedIds.includes(b.authorId))-Number(followedIds.includes(a.authorId)):0)||new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime();

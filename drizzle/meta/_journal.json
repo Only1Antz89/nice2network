@@ -267,6 +267,13 @@
       "when": 1787239350961,
       "tag": "0037_tough_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1787309182478,
+      "tag": "0038_lumpy_medusa",
+      "breakpoints": true
     }
   ]
 }

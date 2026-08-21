@@ -50,7 +50,16 @@ test("admin announcements only lead the feed for their first 24 hours", async ()
   assert.match(route, /a\.authorIsAdmin&&new Date\(a\.createdAt\)\.getTime\(\)>=announcementCutoff/);
   assert.match(route, /new Date\(b\.createdAt\)\.getTime\(\)-new Date\(a\.createdAt\)\.getTime\(\)/);
   assert.match(notices, /featuredSince = new Date\(now\.getTime\(\) - 24 \* 60 \* 60 \* 1000\)/);
+  assert.match(notices, /featured: notice\.createdAt\.getTime\(\) > featuredSince\.getTime\(\)/);
   assert.match(notices, /gt\(officialNotices\.publishedAt, featuredSince\)/);
+  assert.match(route, /lte\(officialNotices\.publishedAt,announcementCutoffDate\)/);
+  assert.match(route, /rows=\[\.\.\.rows,\.\.\.normalPriorityNotices\]/);
+  assert.ok(route.indexOf("rows=[...rows,...normalPriorityNotices]") < route.indexOf('if(scope==="following")'));
+  assert.ok(route.indexOf("rows=[...rows,...normalPriorityNotices]") < route.indexOf("rows.sort((a,b)=>"));
+  const page = await read("app/page.tsx");
+  assert.match(page, /const featuredNotices = notices\.filter\(notice => notice\.featured\)/);
+  assert.match(page, /post\.officialNoticeTitle/);
+  assert.match(page, /OfficialNoticeCard notice=/);
 });
 
 test("official notices can be edited and deleted from the admin console", async () => {

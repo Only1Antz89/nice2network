@@ -5,8 +5,9 @@ import { getDb } from "@/db";
 import { milestones, projectInvolvementRequests, projectMembers, projectRoles, projects, projectUpdates, users } from "@/db/schema";
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
-import { createNotification } from "@/lib/notifications";
+import { createNotification, createNotifications } from "@/lib/notifications";
 import { requireProjectOwner } from "@/lib/project-access";
+import { notifyProjectJoinFollowers } from "@/lib/project-join-notifications";
 
 const schema = z.object({
   action: z.enum(["onboard", "decline"]),
@@ -74,6 +75,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
     });
 
     await createNotification({ userId: offer.request.userId, actorId: member.id, type: "project", title: input.action === "onboard" ? `Welcome to ${offer.projectTitle}` : `Your offer for ${offer.projectTitle} was reviewed`, body: input.action === "onboard" ? `You joined as ${assignedRoleTitle}.` : "The project team is not moving forward with this offer right now.", entityType: "project", entityId: projectId, href: `/?view=projects&project=${projectId}` });
+    if (input.action === "onboard") {
+      const teammates = await db.select({ userId: projectMembers.userId }).from(projectMembers).where(eq(projectMembers.projectId, projectId));
+      await createNotifications(teammates.filter(row => row.userId !== offer.request.userId && row.userId !== member.id).map(row => ({ userId: row.userId, actorId: offer.request.userId, type: "project" as const, title: `${offer.userName ?? "A new member"} joined ${offer.projectTitle}`, body: `${assignedRoleTitle} joined your project team.`, entityType: "project", entityId: projectId, href: `/?view=projects&project=${projectId}` })));
+      await notifyProjectJoinFollowers({ userId: offer.request.userId, userName: offer.userName, projectId, projectTitle: offer.projectTitle, roleTitle: assignedRoleTitle });
+    }
     await audit(member.id, `project.involvement_${input.action}`, "project", projectId, { requestId, roleId: input.roleId, roadmapTitle: input.roadmapTitle });
     return NextResponse.json({ status: input.action === "onboard" ? "accepted" : "declined", roleTitle: assignedRoleTitle });
   } catch (error) { return apiError(error); }

@@ -7,6 +7,7 @@ import { invitations, projectMembers, projectRoles, projects, projectUpdates } f
 import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { createNotifications } from "@/lib/notifications";
+import { notifyProjectJoinFollowers } from "@/lib/project-join-notifications";
 
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
@@ -45,6 +46,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
         db.select({ userId: projectMembers.userId }).from(projectMembers).where(eq(projectMembers.projectId, invite.projectId)),
       ]);
       await createNotifications(recipients.filter(({ userId }) => userId !== member.id).map(({ userId }) => ({ userId, actorId: member.id, type: "project" as const, title: `${member.name ?? "A new member"} joined ${project?.title ?? "your project"}`, body: invite.membershipRole === "co_owner" ? `${member.name ?? "A new member"} accepted a co-owner invitation.` : `${roleTitle} joined your project team.`, entityType: "project", entityId: invite.projectId, href: `/?view=projects&project=${invite.projectId}` })));
+      if (project) await notifyProjectJoinFollowers({ userId: member.id, userName: member.name, projectId: invite.projectId, projectTitle: project.title, roleTitle });
     }
     await audit(member.id, `invitation.${decision}`, "invitation", invite.id);
     return NextResponse.json({ status: decision, projectId: invite.projectId });

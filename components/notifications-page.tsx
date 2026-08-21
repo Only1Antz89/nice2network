@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AtSign, Bell, CheckCheck, FolderKanban, UserPlus } from "lucide-react";
 import { Avatar } from "@/components/network-brand";
 import type { NotificationRecord } from "@/components/notification-panel";
+import BirthdayNotificationCard from "@/components/birthday-notification-card";
+import ProjectJoinNotificationCard from "@/components/project-join-notification-card";
 
 type NotificationPreferences = {
   messages: boolean;
@@ -40,6 +42,8 @@ function isProjectNotification(item: NotificationRecord) {
 }
 
 function NotificationRow({ item, onRead }: { item: NotificationRecord; onRead: (item: NotificationRecord) => void }) {
+  if (item.birthday) return <BirthdayNotificationCard item={item} onRead={() => onRead(item)} />;
+  if (item.projectJoin) return <ProjectJoinNotificationCard item={item} onRead={() => onRead(item)} />;
   const connection = isFollowerNotification(item);
   return (
     <a className={`notifications-page-row ${item.readAt ? "" : "unread"} ${connection ? "connection" : ""}`} href={item.href ?? "#"} onClick={() => onRead(item)}>

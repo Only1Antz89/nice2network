@@ -7,6 +7,7 @@ import { ApiError, apiError, requireMember } from "@/lib/api";
 import { audit } from "@/lib/audit";
 import { createNotification, createNotifications } from "@/lib/notifications";
 import { recomputeProjectRecommendations } from "@/lib/recommendations/service";
+import { notifyProjectJoinFollowers } from "@/lib/project-join-notifications";
 
 const schema = z.object({ decision: z.enum(["accepted", "declined"]) });
 
@@ -54,6 +55,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ app
         })());
         if (memberWasAdded) {
           sideEffects.push(db.insert(projectUpdates).values({ projectId: row.application.projectId, authorId: row.application.applicantId, type: "member_joined", body: `${row.applicantName ?? "A new member"} joined as ${row.roleTitle}.` }));
+          sideEffects.push(notifyProjectJoinFollowers({ userId: row.application.applicantId, userName: row.applicantName, projectId: row.application.projectId, projectTitle: row.projectTitle, roleTitle: row.roleTitle }));
           sideEffects.push((async () => {
             const recipients = await db.select({ userId: projectMembers.userId }).from(projectMembers).where(eq(projectMembers.projectId, row.application.projectId));
             await createNotifications(recipients.filter(({ userId }) => userId !== row.application.applicantId).map(({ userId }) => ({ userId, actorId: row.application.applicantId, type: "project" as const, title: `${row.applicantName ?? "A new member"} joined ${row.projectTitle}`, body: `${row.roleTitle} joined your project team.`, entityType: "project", entityId: row.application.projectId, href: `/?view=projects&project=${row.application.projectId}` })));

@@ -211,6 +211,8 @@ html[data-colour-theme="dark"] .career-industry-list mark {
 .meet-not-ready.ended,
 .message-list > button.unread,
 .notification-list > a.unread,
+.birthday-notification-card.unread,
+.project-join-notification-card.unread,
 .new-chat-results > button.selected,
 .project-participation-actions .active,
 .recruitment-tabs > button.active,
