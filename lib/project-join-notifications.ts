@@ -5,7 +5,7 @@ import { follows, projectMembers, projects } from "@/db/schema";
 import { createNotifications } from "@/lib/notifications";
 
 export const PROJECT_JOIN_ARTWORK_URL = "/brand/n2-project-join-celebration.png";
-export const NETWORK_JOIN_ARTWORK_URL = "/brand/n2-platform-welcome.png";
+export const NETWORK_JOIN_ARTWORK_URL = "/brand/n2-platform-welcome-sign.png";
 
 export async function notifyProjectJoinFollowers(input: {
   userId: string;
